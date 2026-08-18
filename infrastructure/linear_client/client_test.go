@@ -151,7 +151,6 @@ func (s *LinearServiceSuite) TestNew_ConfigPreserved() {
 		ClientId:      "cid",
 		ClientSecret:  "cs",
 		ServerUrl:     "http://srv",
-		APIKey:        "ak",
 		IPs:           []string{"1.2.3.4"},
 	}, nil)
 	s.Require().NoError(err)
@@ -159,7 +158,6 @@ func (s *LinearServiceSuite) TestNew_ConfigPreserved() {
 	s.Equal("cid", svc.config.ClientId)
 	s.Equal("cs", svc.config.ClientSecret)
 	s.Equal("http://srv", svc.config.ServerUrl)
-	s.Equal("ak", svc.config.APIKey)
 	s.Equal([]string{"1.2.3.4"}, svc.config.IPs)
 }
 

@@ -21,7 +21,6 @@ workers: 3
 linear:
   server_url: "http://localhost:8080"
   webhook_secret: "replace-with-linear-webhook-secret"
-  api_key: "replace-with-linear-api-key"
   client_id: "replace-with-linear-client-id"
   client_secret: "replace-with-linear-client-secret"
   ips: ["35.231.147.226", "35.243.134.228", "34.140.253.14", "34.38.87.206", "34.134.222.122", "35.222.25.142"]

@@ -66,7 +66,6 @@ type tokenResponse struct {
 
 type LinearServiceConfig struct {
 	WebhookSecret string   `yaml:"webhook_secret"`
-	APIKey        string   `yaml:"api_key"`
 	IPs           []string `yaml:"ips"`
 	ClientId      string   `yaml:"client_id"`
 	ClientSecret  string   `yaml:"client_secret"`
