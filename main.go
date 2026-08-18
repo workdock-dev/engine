@@ -208,12 +208,13 @@ func main() {
 	webhookRegistry[types.PlatformProvider_GitHub] = gitHostingPlatformRegistry[types.PlatformProvider_GitHub]
 
 	linearPlatform := linear.New(linear.Config{
-		HarnessRegistry:    harnessRegistry,
-		GitHostingRegistry: gitHostingPlatformRegistry,
-		Client:             linearClient,
-		ForSecrets:         forSecrets,
-		Sessions:           postgresClient,
-		Organizations:      postgresClient,
+		HarnessRegistry:     harnessRegistry,
+		GitHostingRegistry:  gitHostingPlatformRegistry,
+		Client:              linearClient,
+		ForSecrets:          forSecrets,
+		Sessions:            postgresClient,
+		Organizations:       postgresClient,
+		GitHubAppInstallURL: cfg.Github.AppInstallURL,
 	})
 	workPlatformRegistry[types.PlatformProvider_Linear] = linearPlatform
 	webhookRegistry[types.PlatformProvider_Linear] = workPlatformRegistry[types.PlatformProvider_Linear]

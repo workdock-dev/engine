@@ -74,6 +74,7 @@ github:
   client_id: "your-client-id"
   private_key_path: "./github-app.pem"
   webhook_secret: "your-webhook-secret"
+  app_install_url: "https://github.com/apps/your-app-name/installations/new"
 
 # otlp:
 #   endpoint: "ingest.us2.signoz.cloud:443"

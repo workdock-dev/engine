@@ -96,6 +96,7 @@ required=(
   WORKDOCK_GITHUB_BOT_LOGIN_ID
   WORKDOCK_GITHUB_CLIENT_ID
   WORKDOCK_GITHUB_WEBHOOK_SECRET
+  WORKDOCK_GITHUB_APP_INSTALL_URL
   WORKDOCK_DAYTONA_API_KEY
   WORKDOCK_OPENCODE_MODEL
   WORKDOCK_INFISICAL_CLIENT_ID
@@ -147,6 +148,7 @@ github:
   client_id: $(quote "$WORKDOCK_GITHUB_CLIENT_ID")
   private_key_path: "/app/config/github-app.pem"
   webhook_secret: $(quote "$WORKDOCK_GITHUB_WEBHOOK_SECRET")
+  app_install_url: $(quote "${WORKDOCK_GITHUB_APP_INSTALL_URL}")
 
 daytona:
   api_url: $(quote "${WORKDOCK_DAYTONA_API_URL:-https://app.daytona.io/api}")

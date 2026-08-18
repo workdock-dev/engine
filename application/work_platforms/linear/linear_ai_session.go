@@ -32,8 +32,7 @@ import (
 )
 
 const (
-	GitHubUrl           = "https://github.com/"
-	GitHubInstallAppUrl = "https://github.com/apps/IamFoo-App-Dev/installations/new" // TODO: This MUST come from config
+	GitHubUrl = "https://github.com/"
 )
 
 const (
@@ -97,15 +96,16 @@ It may clarify, refine, override, or replace previous requirements. When it conf
 )
 
 type linearAISessionConfig struct {
-	HarnessRegistry    ports.HarnessPlatformRegistry
-	GitHostingRegistry ports.GitHostingPlatformRegistry
-	Client             LinearClientInterface
-	ForSecrets         ports.ForSecrets
-	Sessions           repositories.SessionRepository
-	Job                *types.EventJob
-	SessionEvent       *types.SessionEvent
-	Session            *types.Session
-	Payload            *AgentSessionEventData
+	HarnessRegistry       ports.HarnessPlatformRegistry
+	GitHostingRegistry    ports.GitHostingPlatformRegistry
+	Client                LinearClientInterface
+	ForSecrets            ports.ForSecrets
+	Sessions              repositories.SessionRepository
+	Job                   *types.EventJob
+	SessionEvent          *types.SessionEvent
+	Session               *types.Session
+	Payload               *AgentSessionEventData
+	GitHubAppInstallURL   string
 }
 
 type linearAISession struct {
@@ -385,7 +385,7 @@ func (s *linearAISession) notifyGitHubConnectionRequired(ctx context.Context) er
 		},
 		Signal: SignalType_Auth,
 		SignalMetadata: map[string]any{
-			"url":          GitHubInstallAppUrl,
+			"url":          s.config.GitHubAppInstallURL,
 			"providerName": "GitHub",
 		},
 	})

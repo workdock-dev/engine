@@ -28,12 +28,13 @@ import (
 
 // Config holds the dependencies required to run Linear sessions.
 type Config struct {
-	HarnessRegistry    ports.HarnessPlatformRegistry
-	GitHostingRegistry ports.GitHostingPlatformRegistry
-	ForSecrets         ports.ForSecrets
-	Sessions           repositories.SessionRepository
-	Organizations      repositories.OrganizationRepository
-	Client             LinearClientInterface
+	HarnessRegistry       ports.HarnessPlatformRegistry
+	GitHostingRegistry    ports.GitHostingPlatformRegistry
+	ForSecrets            ports.ForSecrets
+	Sessions              repositories.SessionRepository
+	Organizations         repositories.OrganizationRepository
+	Client                LinearClientInterface
+	GitHubAppInstallURL   string
 }
 
 // linearPlatform adapts AIService to the Linear provider. It normalizes Linear
@@ -163,15 +164,16 @@ func (p *linearPlatform) Process(ctx context.Context, config ports.ProcessConfig
 	}
 
 	service, err := newLinearAISession(ctx, linearAISessionConfig{
-		HarnessRegistry:    p.config.HarnessRegistry,
-		GitHostingRegistry: p.config.GitHostingRegistry,
-		Client:             p.config.Client,
-		ForSecrets:         p.config.ForSecrets,
-		Sessions:           p.config.Sessions,
-		Job:                config.Job,
-		SessionEvent:       config.SessionEvent,
-		Session:            config.Session,
-		Payload:            &linearEvent,
+		HarnessRegistry:     p.config.HarnessRegistry,
+		GitHostingRegistry:  p.config.GitHostingRegistry,
+		Client:              p.config.Client,
+		ForSecrets:          p.config.ForSecrets,
+		Sessions:            p.config.Sessions,
+		Job:                 config.Job,
+		SessionEvent:        config.SessionEvent,
+		Session:             config.Session,
+		Payload:             &linearEvent,
+		GitHubAppInstallURL: p.config.GitHubAppInstallURL,
 	})
 
 	if err != nil {
