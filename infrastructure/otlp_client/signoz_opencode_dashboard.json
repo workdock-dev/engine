@@ -1,0 +1,1269 @@
+{
+  "spec": {
+    "display": {
+      "name": "OpenCode",
+      "description": "Monitor OpenCode usage, costs, tokens, and productivity metrics"
+    },
+    "variables": [],
+    "panels": {
+      "cache-efficiency": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Cache Efficiency %",
+            "description": "Percentage of input tokens served from cache"
+          },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time",
+                "fillSpans": false
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "chartAppearance": {
+                "lineInterpolation": "spline",
+                "showPoints": false,
+                "lineStyle": "solid",
+                "fillMode": "none",
+                "spanGaps": {
+                  "fillOnlyBelow": false,
+                  "fillLessThan": ""
+                }
+              },
+              "axes": {
+                "softMin": 0,
+                "softMax": 100,
+                "isLogScale": false
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": {
+                  "Cache Efficiency %": "#8BE4E3",
+                  "Cache Read": "#803AE9",
+                  "Input": "#E5BB5D"
+                }
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/CompositeQuery",
+                  "spec": {
+                    "queries": [
+                      {
+                        "type": "builder_query",
+                        "spec": {
+                          "name": "A",
+                          "stepInterval": 60,
+                          "signal": "metrics",
+                          "source": "",
+                          "aggregations": [
+                            {
+                              "metricName": "opencode.token.usage",
+                              "temporality": "",
+                              "timeAggregation": "rate",
+                              "spaceAggregation": "sum",
+                              "reduceTo": "sum"
+                            }
+                          ],
+                          "disabled": false,
+                          "filter": {
+                            "expression": "type = 'cacheRead'"
+                          },
+                          "groupBy": [],
+                          "order": [],
+                          "selectFields": null,
+                          "having": {
+                            "expression": ""
+                          },
+                          "secondaryAggregations": null,
+                          "functions": [],
+                          "legend": "Cache Read"
+                        }
+                      },
+                      {
+                        "type": "builder_query",
+                        "spec": {
+                          "name": "B",
+                          "stepInterval": 60,
+                          "signal": "metrics",
+                          "source": "",
+                          "aggregations": [
+                            {
+                              "metricName": "opencode.token.usage",
+                              "temporality": "",
+                              "timeAggregation": "rate",
+                              "spaceAggregation": "sum",
+                              "reduceTo": "sum"
+                            }
+                          ],
+                          "disabled": false,
+                          "filter": {
+                            "expression": "type = 'input'"
+                          },
+                          "groupBy": [],
+                          "order": [],
+                          "selectFields": null,
+                          "having": {
+                            "expression": ""
+                          },
+                          "secondaryAggregations": null,
+                          "functions": [],
+                          "legend": "Input"
+                        }
+                      },
+                      {
+                        "type": "builder_formula",
+                        "spec": {
+                          "name": "F1",
+                          "expression": "(A / (A + B)) * 100",
+                          "disabled": false,
+                          "order": null,
+                          "having": {
+                            "expression": ""
+                          },
+                          "functions": null,
+                          "legend": "Cache Efficiency %"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "cost-by-model": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Cost by Model",
+            "description": "Cost breakdown by model"
+          },
+          "plugin": {
+            "kind": "signoz/BarChartPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time",
+                "fillSpans": false,
+                "stackedBarChart": false
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "axes": {
+                "softMin": 0,
+                "softMax": 0,
+                "isLogScale": false
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": {
+                  "anthropic/claude-sonnet-5": "#8BE495",
+                  "big-pickle": "#CFE48B",
+                  "google/gemini-2.5-pro": "#3088E8",
+                  "openai/gpt-5": "#E55D76"
+                }
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "stepInterval": 60,
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "opencode.cost.usage",
+                        "temporality": "",
+                        "timeAggregation": "rate",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "sum"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": ""
+                    },
+                    "groupBy": [
+                      {
+                        "name": "gen_ai.request.model",
+                        "signal": "",
+                        "fieldContext": "attribute",
+                        "fieldDataType": "string"
+                      }
+                    ],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": "{{gen_ai.request.model}}"
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "cost-total": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Cost (Total)",
+            "description": "Total API cost for the selected window"
+          },
+          "plugin": {
+            "kind": "signoz/NumberPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time"
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "scalar",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "opencode.cost.usage",
+                        "temporality": "",
+                        "timeAggregation": "increase",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "sum"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": ""
+                    },
+                    "groupBy": [],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": ""
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "cost-usage": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Cost Over Time (USD)",
+            "description": "Cost accumulation over time"
+          },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time",
+                "fillSpans": false
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "chartAppearance": {
+                "lineInterpolation": "spline",
+                "showPoints": false,
+                "lineStyle": "solid",
+                "fillMode": "none",
+                "spanGaps": {
+                  "fillOnlyBelow": false,
+                  "fillLessThan": ""
+                }
+              },
+              "axes": {
+                "softMin": 0,
+                "softMax": 0,
+                "isLogScale": false
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": null
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "stepInterval": 60,
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "opencode.cost.usage",
+                        "temporality": "",
+                        "timeAggregation": "rate",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "sum"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": ""
+                    },
+                    "groupBy": [],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": "Cost (USD)"
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "model-distribution": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Model Distribution",
+            "description": "Sessions per model"
+          },
+          "plugin": {
+            "kind": "signoz/PieChartPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time"
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": {
+                  "anthropic/claude-sonnet-5": "#8BE495",
+                  "big-pickle": "#CFE48B",
+                  "google/gemini-2.5-pro": "#3088E8",
+                  "openai/gpt-5": "#E55D76"
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "scalar",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "stepInterval": 60,
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "opencode.model.usage",
+                        "temporality": "",
+                        "timeAggregation": "increase",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "sum"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": ""
+                    },
+                    "groupBy": [
+                      {
+                        "name": "gen_ai.request.model",
+                        "signal": "",
+                        "fieldContext": "attribute",
+                        "fieldDataType": "string"
+                      }
+                    ],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": "{{gen_ai.request.model}}"
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "session-count": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Sessions",
+            "description": "Number of OpenCode sessions"
+          },
+          "plugin": {
+            "kind": "signoz/NumberPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time"
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "scalar",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "opencode.session.count",
+                        "temporality": "",
+                        "timeAggregation": "increase",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "sum"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": ""
+                    },
+                    "groupBy": [],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": ""
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "token-by-model": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Tokens by Model",
+            "description": "Token consumption by model"
+          },
+          "plugin": {
+            "kind": "signoz/BarChartPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time",
+                "fillSpans": false,
+                "stackedBarChart": false
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "axes": {
+                "softMin": 0,
+                "softMax": 0,
+                "isLogScale": false
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": {
+                  "anthropic/claude-sonnet-5": "#8BE495",
+                  "big-pickle": "#CFE48B",
+                  "google/gemini-2.5-pro": "#3088E8",
+                  "openai/gpt-5": "#E55D76"
+                }
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "stepInterval": 60,
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "opencode.token.usage",
+                        "temporality": "",
+                        "timeAggregation": "rate",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "sum"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": ""
+                    },
+                    "groupBy": [
+                      {
+                        "name": "gen_ai.request.model",
+                        "signal": "",
+                        "fieldContext": "attribute",
+                        "fieldDataType": "string"
+                      }
+                    ],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": "{{gen_ai.request.model}}"
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "token-by-type": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Tokens by Type",
+            "description": "Input, output, cache read, cache creation"
+          },
+          "plugin": {
+            "kind": "signoz/BarChartPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time",
+                "fillSpans": false,
+                "stackedBarChart": false
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "axes": {
+                "softMin": 0,
+                "softMax": 0,
+                "isLogScale": false
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": {
+                  "cacheCreation": "#DD5DE5",
+                  "cacheRead": "#30E8A8",
+                  "input": "#665DE5",
+                  "output": "#E4AB8B",
+                  "reasoning": "#E5BB5D"
+                }
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "stepInterval": 60,
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "opencode.token.usage",
+                        "temporality": "",
+                        "timeAggregation": "rate",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "sum"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": ""
+                    },
+                    "groupBy": [
+                      {
+                        "name": "type",
+                        "signal": "",
+                        "fieldContext": "attribute",
+                        "fieldDataType": "string"
+                      }
+                    ],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": "{{type}}"
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "token-usage": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Token Usage Over Time",
+            "description": "Total tokens consumed over time"
+          },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time",
+                "fillSpans": false
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "chartAppearance": {
+                "lineInterpolation": "spline",
+                "showPoints": false,
+                "lineStyle": "solid",
+                "fillMode": "none",
+                "spanGaps": {
+                  "fillOnlyBelow": false,
+                  "fillLessThan": ""
+                }
+              },
+              "axes": {
+                "softMin": 0,
+                "softMax": 0,
+                "isLogScale": false
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": null
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "stepInterval": 60,
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "opencode.token.usage",
+                        "temporality": "",
+                        "timeAggregation": "rate",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "sum"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": ""
+                    },
+                    "groupBy": [],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": "Tokens"
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "tool-calls": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Tool Calls",
+            "description": "Tool calls by tool"
+          },
+          "plugin": {
+            "kind": "signoz/PieChartPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time"
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": {
+                  "bash": "#5DE599",
+                  "edit": "#E84C30",
+                  "glob": "#5DB9E5",
+                  "grep": "#CC8BE4",
+                  "read": "#8B98E4",
+                  "webfetch": "#42E830",
+                  "write": "#E3E830"
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "scalar",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "stepInterval": 60,
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "opencode.tool.count",
+                        "temporality": "",
+                        "timeAggregation": "increase",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "sum"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": ""
+                    },
+                    "groupBy": [
+                      {
+                        "name": "tool",
+                        "signal": "",
+                        "fieldContext": "attribute",
+                        "fieldDataType": "string"
+                      }
+                    ],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": "{{tool}}"
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "tool-decisions": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Tool Decisions",
+            "description": "Total tool calls executed"
+          },
+          "plugin": {
+            "kind": "signoz/NumberPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time"
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "scalar",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "opencode.tool.count",
+                        "temporality": "",
+                        "timeAggregation": "increase",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "sum"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": ""
+                    },
+                    "groupBy": [],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": ""
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "tool-success-rate": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Tool Success",
+            "description": "Success vs failure rate"
+          },
+          "plugin": {
+            "kind": "signoz/PieChartPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time"
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": {
+                  "false": "#E5484D",
+                  "true": "#16C784"
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "scalar",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "stepInterval": 60,
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "opencode.tool.count",
+                        "temporality": "",
+                        "timeAggregation": "increase",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "sum"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": ""
+                    },
+                    "groupBy": [
+                      {
+                        "name": "success",
+                        "signal": "",
+                        "fieldContext": "attribute",
+                        "fieldDataType": "bool"
+                      }
+                    ],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": "{{success}}"
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "tool-usage-frequency": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Tool Usage Frequency",
+            "description": "Which tools are used most often"
+          },
+          "plugin": {
+            "kind": "signoz/BarChartPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time",
+                "fillSpans": false,
+                "stackedBarChart": false
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "axes": {
+                "softMin": 0,
+                "softMax": 0,
+                "isLogScale": false
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": {
+                  "bash": "#5DE599",
+                  "edit": "#E84C30",
+                  "glob": "#5DB9E5",
+                  "grep": "#CC8BE4",
+                  "read": "#8B98E4",
+                  "webfetch": "#42E830",
+                  "write": "#E3E830"
+                }
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "stepInterval": 60,
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "opencode.tool.count",
+                        "temporality": "",
+                        "timeAggregation": "rate",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "sum"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": ""
+                    },
+                    "groupBy": [
+                      {
+                        "name": "tool",
+                        "signal": "",
+                        "fieldContext": "attribute",
+                        "fieldDataType": "string"
+                      }
+                    ],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": "{{tool}}"
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "total-tokens": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Total Tokens",
+            "description": "Total tokens consumed in the selected window"
+          },
+          "plugin": {
+            "kind": "signoz/NumberPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time"
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "scalar",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "opencode.token.usage",
+                        "temporality": "",
+                        "timeAggregation": "increase",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "sum"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": ""
+                    },
+                    "groupBy": [],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": ""
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 3,
+              "height": 3,
+              "content": {
+                "$ref": "#/spec/panels/cost-total"
+              }
+            },
+            {
+              "x": 3,
+              "y": 0,
+              "width": 3,
+              "height": 3,
+              "content": {
+                "$ref": "#/spec/panels/total-tokens"
+              }
+            },
+            {
+              "x": 6,
+              "y": 0,
+              "width": 3,
+              "height": 3,
+              "content": {
+                "$ref": "#/spec/panels/session-count"
+              }
+            },
+            {
+              "x": 9,
+              "y": 0,
+              "width": 3,
+              "height": 3,
+              "content": {
+                "$ref": "#/spec/panels/tool-decisions"
+              }
+            },
+            {
+              "x": 0,
+              "y": 3,
+              "width": 6,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/token-usage"
+              }
+            },
+            {
+              "x": 6,
+              "y": 27,
+              "width": 6,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/cost-usage"
+              }
+            },
+            {
+              "x": 6,
+              "y": 3,
+              "width": 6,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/token-by-type"
+              }
+            },
+            {
+              "x": 6,
+              "y": 21,
+              "width": 6,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/token-by-model"
+              }
+            },
+            {
+              "x": 0,
+              "y": 27,
+              "width": 6,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/cost-by-model"
+              }
+            },
+            {
+              "x": 0,
+              "y": 21,
+              "width": 6,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/cache-efficiency"
+              }
+            },
+            {
+              "x": 0,
+              "y": 15,
+              "width": 4,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/tool-success-rate"
+              }
+            },
+            {
+              "x": 4,
+              "y": 15,
+              "width": 4,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/tool-calls"
+              }
+            },
+            {
+              "x": 8,
+              "y": 15,
+              "width": 4,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/model-distribution"
+              }
+            },
+            {
+              "x": 0,
+              "y": 9,
+              "width": 12,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/tool-usage-frequency"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "duration": "",
+    "refreshInterval": "",
+    "links": []
+  },
+  "tags": [
+    {
+      "key": "tag",
+      "value": "ai"
+    },
+    {
+      "key": "tag",
+      "value": "opentelemetry"
+    },
+    {
+      "key": "tag",
+      "value": "opencode"
+    }
+  ],
+  "image": "/assets/Icons/eight-ball"
+}

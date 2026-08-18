@@ -1,0 +1,5 @@
+config.yaml
+service_account.json
+*.pem
+.env
+docker/workdock/config.yaml

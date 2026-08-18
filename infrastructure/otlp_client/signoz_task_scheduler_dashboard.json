@@ -1,0 +1,1618 @@
+{
+  "spec": {
+    "display": {
+      "name": "Task Scheduler",
+      "description": "Monitor the task scheduler worker pool and job execution metrics"
+    },
+    "variables": [],
+    "panels": {
+      "job-duration-min-median-max": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Job Duration (P90 / Median / P99)",
+            "description": "P90, median, and P99 time workers take to complete a job"
+          },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time",
+                "fillSpans": false
+              },
+              "formatting": {
+                "unit": "ms",
+                "decimalPrecision": "2"
+              },
+              "chartAppearance": {
+                "lineInterpolation": "spline",
+                "showPoints": false,
+                "lineStyle": "solid",
+                "fillMode": "none",
+                "spanGaps": {
+                  "fillOnlyBelow": false,
+                  "fillLessThan": ""
+                }
+              },
+              "axes": {
+                "softMin": 0,
+                "softMax": 0,
+                "isLogScale": false
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": {
+                  "Median": "#E5BB5D",
+                  "P90": "#8BE495",
+                  "P99": "#E5484D"
+                }
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/CompositeQuery",
+                  "spec": {
+                    "queries": [
+                      {
+                        "type": "builder_query",
+                        "spec": {
+                          "name": "A",
+                          "stepInterval": 60,
+                          "signal": "metrics",
+                          "source": "",
+                          "aggregations": [
+                            {
+                              "metricName": "scheduler.job.duration.bucket",
+                              "temporality": "",
+                              "timeAggregation": "sum",
+                              "spaceAggregation": "p90",
+                              "reduceTo": "sum"
+                            }
+                          ],
+                          "disabled": false,
+                          "filter": {
+                            "expression": ""
+                          },
+                          "groupBy": [],
+                          "order": [],
+                          "selectFields": null,
+                          "having": {
+                            "expression": ""
+                          },
+                          "secondaryAggregations": null,
+                          "functions": [],
+                          "legend": "P90"
+                        }
+                      },
+                      {
+                        "type": "builder_query",
+                        "spec": {
+                          "name": "B",
+                          "stepInterval": 60,
+                          "signal": "metrics",
+                          "source": "",
+                          "aggregations": [
+                            {
+                              "metricName": "scheduler.job.duration.bucket",
+                              "temporality": "",
+                              "timeAggregation": "sum",
+                              "spaceAggregation": "p50",
+                              "reduceTo": "sum"
+                            }
+                          ],
+                          "disabled": false,
+                          "filter": {
+                            "expression": ""
+                          },
+                          "groupBy": [],
+                          "order": [],
+                          "selectFields": null,
+                          "having": {
+                            "expression": ""
+                          },
+                          "secondaryAggregations": null,
+                          "functions": [],
+                          "legend": "Median"
+                        }
+                      },
+                      {
+                        "type": "builder_query",
+                        "spec": {
+                          "name": "C",
+                          "stepInterval": 60,
+                          "signal": "metrics",
+                          "source": "",
+                          "aggregations": [
+                            {
+                              "metricName": "scheduler.job.duration.bucket",
+                              "temporality": "",
+                              "timeAggregation": "sum",
+                              "spaceAggregation": "p99",
+                              "reduceTo": "sum"
+                            }
+                          ],
+                          "disabled": false,
+                          "filter": {
+                            "expression": ""
+                          },
+                          "groupBy": [],
+                          "order": [],
+                          "selectFields": null,
+                          "having": {
+                            "expression": ""
+                          },
+                          "secondaryAggregations": null,
+                          "functions": [],
+                          "legend": "P99"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "job-failures-by-error-type": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Failures by Error Type",
+            "description": "Failed jobs grouped by error type"
+          },
+          "plugin": {
+            "kind": "signoz/BarChartPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time",
+                "fillSpans": false,
+                "stackedBarChart": false
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "axes": {
+                "softMin": 0,
+                "softMax": 0,
+                "isLogScale": false
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": null
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "stepInterval": 60,
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "scheduler.job.count",
+                        "temporality": "",
+                        "timeAggregation": "increase",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "sum"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": "job.result = 'failed'"
+                    },
+                    "groupBy": [
+                      {
+                        "name": "job.error_type",
+                        "signal": "",
+                        "fieldContext": "attribute",
+                        "fieldDataType": "string"
+                      }
+                    ],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": "{{job.error_type}}"
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "job-results-count": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Jobs by Result",
+            "description": "Succeeded, failed, retried, and cancelled jobs over time"
+          },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time",
+                "fillSpans": false
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "chartAppearance": {
+                "lineInterpolation": "linear",
+                "showPoints": false,
+                "lineStyle": "solid",
+                "fillMode": "none",
+                "spanGaps": {
+                  "fillOnlyBelow": false,
+                  "fillLessThan": ""
+                }
+              },
+              "axes": {
+                "softMin": 0,
+                "softMax": 0,
+                "isLogScale": false
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": {
+                  "cancelled": "#8B98E4",
+                  "failed": "#E5484D",
+                  "retry": "#E5BB5D",
+                  "succeeded": "#16C784"
+                }
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "stepInterval": 60,
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "scheduler.job.count",
+                        "temporality": "",
+                        "timeAggregation": "increase",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "sum"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": ""
+                    },
+                    "groupBy": [
+                      {
+                        "name": "job.result",
+                        "signal": "",
+                        "fieldContext": "attribute",
+                        "fieldDataType": "string"
+                      }
+                    ],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": "{{job.result}}"
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "job-results-distribution": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Job Results Distribution",
+            "description": "Share of succeeded, failed, retried, and cancelled jobs"
+          },
+          "plugin": {
+            "kind": "signoz/PieChartPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time"
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": {
+                  "cancelled": "#8B98E4",
+                  "failed": "#E5484D",
+                  "retry": "#E5BB5D",
+                  "succeeded": "#16C784"
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "scalar",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "stepInterval": 60,
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "scheduler.job.count",
+                        "temporality": "",
+                        "timeAggregation": "increase",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "sum"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": ""
+                    },
+                    "groupBy": [
+                      {
+                        "name": "job.result",
+                        "signal": "",
+                        "fieldContext": "attribute",
+                        "fieldDataType": "string"
+                      }
+                    ],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": "{{job.result}}"
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "jobs-cancelled": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Jobs Cancelled",
+            "description": "Number of jobs cancelled in the selected window"
+          },
+          "plugin": {
+            "kind": "signoz/NumberPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time"
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "scalar",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "scheduler.job.count",
+                        "temporality": "",
+                        "timeAggregation": "increase",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "sum"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": "job.result = 'cancelled'"
+                    },
+                    "groupBy": [],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": ""
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "runtime-go-memory": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Go Memory",
+            "description": "Go runtime memory used, heap used, GC heap goal and limit"
+          },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time",
+                "fillSpans": false
+              },
+              "formatting": {
+                "unit": "bytes",
+                "decimalPrecision": "2"
+              },
+              "chartAppearance": {
+                "lineInterpolation": "linear",
+                "showPoints": false,
+                "lineStyle": "solid",
+                "fillMode": "none",
+                "spanGaps": {
+                  "fillOnlyBelow": false,
+                  "fillLessThan": ""
+                }
+              },
+              "axes": {
+                "softMin": 0,
+                "softMax": 0,
+                "isLogScale": false
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": null
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/CompositeQuery",
+                  "spec": {
+                    "queries": [
+                      {
+                        "type": "builder_query",
+                        "spec": {
+                          "name": "A",
+                          "stepInterval": 60,
+                          "signal": "metrics",
+                          "source": "",
+                          "aggregations": [
+                            {
+                              "metricName": "go.memory.used",
+                              "temporality": "",
+                              "timeAggregation": "latest",
+                              "spaceAggregation": "sum",
+                              "reduceTo": "sum"
+                            }
+                          ],
+                          "disabled": false,
+                          "filter": {
+                            "expression": ""
+                          },
+                          "groupBy": [
+                            {
+                              "name": "service_instance_id",
+                              "signal": "",
+                              "fieldContext": "attribute",
+                              "fieldDataType": "string"
+                            }
+                          ],
+                          "order": [],
+                          "selectFields": null,
+                          "having": {
+                            "expression": ""
+                          },
+                          "secondaryAggregations": null,
+                          "functions": [],
+                          "legend": "Used {{service_instance_id}}"
+                        }
+                      },
+                      {
+                        "type": "builder_query",
+                        "spec": {
+                          "name": "C",
+                          "stepInterval": 60,
+                          "signal": "metrics",
+                          "source": "",
+                          "aggregations": [
+                            {
+                              "metricName": "go.memory.gc.goal",
+                              "temporality": "",
+                              "timeAggregation": "latest",
+                              "spaceAggregation": "sum",
+                              "reduceTo": "sum"
+                            }
+                          ],
+                          "disabled": false,
+                          "filter": {
+                            "expression": ""
+                          },
+                          "groupBy": [
+                            {
+                              "name": "service_instance_id",
+                              "signal": "",
+                              "fieldContext": "attribute",
+                              "fieldDataType": "string"
+                            }
+                          ],
+                          "order": [],
+                          "selectFields": null,
+                          "having": {
+                            "expression": ""
+                          },
+                          "secondaryAggregations": null,
+                          "functions": [],
+                          "legend": "GC goal {{service_instance_id}}"
+                        }
+                      },
+                      {
+                        "type": "builder_query",
+                        "spec": {
+                          "name": "D",
+                          "stepInterval": 60,
+                          "signal": "metrics",
+                          "source": "",
+                          "aggregations": [
+                            {
+                              "metricName": "go.memory.limit",
+                              "temporality": "",
+                              "timeAggregation": "latest",
+                              "spaceAggregation": "sum",
+                              "reduceTo": "sum"
+                            }
+                          ],
+                          "disabled": false,
+                          "filter": {
+                            "expression": ""
+                          },
+                          "groupBy": [
+                            {
+                              "name": "service_instance_id",
+                              "signal": "",
+                              "fieldContext": "attribute",
+                              "fieldDataType": "string"
+                            }
+                          ],
+                          "order": [],
+                          "selectFields": null,
+                          "having": {
+                            "expression": ""
+                          },
+                          "secondaryAggregations": null,
+                          "functions": [],
+                          "legend": "Limit {{service_instance_id}}"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "runtime-gogc": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Go GC Target (GOGC)",
+            "description": "Heap size target percentage configured by the user, otherwise 100"
+          },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time",
+                "fillSpans": false
+              },
+              "formatting": {
+                "unit": "%",
+                "decimalPrecision": "2"
+              },
+              "chartAppearance": {
+                "lineInterpolation": "linear",
+                "showPoints": false,
+                "lineStyle": "solid",
+                "fillMode": "none",
+                "spanGaps": {
+                  "fillOnlyBelow": false,
+                  "fillLessThan": ""
+                }
+              },
+              "axes": {
+                "softMin": 0,
+                "softMax": 0,
+                "isLogScale": false
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": null
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/CompositeQuery",
+                  "spec": {
+                    "queries": [
+                      {
+                        "type": "builder_query",
+                        "spec": {
+                          "name": "A",
+                          "stepInterval": 60,
+                          "signal": "metrics",
+                          "source": "",
+                          "aggregations": [
+                            {
+                              "metricName": "go.config.gogc",
+                              "temporality": "",
+                              "timeAggregation": "latest",
+                              "spaceAggregation": "sum",
+                              "reduceTo": "sum"
+                            }
+                          ],
+                          "disabled": false,
+                          "filter": {
+                            "expression": ""
+                          },
+                          "groupBy": [
+                            {
+                              "name": "service_instance_id",
+                              "signal": "",
+                              "fieldContext": "attribute",
+                              "fieldDataType": "string"
+                            }
+                          ],
+                          "order": [],
+                          "selectFields": null,
+                          "having": {
+                            "expression": ""
+                          },
+                          "secondaryAggregations": null,
+                          "functions": [],
+                          "legend": "{{service_instance_id}}"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "runtime-goroutines": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Go Goroutines & Processor Limit",
+            "description": "Count of live goroutines and OS threads that can execute Go code per replica"
+          },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time",
+                "fillSpans": false
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "chartAppearance": {
+                "lineInterpolation": "linear",
+                "showPoints": false,
+                "lineStyle": "solid",
+                "fillMode": "none",
+                "spanGaps": {
+                  "fillOnlyBelow": false,
+                  "fillLessThan": ""
+                }
+              },
+              "axes": {
+                "softMin": 0,
+                "softMax": 0,
+                "isLogScale": false
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": null
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/CompositeQuery",
+                  "spec": {
+                    "queries": [
+                      {
+                        "type": "builder_query",
+                        "spec": {
+                          "name": "A",
+                          "stepInterval": 60,
+                          "signal": "metrics",
+                          "source": "",
+                          "aggregations": [
+                            {
+                              "metricName": "go.goroutine.count",
+                              "temporality": "",
+                              "timeAggregation": "latest",
+                              "spaceAggregation": "sum",
+                              "reduceTo": "sum"
+                            }
+                          ],
+                          "disabled": false,
+                          "filter": {
+                            "expression": ""
+                          },
+                          "groupBy": [
+                            {
+                              "name": "service_instance_id",
+                              "signal": "",
+                              "fieldContext": "attribute",
+                              "fieldDataType": "string"
+                            }
+                          ],
+                          "order": [],
+                          "selectFields": null,
+                          "having": {
+                            "expression": ""
+                          },
+                          "secondaryAggregations": null,
+                          "functions": [],
+                          "legend": "goroutines {{service_instance_id}}"
+                        }
+                      },
+                      {
+                        "type": "builder_query",
+                        "spec": {
+                          "name": "B",
+                          "stepInterval": 60,
+                          "signal": "metrics",
+                          "source": "",
+                          "aggregations": [
+                            {
+                              "metricName": "go.processor.limit",
+                              "temporality": "",
+                              "timeAggregation": "latest",
+                              "spaceAggregation": "sum",
+                              "reduceTo": "sum"
+                            }
+                          ],
+                          "disabled": false,
+                          "filter": {
+                            "expression": ""
+                          },
+                          "groupBy": [
+                            {
+                              "name": "service_instance_id",
+                              "signal": "",
+                              "fieldContext": "attribute",
+                              "fieldDataType": "string"
+                            }
+                          ],
+                          "order": [],
+                          "selectFields": null,
+                          "having": {
+                            "expression": ""
+                          },
+                          "secondaryAggregations": null,
+                          "functions": [],
+                          "legend": "limit {{service_instance_id}}"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "runtime-memory-allocations": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Go Heap Allocations",
+            "description": "Cumulative heap bytes allocated and allocation count per replica"
+          },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time",
+                "fillSpans": false
+              },
+              "formatting": {
+                "unit": "By",
+                "decimalPrecision": "2"
+              },
+              "chartAppearance": {
+                "lineInterpolation": "linear",
+                "showPoints": false,
+                "lineStyle": "solid",
+                "fillMode": "none",
+                "spanGaps": {
+                  "fillOnlyBelow": false,
+                  "fillLessThan": ""
+                }
+              },
+              "axes": {
+                "softMin": 0,
+                "softMax": 0,
+                "isLogScale": false
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": null
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/CompositeQuery",
+                  "spec": {
+                    "queries": [
+                      {
+                        "type": "builder_query",
+                        "spec": {
+                          "name": "A",
+                          "stepInterval": 60,
+                          "signal": "metrics",
+                          "source": "",
+                          "aggregations": [
+                            {
+                              "metricName": "go.memory.allocated",
+                              "temporality": "",
+                              "timeAggregation": "latest",
+                              "spaceAggregation": "sum",
+                              "reduceTo": ""
+                            }
+                          ],
+                          "disabled": false,
+                          "filter": {
+                            "expression": ""
+                          },
+                          "groupBy": [
+                            {
+                              "name": "service_instance_id",
+                              "signal": "",
+                              "fieldContext": "attribute",
+                              "fieldDataType": "string"
+                            }
+                          ],
+                          "order": null,
+                          "selectFields": null,
+                          "secondaryAggregations": null,
+                          "functions": null,
+                          "legend": "Allocated bytes {{service_instance_id}}"
+                        }
+                      },
+                      {
+                        "type": "builder_query",
+                        "spec": {
+                          "name": "B",
+                          "stepInterval": 60,
+                          "signal": "metrics",
+                          "source": "",
+                          "aggregations": [
+                            {
+                              "metricName": "go.memory.allocations",
+                              "temporality": "",
+                              "timeAggregation": "latest",
+                              "spaceAggregation": "sum",
+                              "reduceTo": ""
+                            }
+                          ],
+                          "disabled": false,
+                          "filter": {
+                            "expression": ""
+                          },
+                          "groupBy": [
+                            {
+                              "name": "service_instance_id",
+                              "signal": "",
+                              "fieldContext": "attribute",
+                              "fieldDataType": "string"
+                            }
+                          ],
+                          "order": null,
+                          "selectFields": null,
+                          "secondaryAggregations": null,
+                          "functions": null,
+                          "legend": "Allocations {{service_instance_id}}"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "runtime-sched-latencies": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Scheduler Latencies (p50 / p95)",
+            "description": "Time goroutines spent in the scheduler in a runnable state before running"
+          },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time",
+                "fillSpans": false
+              },
+              "formatting": {
+                "unit": "s",
+                "decimalPrecision": "2"
+              },
+              "chartAppearance": {
+                "lineInterpolation": "linear",
+                "showPoints": false,
+                "lineStyle": "solid",
+                "fillMode": "none",
+                "spanGaps": {
+                  "fillOnlyBelow": false,
+                  "fillLessThan": ""
+                }
+              },
+              "axes": {
+                "softMin": 0,
+                "softMax": 0,
+                "isLogScale": false
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": null
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/CompositeQuery",
+                  "spec": {
+                    "queries": [
+                      {
+                        "type": "builder_query",
+                        "spec": {
+                          "name": "A",
+                          "stepInterval": 60,
+                          "signal": "metrics",
+                          "source": "",
+                          "aggregations": [
+                            {
+                              "metricName": "go.schedule.duration.bucket",
+                              "temporality": "",
+                              "timeAggregation": "sum",
+                              "spaceAggregation": "p50",
+                              "reduceTo": "sum"
+                            }
+                          ],
+                          "disabled": false,
+                          "filter": {
+                            "expression": ""
+                          },
+                          "groupBy": [
+                            {
+                              "name": "service_instance_id",
+                              "signal": "",
+                              "fieldContext": "attribute",
+                              "fieldDataType": "string"
+                            }
+                          ],
+                          "order": [],
+                          "selectFields": null,
+                          "having": {
+                            "expression": ""
+                          },
+                          "secondaryAggregations": null,
+                          "functions": [],
+                          "legend": "P50 {{service_instance_id}}"
+                        }
+                      },
+                      {
+                        "type": "builder_query",
+                        "spec": {
+                          "name": "B",
+                          "stepInterval": 60,
+                          "signal": "metrics",
+                          "source": "",
+                          "aggregations": [
+                            {
+                              "metricName": "go.schedule.duration.bucket",
+                              "temporality": "",
+                              "timeAggregation": "sum",
+                              "spaceAggregation": "p95",
+                              "reduceTo": "sum"
+                            }
+                          ],
+                          "disabled": false,
+                          "filter": {
+                            "expression": ""
+                          },
+                          "groupBy": [
+                            {
+                              "name": "service_instance_id",
+                              "signal": "",
+                              "fieldContext": "attribute",
+                              "fieldDataType": "string"
+                            }
+                          ],
+                          "order": [],
+                          "selectFields": null,
+                          "having": {
+                            "expression": ""
+                          },
+                          "secondaryAggregations": null,
+                          "functions": [],
+                          "legend": "P95 {{service_instance_id}}"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "workers-busy": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Workers (Working)",
+            "description": "Number of workers currently processing a job"
+          },
+          "plugin": {
+            "kind": "signoz/NumberPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time"
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "scalar",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "scheduler.worker.busy",
+                        "temporality": "",
+                        "timeAggregation": "latest",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "last"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": ""
+                    },
+                    "groupBy": [],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": ""
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "workers-idle": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Workers (Idle)",
+            "description": "Number of workers idle and waiting for work"
+          },
+          "plugin": {
+            "kind": "signoz/NumberPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time"
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "scalar",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "scheduler.worker.idle",
+                        "temporality": "",
+                        "timeAggregation": "latest",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "last"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": ""
+                    },
+                    "groupBy": [],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": ""
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "workers-total": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Workers (Total)",
+            "description": "Total number of workers in the pool"
+          },
+          "plugin": {
+            "kind": "signoz/NumberPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time"
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "scalar",
+              "spec": {
+                "name": "A",
+                "plugin": {
+                  "kind": "signoz/BuilderQuery",
+                  "spec": {
+                    "name": "A",
+                    "signal": "metrics",
+                    "source": "",
+                    "aggregations": [
+                      {
+                        "metricName": "scheduler.worker.total",
+                        "temporality": "",
+                        "timeAggregation": "latest",
+                        "spaceAggregation": "sum",
+                        "reduceTo": "last"
+                      }
+                    ],
+                    "disabled": false,
+                    "filter": {
+                      "expression": ""
+                    },
+                    "groupBy": [],
+                    "order": [],
+                    "having": {
+                      "expression": ""
+                    },
+                    "functions": [],
+                    "legend": ""
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      },
+      "workers-usage": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Worker Pool Usage",
+            "description": "Total, busy, and idle workers over time"
+          },
+          "plugin": {
+            "kind": "signoz/TimeSeriesPanel",
+            "spec": {
+              "visualization": {
+                "timePreference": "global_time",
+                "fillSpans": false
+              },
+              "formatting": {
+                "unit": "none",
+                "decimalPrecision": "2"
+              },
+              "chartAppearance": {
+                "lineInterpolation": "linear",
+                "showPoints": false,
+                "lineStyle": "solid",
+                "fillMode": "none",
+                "spanGaps": {
+                  "fillOnlyBelow": false,
+                  "fillLessThan": ""
+                }
+              },
+              "axes": {
+                "softMin": 0,
+                "softMax": 0,
+                "isLogScale": false
+              },
+              "legend": {
+                "position": "bottom",
+                "mode": "list",
+                "customColors": {
+                  "Busy": "#8BE495",
+                  "Idle": "#E5484D",
+                  "Total": "#5DA9E9"
+                }
+              },
+              "thresholds": null
+            }
+          },
+          "queries": [
+            {
+              "kind": "time_series",
+              "spec": {
+                "plugin": {
+                  "kind": "signoz/CompositeQuery",
+                  "spec": {
+                    "queries": [
+                      {
+                        "type": "builder_query",
+                        "spec": {
+                          "name": "A",
+                          "stepInterval": 60,
+                          "signal": "metrics",
+                          "source": "",
+                          "aggregations": [
+                            {
+                              "metricName": "scheduler.worker.total",
+                              "temporality": "",
+                              "timeAggregation": "latest",
+                              "spaceAggregation": "sum",
+                              "reduceTo": "sum"
+                            }
+                          ],
+                          "disabled": false,
+                          "filter": {
+                            "expression": ""
+                          },
+                          "groupBy": [],
+                          "order": [],
+                          "selectFields": null,
+                          "having": {
+                            "expression": ""
+                          },
+                          "secondaryAggregations": null,
+                          "functions": [],
+                          "legend": "Total"
+                        }
+                      },
+                      {
+                        "type": "builder_query",
+                        "spec": {
+                          "name": "B",
+                          "stepInterval": 60,
+                          "signal": "metrics",
+                          "source": "",
+                          "aggregations": [
+                            {
+                              "metricName": "scheduler.worker.busy",
+                              "temporality": "",
+                              "timeAggregation": "latest",
+                              "spaceAggregation": "sum",
+                              "reduceTo": "sum"
+                            }
+                          ],
+                          "disabled": false,
+                          "filter": {
+                            "expression": ""
+                          },
+                          "groupBy": [],
+                          "order": [],
+                          "selectFields": null,
+                          "having": {
+                            "expression": ""
+                          },
+                          "secondaryAggregations": null,
+                          "functions": [],
+                          "legend": "Busy"
+                        }
+                      },
+                      {
+                        "type": "builder_query",
+                        "spec": {
+                          "name": "C",
+                          "stepInterval": 60,
+                          "signal": "metrics",
+                          "source": "",
+                          "aggregations": [
+                            {
+                              "metricName": "scheduler.worker.idle",
+                              "temporality": "",
+                              "timeAggregation": "latest",
+                              "spaceAggregation": "sum",
+                              "reduceTo": "sum"
+                            }
+                          ],
+                          "disabled": false,
+                          "filter": {
+                            "expression": ""
+                          },
+                          "groupBy": [],
+                          "order": [],
+                          "selectFields": null,
+                          "having": {
+                            "expression": ""
+                          },
+                          "secondaryAggregations": null,
+                          "functions": [],
+                          "legend": "Idle"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ],
+          "links": []
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 3,
+              "height": 3,
+              "content": {
+                "$ref": "#/spec/panels/workers-total"
+              }
+            },
+            {
+              "x": 3,
+              "y": 0,
+              "width": 3,
+              "height": 3,
+              "content": {
+                "$ref": "#/spec/panels/workers-idle"
+              }
+            },
+            {
+              "x": 6,
+              "y": 0,
+              "width": 3,
+              "height": 3,
+              "content": {
+                "$ref": "#/spec/panels/workers-busy"
+              }
+            },
+            {
+              "x": 9,
+              "y": 0,
+              "width": 3,
+              "height": 3,
+              "content": {
+                "$ref": "#/spec/panels/jobs-cancelled"
+              }
+            },
+            {
+              "x": 0,
+              "y": 3,
+              "width": 6,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/workers-usage"
+              }
+            },
+            {
+              "x": 6,
+              "y": 3,
+              "width": 6,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/job-results-count"
+              }
+            },
+            {
+              "x": 0,
+              "y": 9,
+              "width": 4,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/job-results-distribution"
+              }
+            },
+            {
+              "x": 0,
+              "y": 21,
+              "width": 4,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/job-failures-by-error-type"
+              }
+            },
+            {
+              "x": 0,
+              "y": 15,
+              "width": 8,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/job-duration-min-median-max"
+              }
+            },
+            {
+              "x": 8,
+              "y": 15,
+              "width": 4,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/runtime-goroutines"
+              }
+            },
+            {
+              "x": 4,
+              "y": 9,
+              "width": 4,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/runtime-go-memory"
+              }
+            },
+            {
+              "x": 8,
+              "y": 21,
+              "width": 4,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/runtime-sched-latencies"
+              }
+            },
+            {
+              "x": 8,
+              "y": 9,
+              "width": 4,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/runtime-memory-allocations"
+              }
+            },
+            {
+              "x": 4,
+              "y": 21,
+              "width": 4,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/runtime-gogc"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "duration": "",
+    "refreshInterval": "",
+    "links": []
+  },
+  "tags": [
+    {
+      "key": "tag",
+      "value": "task-scheduler"
+    },
+    {
+      "key": "tag",
+      "value": "opentelemetry"
+    }
+  ],
+  "image": "/assets/Icons/gear"
+}
