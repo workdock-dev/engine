@@ -279,7 +279,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_NilGitRef_WithSeed() {
 
 	prompt := sess.createPrompt()
 	s.Contains(prompt, "Update the code")
-	s.NotContains(prompt, "review comments")
+	s.NotContains(prompt, "There are review comments on the pull request")
 }
 
 func (s *LinearAISessionSuite) TestCreatePrompt_ContainsPullRequestRules() {
