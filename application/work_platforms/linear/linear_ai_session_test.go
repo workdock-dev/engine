@@ -282,6 +282,27 @@ func (s *LinearAISessionSuite) TestCreatePrompt_NilGitRef_WithSeed() {
 	s.NotContains(prompt, "review comments")
 }
 
+func (s *LinearAISessionSuite) TestCreatePrompt_ContainsPullRequestRules() {
+	sess := &linearAISession{
+		config: linearAISessionConfig{
+			Session:      &types.Session{RepoFullName: nil},
+			SessionEvent: s.baseSessionEvent(),
+			Payload: &AgentSessionEventData{
+				AgentSession: &AgentSession{
+					Issue: Issue{Title: "Fix", Identifier: "ENG-1", Description: "desc"},
+				},
+			},
+		},
+	}
+
+	prompt := sess.createPrompt()
+	s.Contains(prompt, "## Pull Request Rules")
+	s.Contains(prompt, "Never close a pull request unless the user explicitly requests that it be closed.")
+	s.Contains(prompt, "address all applicable review comments within the same request")
+	s.Contains(prompt, "Do not assume that addressing review comments means the pull request should be closed, merged, or otherwise finalized.")
+	s.Contains(prompt, "Preserve the pull request's open state unless the user explicitly asks you to change it.")
+}
+
 // ---------------------------------------------------------------------------
 // isContextCanceledOrDeadlineExceeded
 // ---------------------------------------------------------------------------
