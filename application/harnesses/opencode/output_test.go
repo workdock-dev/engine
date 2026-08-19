@@ -17,6 +17,7 @@ package opencode
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -1289,4 +1290,44 @@ func (s *OutputSuite) TestParsePart_StepFinishUnmarshalError() {
 	close(stderr)
 	o.Parse(context.Background())
 	s.parts.AssertNotCalled(s.T(), "Response", mock.Anything, mock.Anything)
+}
+
+func (s *OutputSuite) TestParse_UnexpectedPartType() {
+	stdout := make(chan string, 10)
+	stderr := make(chan string, 10)
+	o := s.newOutput(stdout, stderr)
+
+	s.parts.On("Response", mock.Anything, mock.MatchedBy(func(text string) bool {
+		return strings.Contains(text, "An unexpected format has been received by the harness") && strings.Contains(text, "APIError")
+	})).Once()
+
+	errorEvent := `{"type":"error","timestamp":1787101287693,"sessionID":"ses_test","error":{"name":"APIError","data":{"message":"Unauthorized","statusCode":401,"isRetryable":false}}}`
+	stdout <- errorEvent + "\n"
+	close(stdout)
+	close(stderr)
+
+	o.Parse(context.Background())
+	s.parts.AssertCalled(s.T(), "Response", mock.Anything, mock.MatchedBy(func(text string) bool {
+		return strings.Contains(text, "An unexpected format has been received by the harness") && strings.Contains(text, "APIError")
+	}))
+}
+
+func (s *OutputSuite) TestParse_UnexpectedPartType_UnknownType() {
+	stdout := make(chan string, 10)
+	stderr := make(chan string, 10)
+	o := s.newOutput(stdout, stderr)
+
+	s.parts.On("Response", mock.Anything, mock.MatchedBy(func(text string) bool {
+		return strings.Contains(text, "An unexpected format has been received by the harness") && strings.Contains(text, "something_new")
+	})).Once()
+
+	unknownEvent := `{"type":"something_new","timestamp":1787101287693,"sessionID":"ses_test","part":{"id":"1"}}`
+	stdout <- unknownEvent + "\n"
+	close(stdout)
+	close(stderr)
+
+	o.Parse(context.Background())
+	s.parts.AssertCalled(s.T(), "Response", mock.Anything, mock.MatchedBy(func(text string) bool {
+		return strings.Contains(text, "An unexpected format has been received by the harness") && strings.Contains(text, "something_new")
+	}))
 }
