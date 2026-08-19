@@ -64,6 +64,7 @@ func (s *GitHubAccessSuite) TestVerifyRepoAccess_NilRepo() {
 }
 
 func (s *GitHubAccessSuite) TestVerifyRepoAccess_IsPublicError() {
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(nil, nil)
 	s.client.On("IsRepositoryPublic", mock.Anything, "org/repo").Return(false, errors.New("check failed"))
 
 	ok, token, err := s.access.verifyRepoAccess(context.Background(), "evt-1", strPtr("org/repo"))
@@ -72,17 +73,41 @@ func (s *GitHubAccessSuite) TestVerifyRepoAccess_IsPublicError() {
 	s.Empty(token)
 }
 
-func (s *GitHubAccessSuite) TestVerifyRepoAccess_PublicRepo() {
+func (s *GitHubAccessSuite) TestVerifyRepoAccess_PublicRepo_NoConnection() {
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(nil, nil)
 	s.client.On("IsRepositoryPublic", mock.Anything, "org/repo").Return(true, nil)
 
 	ok, token, err := s.access.verifyRepoAccess(context.Background(), "evt-1", strPtr("org/repo"))
 	s.NoError(err)
-	s.True(ok)
+	s.False(ok)
 	s.Empty(token)
 }
 
-func (s *GitHubAccessSuite) TestVerifyRepoAccess_GetConnectionError() {
+func (s *GitHubAccessSuite) TestVerifyRepoAccess_PrivateRepo_NoConnection() {
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(nil, nil)
 	s.client.On("IsRepositoryPublic", mock.Anything, "org/repo").Return(false, nil)
+
+	ok, token, err := s.access.verifyRepoAccess(context.Background(), "evt-1", strPtr("org/repo"))
+	s.NoError(err)
+	s.False(ok)
+	s.Empty(token)
+}
+
+func (s *GitHubAccessSuite) TestVerifyRepoAccess_PublicRepo_WithConnection() {
+	installId := "42"
+	conn := &types.GitHubConnection{Connected: true, InstallationId: &installId}
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(conn, nil)
+
+	raw := `{"token":"ghs_public_token","expires_at":"2099-01-01T00:00:00Z"}`
+	s.secrets.On("Get", mock.Anything, GitHub_SecretPath, "42").Return(raw, nil)
+
+	ok, token, err := s.access.verifyRepoAccess(context.Background(), "evt-1", strPtr("org/repo"))
+	s.NoError(err)
+	s.True(ok)
+	s.Equal("ghs_public_token", token)
+}
+
+func (s *GitHubAccessSuite) TestVerifyRepoAccess_GetConnectionError() {
 	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(nil, errors.New("db error"))
 
 	ok, token, err := s.access.verifyRepoAccess(context.Background(), "evt-1", strPtr("org/repo"))
@@ -92,8 +117,8 @@ func (s *GitHubAccessSuite) TestVerifyRepoAccess_GetConnectionError() {
 }
 
 func (s *GitHubAccessSuite) TestVerifyRepoAccess_NilConnection() {
-	s.client.On("IsRepositoryPublic", mock.Anything, "org/repo").Return(false, nil)
 	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(nil, nil)
+	s.client.On("IsRepositoryPublic", mock.Anything, "org/repo").Return(false, nil)
 
 	ok, token, err := s.access.verifyRepoAccess(context.Background(), "evt-1", strPtr("org/repo"))
 	s.NoError(err)
@@ -102,9 +127,8 @@ func (s *GitHubAccessSuite) TestVerifyRepoAccess_NilConnection() {
 }
 
 func (s *GitHubAccessSuite) TestVerifyRepoAccess_NotConnected() {
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(&types.GitHubConnection{Connected: false}, nil)
 	s.client.On("IsRepositoryPublic", mock.Anything, "org/repo").Return(false, nil)
-	conn := &types.GitHubConnection{Connected: false}
-	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(conn, nil)
 
 	ok, token, err := s.access.verifyRepoAccess(context.Background(), "evt-1", strPtr("org/repo"))
 	s.NoError(err)
@@ -113,9 +137,8 @@ func (s *GitHubAccessSuite) TestVerifyRepoAccess_NotConnected() {
 }
 
 func (s *GitHubAccessSuite) TestVerifyRepoAccess_NoInstallationId() {
-	s.client.On("IsRepositoryPublic", mock.Anything, "org/repo").Return(false, nil)
-	conn := &types.GitHubConnection{Connected: true, InstallationId: nil}
-	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(conn, nil)
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(&types.GitHubConnection{Connected: true, InstallationId: nil}, nil)
+	s.client.On("IsRepositoryPublic", mock.Anything, "org/repo").Return(true, nil)
 
 	ok, token, err := s.access.verifyRepoAccess(context.Background(), "evt-1", strPtr("org/repo"))
 	s.NoError(err)
@@ -124,7 +147,6 @@ func (s *GitHubAccessSuite) TestVerifyRepoAccess_NoInstallationId() {
 }
 
 func (s *GitHubAccessSuite) TestVerifyRepoAccess_TokenError_NonUnavailable() {
-	s.client.On("IsRepositoryPublic", mock.Anything, "org/repo").Return(false, nil)
 	installId := "42"
 	conn := &types.GitHubConnection{Connected: true, InstallationId: &installId}
 	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(conn, nil)
@@ -138,7 +160,6 @@ func (s *GitHubAccessSuite) TestVerifyRepoAccess_TokenError_NonUnavailable() {
 }
 
 func (s *GitHubAccessSuite) TestVerifyRepoAccess_TokenUnavailable_ResetsAndReRequests() {
-	s.client.On("IsRepositoryPublic", mock.Anything, "org/repo").Return(false, nil)
 	installId := "42"
 	conn := &types.GitHubConnection{Connected: true, InstallationId: &installId, RepoFullName: "org/repo"}
 	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(conn, nil)
@@ -157,7 +178,6 @@ func (s *GitHubAccessSuite) TestVerifyRepoAccess_TokenUnavailable_ResetsAndReReq
 }
 
 func (s *GitHubAccessSuite) TestVerifyRepoAccess_TokenUnavailable_ResetFails_StillRequestsConnection() {
-	s.client.On("IsRepositoryPublic", mock.Anything, "org/repo").Return(false, nil)
 	installId := "42"
 	conn := &types.GitHubConnection{Connected: true, InstallationId: &installId, RepoFullName: "org/repo"}
 	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(conn, nil)
@@ -174,7 +194,6 @@ func (s *GitHubAccessSuite) TestVerifyRepoAccess_TokenUnavailable_ResetFails_Sti
 }
 
 func (s *GitHubAccessSuite) TestVerifyRepoAccess_TokenUnavailable_RequestConnectionFails() {
-	s.client.On("IsRepositoryPublic", mock.Anything, "org/repo").Return(false, nil)
 	installId := "42"
 	conn := &types.GitHubConnection{Connected: true, InstallationId: &installId, RepoFullName: "org/repo"}
 	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(conn, nil)
@@ -192,7 +211,6 @@ func (s *GitHubAccessSuite) TestVerifyRepoAccess_TokenUnavailable_RequestConnect
 }
 
 func (s *GitHubAccessSuite) TestVerifyRepoAccess_ValidToken() {
-	s.client.On("IsRepositoryPublic", mock.Anything, "org/repo").Return(false, nil)
 	installId := "42"
 	conn := &types.GitHubConnection{Connected: true, InstallationId: &installId}
 	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(conn, nil)
@@ -207,7 +225,6 @@ func (s *GitHubAccessSuite) TestVerifyRepoAccess_ValidToken() {
 }
 
 func (s *GitHubAccessSuite) TestVerifyRepoAccess_TokenExpired_RenewsAndReturns() {
-	s.client.On("IsRepositoryPublic", mock.Anything, "org/repo").Return(false, nil)
 	installId := "42"
 	conn := &types.GitHubConnection{Connected: true, InstallationId: &installId}
 	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(conn, nil)
