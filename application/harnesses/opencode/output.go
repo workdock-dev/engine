@@ -467,10 +467,10 @@ func (o *OpenCodeOutput) parseLine(ctx context.Context, line string) {
 		return
 	}
 
-	o.parsePart(ctx, e)
+	o.parsePart(ctx, e, line)
 }
 
-func (o *OpenCodeOutput) parsePart(ctx context.Context, event WireEvent) {
+func (o *OpenCodeOutput) parsePart(ctx context.Context, event WireEvent, rawLine string) {
 	m := o.metrics
 
 	partType := event.Type
@@ -597,6 +597,13 @@ func (o *OpenCodeOutput) parsePart(ctx context.Context, event WireEvent) {
 			)
 
 			o.parts.Response(ctx, "")
+		default:
+			slog.Warn("opencode received unexpected part type",
+				"event_identifier", o.sessionId,
+				"part_type", partType,
+			)
+
+			o.parts.Response(ctx, fmt.Sprintf("An unexpected format has been received by the harness:\n\n%s", rawLine))
 		}
 	}, trace.WithAttributes(
 		attribute.String("gen_ai.operation.name", partType),
