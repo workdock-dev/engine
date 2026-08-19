@@ -25,7 +25,7 @@ import (
 type SessionRepository interface {
 	GetAgentSession(ctx context.Context, identifier string) (*types.Session, error)
 	GetAgentSessionEvent(ctx context.Context, identifier string) (*types.SessionEvent, error)
-	GetAgentSessionEventByGitRef(ctx context.Context, identifier string) (*types.SessionEvent, error)
+	GetAgentSessionEventByGitRef(ctx context.Context, identifier string, repoFullName string) (*types.SessionEvent, error)
 	CreateSessionEvent(ctx context.Context, event *types.SessionEvent) error
 	UpsertAgentSession(ctx context.Context, session *types.Session) error
 	UpdateSessionEventResult(ctx context.Context, event *types.SessionEvent) error

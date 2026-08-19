@@ -182,11 +182,11 @@ func (s *PostgresService) GetAgentSessionEvent(ctx context.Context, identifier s
 	return &row, nil
 }
 
-func (s *PostgresService) GetAgentSessionEventByGitRef(ctx context.Context, ref string) (*types.SessionEvent, error) {
+func (s *PostgresService) GetAgentSessionEventByGitRef(ctx context.Context, ref string, repoFullName string) (*types.SessionEvent, error) {
 	var row types.SessionEvent
 
 	err := s.client.
-		QueryRow(ctx, GetAgentSessionEventByGitRefSql, ref).
+		QueryRow(ctx, GetAgentSessionEventByGitRefSql, ref, repoFullName).
 		Scan(
 			&row.SessionIdentifier,
 			&row.Identifier,

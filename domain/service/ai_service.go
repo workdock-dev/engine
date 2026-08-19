@@ -131,14 +131,14 @@ func NewAIService(config AIServiceConfig) *AIService {
 					return fmt.Errorf("expected a pull request commented event, received %s", event.EventType())
 				}
 
-				sessionEvent, err := s.config.Sessions.GetAgentSessionEventByGitRef(ctx, e.GitRef)
+				sessionEvent, err := s.config.Sessions.GetAgentSessionEventByGitRef(ctx, e.GitRef, e.RepoFullName)
 
 				if err != nil {
 					return err
 				}
 
 				if sessionEvent == nil {
-					return fmt.Errorf("session event not found: %s", e.GitRef)
+					return fmt.Errorf("session event not found: %s@%s", e.GitRef, e.RepoFullName)
 				}
 
 				session, err := s.config.Sessions.GetAgentSession(ctx, sessionEvent.SessionIdentifier)

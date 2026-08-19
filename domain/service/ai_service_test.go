@@ -304,7 +304,7 @@ func (s *AIServiceSuite) TestPRCommentedHandler_Success() {
 	s.expectSubscriptions()
 	s.newService()
 
-	s.sessions.On("GetAgentSessionEventByGitRef", mock.Anything, "abc123").Return(s.sessionEvent, nil)
+	s.sessions.On("GetAgentSessionEventByGitRef", mock.Anything, "abc123", "org/repo").Return(s.sessionEvent, nil)
 	s.sessions.On("GetAgentSession", mock.Anything, "sess-1").Return(s.session, nil)
 	s.workPlat.On("Ingest", s.sessionEvent.Payload, mock.AnythingOfType("*string"), s.sessionEvent).
 		Return(s.session, s.sessionEvent, nil)
@@ -321,7 +321,7 @@ func (s *AIServiceSuite) TestPRCommentedHandler_Success() {
 	err := s.eventBus.Invoke(context.Background(), types.EventType_PullRequestCommented, event)
 
 	s.NoError(err)
-	s.sessions.AssertCalled(s.T(), "GetAgentSessionEventByGitRef", mock.Anything, "abc123")
+	s.sessions.AssertCalled(s.T(), "GetAgentSessionEventByGitRef", mock.Anything, "abc123", "org/repo")
 }
 
 func (s *AIServiceSuite) TestPRCommentedHandler_WrongEventType() {
@@ -339,9 +339,9 @@ func (s *AIServiceSuite) TestPRCommentedHandler_SessionEventFetchError() {
 	s.newService()
 
 	fetchErr := errors.New("db error")
-	s.sessions.On("GetAgentSessionEventByGitRef", mock.Anything, "abc123").Return(nil, fetchErr)
+	s.sessions.On("GetAgentSessionEventByGitRef", mock.Anything, "abc123", "org/repo").Return(nil, fetchErr)
 
-	event := types.PullRequestCommentedEvent{Provider: s.provider, GitRef: "abc123"}
+	event := types.PullRequestCommentedEvent{Provider: s.provider, GitRef: "abc123", RepoFullName: "org/repo"}
 	err := s.eventBus.Invoke(context.Background(), types.EventType_PullRequestCommented, event)
 
 	s.ErrorIs(err, fetchErr)
@@ -351,13 +351,13 @@ func (s *AIServiceSuite) TestPRCommentedHandler_SessionEventNotFound() {
 	s.expectSubscriptions()
 	s.newService()
 
-	s.sessions.On("GetAgentSessionEventByGitRef", mock.Anything, "abc123").Return(nil, nil)
+	s.sessions.On("GetAgentSessionEventByGitRef", mock.Anything, "abc123", "org/repo").Return(nil, nil)
 
-	event := types.PullRequestCommentedEvent{Provider: s.provider, GitRef: "abc123"}
+	event := types.PullRequestCommentedEvent{Provider: s.provider, GitRef: "abc123", RepoFullName: "org/repo"}
 	err := s.eventBus.Invoke(context.Background(), types.EventType_PullRequestCommented, event)
 
 	s.Error(err)
-	s.Contains(err.Error(), "session event not found: abc123")
+	s.Contains(err.Error(), "session event not found: abc123@org/repo")
 }
 
 func (s *AIServiceSuite) TestPRCommentedHandler_SessionFetchError() {
@@ -365,10 +365,10 @@ func (s *AIServiceSuite) TestPRCommentedHandler_SessionFetchError() {
 	s.newService()
 
 	fetchErr := errors.New("db error")
-	s.sessions.On("GetAgentSessionEventByGitRef", mock.Anything, "abc123").Return(s.sessionEvent, nil)
+	s.sessions.On("GetAgentSessionEventByGitRef", mock.Anything, "abc123", "org/repo").Return(s.sessionEvent, nil)
 	s.sessions.On("GetAgentSession", mock.Anything, "sess-1").Return(nil, fetchErr)
 
-	event := types.PullRequestCommentedEvent{Provider: s.provider, GitRef: "abc123"}
+	event := types.PullRequestCommentedEvent{Provider: s.provider, GitRef: "abc123", RepoFullName: "org/repo"}
 	err := s.eventBus.Invoke(context.Background(), types.EventType_PullRequestCommented, event)
 
 	s.ErrorIs(err, fetchErr)
@@ -378,10 +378,10 @@ func (s *AIServiceSuite) TestPRCommentedHandler_SessionNotFound() {
 	s.expectSubscriptions()
 	s.newService()
 
-	s.sessions.On("GetAgentSessionEventByGitRef", mock.Anything, "abc123").Return(s.sessionEvent, nil)
+	s.sessions.On("GetAgentSessionEventByGitRef", mock.Anything, "abc123", "org/repo").Return(s.sessionEvent, nil)
 	s.sessions.On("GetAgentSession", mock.Anything, "sess-1").Return(nil, nil)
 
-	event := types.PullRequestCommentedEvent{Provider: s.provider, GitRef: "abc123"}
+	event := types.PullRequestCommentedEvent{Provider: s.provider, GitRef: "abc123", RepoFullName: "org/repo"}
 	err := s.eventBus.Invoke(context.Background(), types.EventType_PullRequestCommented, event)
 
 	s.Error(err)
