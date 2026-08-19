@@ -241,6 +241,7 @@ func (s *PostgresServiceSuite) TestGetGitHubConnection_Success() {
 	s.Equal("owner/repo", conn.RepoFullName)
 	s.True(conn.Connected)
 	s.Equal("inst-1", *conn.InstallationId)
+	s.Equal("event-1", conn.SessionEventIdentifier)
 }
 
 func (s *PostgresServiceSuite) TestGetGitHubConnection_NotFound() {

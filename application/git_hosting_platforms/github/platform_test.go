@@ -210,6 +210,7 @@ func (s *GitHubPlatformSuite) TestIngest_Installation() {
 
 	s.client.On("CreateInstallationAccessToken", 42).Return(token, nil)
 	s.secrets.On("Set", mock.Anything, GitHub_SecretPath, "42", mock.Anything).Return(nil)
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(nil, nil)
 	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(nil)
 	s.events.On("Publish", mock.Anything, mock.Anything).Return(nil)
 
@@ -406,6 +407,30 @@ func (s *GitHubPlatformSuite) TestIngest_Installation_Created_ContextCancelled()
 	s.ErrorIs(err, context.Canceled)
 }
 
+func (s *GitHubPlatformSuite) TestIngest_Installation_Created_GetConnectionError() {
+	event := &WebhookEvent{
+		EventType:    "installation",
+		Action:       "created",
+		Installation: &Installation{ID: 42},
+		Repositories: []Repository{
+			{ID: 1, FullName: "org/repo"},
+		},
+	}
+
+	token := &InstallationAccessToken{
+		Token:     "ghs_xxx",
+		ExpiresAt: time.Now().Add(time.Hour),
+	}
+
+	s.client.On("CreateInstallationAccessToken", 42).Return(token, nil)
+	s.secrets.On("Set", mock.Anything, GitHub_SecretPath, "42", mock.Anything).Return(nil)
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(nil, errors.New("db error"))
+
+	err := s.platform.Ingest(context.Background(), event)
+	s.Error(err)
+	s.Contains(err.Error(), "db error")
+}
+
 func (s *GitHubPlatformSuite) TestIngest_Installation_Created_CompleteConnectionError() {
 	event := &WebhookEvent{
 		EventType:    "installation",
@@ -423,6 +448,7 @@ func (s *GitHubPlatformSuite) TestIngest_Installation_Created_CompleteConnection
 
 	s.client.On("CreateInstallationAccessToken", 42).Return(token, nil)
 	s.secrets.On("Set", mock.Anything, GitHub_SecretPath, "42", mock.Anything).Return(nil)
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(nil, nil)
 	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(errors.New("connection failed"))
 
 	err := s.platform.Ingest(context.Background(), event)
@@ -448,6 +474,7 @@ func (s *GitHubPlatformSuite) TestIngest_Installation_Created_RepositoriesAdded(
 
 	s.client.On("CreateInstallationAccessToken", 42).Return(token, nil)
 	s.secrets.On("Set", mock.Anything, GitHub_SecretPath, "42", mock.Anything).Return(nil)
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo-new").Return(nil, nil)
 	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(nil)
 	s.events.On("Publish", mock.Anything, mock.Anything).Return(nil)
 
@@ -474,6 +501,8 @@ func (s *GitHubPlatformSuite) TestIngest_Installation_Created_MultipleRepos() {
 
 	s.client.On("CreateInstallationAccessToken", 42).Return(token, nil)
 	s.secrets.On("Set", mock.Anything, GitHub_SecretPath, "42", mock.Anything).Return(nil)
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo1").Return(nil, nil)
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo2").Return(nil, nil)
 	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(nil)
 	s.events.On("Publish", mock.Anything, mock.Anything).Return(nil)
 
@@ -670,7 +699,7 @@ func (s *GitHubPlatformSuite) TestRequestConnection() {
 	err := s.platform.RequestConnection(context.Background(), "evt-1", "org/repo")
 	s.NoError(err)
 	s.connections.AssertCalled(s.T(), "UpsertGitHubConnection", mock.Anything, mock.MatchedBy(func(c *types.GitHubConnection) bool {
-		return c.RepoFullName == "org/repo" && !c.Connected && c.InstallationId == nil
+		return c.RepoFullName == "org/repo" && c.SessionEventIdentifier == "evt-1" && !c.Connected && c.InstallationId == nil
 	}))
 }
 

@@ -143,12 +143,35 @@ func (s *githubAccess) ResetInstallation(ctx context.Context, installationId str
 
 // CompleteConnection links each repository to the given installation once a
 // GitHub installation has been created and its token stored.
+//
+// When a user authorizes the GitHub app for multiple repositories at once,
+// additional repos that weren't part of the original connection request still
+// need a valid session_event_identifier. We resolve this by copying the
+// session_event_identifier from an existing connection belonging to the same
+// authorization flow (i.e., another repo in the same batch that already has a
+// connection record).
 func (s *githubAccess) CompleteConnection(ctx context.Context, installationId string, repos []string) error {
+	var sessionEventIdentifier string
+
+	for _, repo := range repos {
+		existing, err := s.config.GitHubConnections.GetGitHubConnection(ctx, repo)
+
+		if err != nil {
+			return err
+		}
+
+		if existing != nil && existing.SessionEventIdentifier != "" {
+			sessionEventIdentifier = existing.SessionEventIdentifier
+			break
+		}
+	}
+
 	for _, repo := range repos {
 		connection := &types.GitHubConnection{
-			RepoFullName:   repo,
-			Connected:      true,
-			InstallationId: &installationId,
+			SessionEventIdentifier: sessionEventIdentifier,
+			RepoFullName:           repo,
+			Connected:              true,
+			InstallationId:         &installationId,
 		}
 
 		if err := s.config.GitHubConnections.UpsertGitHubConnection(ctx, connection); err != nil {
