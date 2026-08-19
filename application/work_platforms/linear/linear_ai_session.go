@@ -66,6 +66,13 @@ When determining what work to perform, use the following order of precedence:
 - Preserve existing behavior unless a higher-priority source explicitly requests a change.
 - Limit your work to what is necessary to satisfy the current request.
 - Set the ticket status to "In Progress" before starting work on it. Keep it "In Progress" while you are actively working on the task. Once you have completed the implementation and the changes are ready for review, move the ticket to "In Review".
+
+## Pull Request Rules
+
+* **Never close a pull request unless the user explicitly requests that it be closed.**
+* If review comments are added to a pull request, **address all applicable review comments within the same request** unless the user explicitly instructs otherwise.
+* Do not assume that addressing review comments means the pull request should be closed, merged, or otherwise finalized.
+* Preserve the pull request's open state unless the user explicitly asks you to change it.
 `
 
 	PromptTemplate_GitHubOperations = `
