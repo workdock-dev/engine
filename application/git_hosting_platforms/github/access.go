@@ -51,28 +51,20 @@ func newGitHubAccess(config githubAccessConfig) *githubAccess {
 
 // verifyRepoAccess reports whether the AI agent can access a repository and
 // returns the access token when access is granted through a connected
-// installation. Sessions without a repository and public repositories are
-// always accessible.
+// installation. Sessions without a repository are always accessible (no token
+// needed).
+//
+// For both public and private repositories, a GitHub App installation connection
+// is required to obtain an access token with write permissions. Public repos
+// are readable without authentication, but pushing branches, creating PRs, and
+// other write operations require a token — so the engine always requests a
+// connection regardless of visibility.
 //
 // When the installation is no longer available, it resets the installation and
 // requests a fresh connection, returning ErrGitHubConnectionReRequested to
 // signal that the user should be prompted to re-authorize.
 func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentifier string, repoFullName *string) (bool, string, error) {
-	// Are we working with a repo url in context? If we are, does the ai agent has access to it?
 	if repoFullName == nil {
-		return true, "", nil
-	}
-
-	public, err := s.config.Client.IsRepositoryPublic(ctx, *repoFullName)
-
-	if err != nil {
-		return false, "", err
-	}
-
-	// Repo is public, nothing todo
-	// TODO: Repo can be public, but user still contributes to it
-	if public {
-		slog.Debug("Verified repo access", "public", true, "has_access", true)
 		return true, "", nil
 	}
 
@@ -83,7 +75,13 @@ func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentif
 	}
 
 	if connection == nil || !connection.Connected || connection.InstallationId == nil {
-		slog.Debug("Verified repo access", "public", false, "has_access", false)
+		public, publicErr := s.config.Client.IsRepositoryPublic(ctx, *repoFullName)
+
+		if publicErr != nil {
+			return false, "", publicErr
+		}
+
+		slog.Debug("No GitHub connection found", "public", public, "has_access", false)
 		return false, "", nil
 	}
 
@@ -110,7 +108,7 @@ func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentif
 		return false, "", err
 	}
 
-	slog.Debug("Verified repo access", "public", false, "has_access", true)
+	slog.Debug("Verified repo access", "has_access", true)
 	return true, token, nil
 }
 

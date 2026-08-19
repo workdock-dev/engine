@@ -192,7 +192,9 @@ func (s *linearAISession) Process(ctx context.Context) error {
 		return err
 	}
 
-	// TODO: Does this will apply for contributing on public repos?
+	// Request GitHub App installation when repo access is not yet granted.
+	// This applies to both public and private repositories — write operations
+	// (push branches, create PRs) require an authenticated GitHub App installation.
 	if s.config.Session.RepoFullName != nil && !accessGranted {
 		if err := telemetry.SpanErr(ctx, s.tracer, "linear.request_repo_access", func(ctx context.Context) error {
 			return registry.RequestConnection(ctx, s.config.SessionEvent.Identifier, *s.config.Session.RepoFullName)

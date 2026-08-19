@@ -629,13 +629,28 @@ func (s *GitHubPlatformSuite) TestWebhook() {
 // VerifyRepoAccess (delegates to access)
 // ---------------------------------------------------------------------------
 
-func (s *GitHubPlatformSuite) TestVerifyRepoAccess() {
+func (s *GitHubPlatformSuite) TestVerifyRepoAccess_PublicRepo_NoConnection() {
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(nil, nil)
 	s.client.On("IsRepositoryPublic", mock.Anything, "org/repo").Return(true, nil)
 
 	ok, token, err := s.platform.VerifyRepoAccess(context.Background(), "evt-1", strPtr("org/repo"))
 	s.NoError(err)
-	s.True(ok)
+	s.False(ok)
 	s.Empty(token)
+}
+
+func (s *GitHubPlatformSuite) TestVerifyRepoAccess_PublicRepo_WithConnection() {
+	installId := "42"
+	conn := &types.GitHubConnection{Connected: true, InstallationId: &installId}
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(conn, nil)
+
+	raw := `{"token":"ghs_public_token","expires_at":"2099-01-01T00:00:00Z"}`
+	s.secrets.On("Get", mock.Anything, GitHub_SecretPath, "42").Return(raw, nil)
+
+	ok, token, err := s.platform.VerifyRepoAccess(context.Background(), "evt-1", strPtr("org/repo"))
+	s.NoError(err)
+	s.True(ok)
+	s.Equal("ghs_public_token", token)
 }
 
 func (s *GitHubPlatformSuite) TestVerifyRepoAccess_NilRepo() {
