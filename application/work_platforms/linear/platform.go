@@ -44,7 +44,7 @@ type linearPlatform struct {
 	config Config
 }
 
-func New(config Config) *linearPlatform {
+func New(config Config) ports.ForWorkPlatform {
 	p := &linearPlatform{
 		config: config,
 	}

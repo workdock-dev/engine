@@ -273,7 +273,6 @@ func (s *Sandbox) Archive(ctx context.Context) error {
 		slog.Debug("stopping sandbox before archive", "session_identifier", s.sessionId, "state", state)
 
 		if err := s.Shutdown(ctx); err != nil {
-			slog.Error("failed to stop daytona sandbox before archive", "err", err, "session_identifier", s.sessionId)
 			return err
 		}
 	}
