@@ -121,26 +121,6 @@ func (s *Sandbox) GetOrCreateSandbox(ctx context.Context, secrets, envVars map[s
 		return true, nil
 	}
 
-	if err := retryRateLimitedVoid(ctx, throttlerSandboxLifecycle, "update secrets", func() error {
-		if err := preflight(ctx, throttlerSandboxLifecycle, "update secrets"); err != nil {
-			return err
-		}
-
-		return sandbox.UpdateSecrets(ctx, secrets)
-	}); err != nil {
-		slog.Error("failed to update daytona sandbox secrets", "event_identifier", s.sessionEventId, "err", err)
-	}
-
-	if err := retryRateLimitedVoid(ctx, throttlerSandboxLifecycle, "update env vars", func() error {
-		if err := preflight(ctx, throttlerSandboxLifecycle, "update env vars"); err != nil {
-			return err
-		}
-
-		return sandbox.UpdateEnv(ctx, envVars, nil)
-	}); err != nil {
-		slog.Error("failed to update daytona sandbox env vars", "event_identifier", s.sessionEventId, "err", err)
-	}
-
 	s.sandbox = sandbox
 	slog.Debug("reusing daytona sandbox", "event_identifier", s.sessionEventId)
 	return false, nil
@@ -202,6 +182,40 @@ func (s *Sandbox) Start(ctx context.Context) error {
 	}
 
 	slog.Debug("Started daytona sandbox", "event_identifier", s.sessionEventId)
+	return nil
+}
+
+// UpdateExistingSandbox updates the secrets and environment variables of an
+// existing, running sandbox. This must be called after Start because the
+// Daytona API needs the container's IP address to apply updates, and the IP
+// is only available once the sandbox is running.
+func (s *Sandbox) UpdateExistingSandbox(ctx context.Context, secrets, envVars map[string]string) error {
+	if s.sandbox == nil {
+		return errSandboxNotInitialized
+	}
+
+	if err := retryRateLimitedVoid(ctx, throttlerSandboxLifecycle, "update secrets", func() error {
+		if err := preflight(ctx, throttlerSandboxLifecycle, "update secrets"); err != nil {
+			return err
+		}
+
+		return s.sandbox.UpdateSecrets(ctx, secrets)
+	}); err != nil {
+		slog.Error("failed to update daytona sandbox secrets", "event_identifier", s.sessionEventId, "err", err)
+		return err
+	}
+
+	if err := retryRateLimitedVoid(ctx, throttlerSandboxLifecycle, "update env vars", func() error {
+		if err := preflight(ctx, throttlerSandboxLifecycle, "update env vars"); err != nil {
+			return err
+		}
+
+		return s.sandbox.UpdateEnv(ctx, envVars, nil)
+	}); err != nil {
+		slog.Error("failed to update daytona sandbox env vars", "event_identifier", s.sessionEventId, "err", err)
+		return err
+	}
+
 	return nil
 }
 

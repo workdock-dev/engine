@@ -21,6 +21,7 @@ import (
 
 type Sandbox interface {
 	GetOrCreateSandbox(ctx context.Context, secrets, envVars map[string]string) (bool, error)
+	UpdateExistingSandbox(ctx context.Context, secrets, envVars map[string]string) error
 	// SetSecret return secret id, secret name, error
 	SetSecret(ctx context.Context, secretValue string, hosts []string) (string, string, error)
 	DeleteSecret(ctx context.Context, secretId string) error

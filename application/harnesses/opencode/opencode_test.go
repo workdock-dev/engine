@@ -74,6 +74,9 @@ func (s *OpenCodeSuite) fullHappyPath(created bool, prMeta string) {
 	s.sandbox.On("SetSecret", mock.Anything, "lin_at_123", []string{"mcp.linear.app"}).Return("sid-1", "linear-secret", nil)
 	s.sandbox.On("GetOrCreateSandbox", mock.Anything, mock.Anything, mock.Anything).Return(created, nil)
 	s.sandbox.On("Start", mock.Anything).Return(nil)
+	if !created {
+		s.sandbox.On("UpdateExistingSandbox", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	}
 	if created {
 		s.sandbox.On("ExecuteCommand", mock.Anything, mock.MatchedBy(func(cmd string) bool {
 			return containsStr(cmd, "opencode.ai/install")
@@ -482,6 +485,7 @@ func (s *OpenCodeSuite) TestRun_SandboxAlreadyExists() {
 	s.sandbox.On("SetSecret", mock.Anything, "lin_at_123", []string{"mcp.linear.app"}).Return("sid-1", "linear-secret", nil)
 	s.sandbox.On("GetOrCreateSandbox", mock.Anything, mock.Anything, mock.Anything).Return(false, nil)
 	s.sandbox.On("Start", mock.Anything).Return(nil)
+	s.sandbox.On("UpdateExistingSandbox", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 	s.sandbox.On("UploadFile", mock.Anything, mock.AnythingOfType("[]uint8"), "/home/daytona/.config/opencode/opencode.json").Return(nil)
 	s.sandbox.On("UploadFile", mock.Anything, mock.AnythingOfType("[]uint8"), "/tmp/prompt.txt").Return(nil)
 	s.sandbox.On("CreateExecutionSession", mock.Anything).Return(nil)
@@ -501,6 +505,27 @@ func (s *OpenCodeSuite) TestRun_SandboxAlreadyExists() {
 		return containsStr(cmd, "opencode.ai/install") || containsStr(cmd, "githubcli-archive-keyring")
 	}), mock.Anything)
 	s.sandbox.AssertNotCalled(s.T(), "ConfigureGitUser", mock.Anything, mock.Anything, mock.Anything)
+	s.sandbox.AssertCalled(s.T(), "UpdateExistingSandbox", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *OpenCodeSuite) TestRun_NewSandboxDoesNotCallUpdateExisting() {
+	h := s.newHarness(nil)
+	s.fullHappyPath(true, "")
+
+	_, err := h.Run(context.Background())
+	s.NoError(err)
+	s.sandbox.AssertNotCalled(s.T(), "UpdateExistingSandbox")
+}
+
+func (s *OpenCodeSuite) TestRun_UpdateExistingSandboxFails() {
+	h := s.newHarness(nil)
+	s.sandbox.On("SetSecret", mock.Anything, "lin_at_123", []string{"mcp.linear.app"}).Return("sid-1", "linear-secret", nil)
+	s.sandbox.On("GetOrCreateSandbox", mock.Anything, mock.Anything, mock.Anything).Return(false, nil)
+	s.sandbox.On("Start", mock.Anything).Return(nil)
+	s.sandbox.On("UpdateExistingSandbox", mock.Anything, mock.Anything, mock.Anything).Return(assert.AnError)
+
+	_, err := h.Run(context.Background())
+	s.Error(err)
 }
 
 func (s *OpenCodeSuite) TestRun_ModelWithProviderSlash() {
