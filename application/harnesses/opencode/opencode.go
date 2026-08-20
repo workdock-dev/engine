@@ -178,7 +178,9 @@ func (h *OpenCode) start(ctx context.Context) error {
 	}
 
 	if !h.sandboxCreated {
-		h.config.Sandbox.UpdateExistingSandbox(ctx, h.sandboxSecrets, nil)
+		if err := h.config.Sandbox.UpdateExistingSandbox(ctx, h.sandboxSecrets, nil); err != nil {
+			return err
+		}
 	}
 
 	return nil

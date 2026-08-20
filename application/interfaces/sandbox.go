@@ -21,10 +21,6 @@ import (
 
 type Sandbox interface {
 	GetOrCreateSandbox(ctx context.Context, secrets, envVars map[string]string) (bool, error)
-	// UpdateExistingSandbox updates secrets and environment variables on an
-	// existing, running sandbox. It must be called after Start because the
-	// Daytona API requires the container IP, which is only available once the
-	// sandbox is running.
 	UpdateExistingSandbox(ctx context.Context, secrets, envVars map[string]string) error
 	// SetSecret return secret id, secret name, error
 	SetSecret(ctx context.Context, secretValue string, hosts []string) (string, string, error)
