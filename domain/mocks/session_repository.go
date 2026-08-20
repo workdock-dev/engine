@@ -33,6 +33,14 @@ func (m *SessionRepository) GetAgentSession(ctx context.Context, identifier stri
 	return args.Get(0).(*types.Session), args.Error(1)
 }
 
+func (m *SessionRepository) GetAgentSessionsByIssueId(ctx context.Context, issueId string) ([]*types.Session, error) {
+	args := m.Called(ctx, issueId)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*types.Session), args.Error(1)
+}
+
 func (m *SessionRepository) GetAgentSessionEvent(ctx context.Context, identifier string) (*types.SessionEvent, error) {
 	args := m.Called(ctx, identifier)
 	if args.Get(0) == nil {

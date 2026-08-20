@@ -27,5 +27,16 @@ type ForWebhooks interface {
 	Webhook(ctx context.Context, req types.WebhookRequest) (any, error)
 }
 
+// ForIssueStatusChanges is an optional extension of ForWebhooks for platforms
+// that can parse Issue data change webhooks with status transitions.
+// Platforms that support this interface can react to issue status changes
+// (e.g., archiving sandboxes when an issue is marked as done).
+type ForIssueStatusChanges interface {
+	// ParseIssueStatusChange validates and parses a Linear Issue data change
+	// webhook that indicates an issue's status has changed. Returns nil if
+	// the webhook is not an issue status change.
+	ParseIssueStatusChange(ctx context.Context, req types.WebhookRequest) (*types.IssueStatusChangePayload, error)
+}
+
 // WebhooksRegistry maps platform providers to their webhook adapters.
 type WebhooksRegistry map[types.PlatformProvider]ForWebhooks

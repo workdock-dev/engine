@@ -29,3 +29,17 @@ func (m *Webhooks) Webhook(ctx context.Context, req types.WebhookRequest) (any, 
 	args := m.Called(ctx, req)
 	return args.Get(0), args.Error(1)
 }
+
+// WebhooksWithIssueStatusChanges implements both ForWebhooks and
+// ForIssueStatusChanges for testing.
+type WebhooksWithIssueStatusChanges struct {
+	Webhooks
+}
+
+func (m *WebhooksWithIssueStatusChanges) ParseIssueStatusChange(ctx context.Context, req types.WebhookRequest) (*types.IssueStatusChangePayload, error) {
+	args := m.Called(ctx, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.IssueStatusChangePayload), args.Error(1)
+}

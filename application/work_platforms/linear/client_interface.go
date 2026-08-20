@@ -28,4 +28,5 @@ type LinearClientInterface interface {
 	GetIssueLabels(ctx context.Context, accessToken string, issueId string) ([]IssueLabel, error)
 	SetExternalURLs(ctx context.Context, accessToken string, input SetExternalURLsInput) (*AgentSessionUpdatePayload, error)
 	Webhook(ctx context.Context, req types.WebhookRequest) (*AgentSessionEventData, error)
+	ParseIssueStatusChange(ctx context.Context, req types.WebhookRequest) (*IssueStatusChangePayload, error)
 }

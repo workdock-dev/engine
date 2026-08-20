@@ -214,6 +214,27 @@ func (p *linearPlatform) Webhook(ctx context.Context, req types.WebhookRequest) 
 	return p.config.Client.Webhook(ctx, req)
 }
 
+// ParseIssueStatusChange validates and parses a Linear Issue data change webhook
+// that indicates an issue's status has changed.
+func (p *linearPlatform) ParseIssueStatusChange(ctx context.Context, req types.WebhookRequest) (*types.IssueStatusChangePayload, error) {
+	issueChange, err := p.config.Client.ParseIssueStatusChange(ctx, req)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if issueChange == nil {
+		return nil, nil
+	}
+
+	return &types.IssueStatusChangePayload{
+		OrganizationID:  issueChange.OrganizationID,
+		IssueId:         issueChange.Data.ID,
+		PreviousStatus:  issueChange.UpdatedFrom.StateName,
+		NewStatus:       issueChange.Data.StateName,
+	}, nil
+}
+
 func (p *linearPlatform) castAnyToAgentSessionEventData(event any) (*AgentSessionEventData, error) {
 	if event == nil {
 		err := errors.New("received event is nil")

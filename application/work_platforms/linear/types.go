@@ -207,3 +207,31 @@ type Token struct {
 	RefreshToken string    `json:"refresh_token"`
 	ExpiresAt    time.Time `json:"expires_at"`
 }
+
+// IssueData represents the data payload of a Linear Issue data change webhook.
+// See: https://linear.app/developers/webhooks
+type IssueData struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Identifier  string `json:"identifier"`
+	TeamID      string `json:"teamId"`
+	StateName   string `json:"stateName"`
+	URL         string `json:"url"`
+	Description string `json:"description"`
+}
+
+// IssueStatusChangePayload represents a Linear webhook payload for an Issue
+// data change event. The action field is "update" when an issue's state
+// changes, and UpdatedFrom contains the previous field values.
+type IssueStatusChangePayload struct {
+	Action          string    `json:"action"`
+	Type            string    `json:"type"`
+	OrganizationID  string    `json:"organizationId"`
+	WebhookID      string    `json:"webhookId"`
+	CreatedAt       string    `json:"createdAt"`
+	WebhookTimestamp int64    `json:"webhookTimestamp"`
+	Data            IssueData `json:"data"`
+	UpdatedFrom     struct {
+		StateName string `json:"stateName"`
+	} `json:"updatedFrom"`
+}

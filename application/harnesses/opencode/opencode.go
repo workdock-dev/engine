@@ -372,7 +372,6 @@ func (h *OpenCode) Dispose(ctx context.Context) error {
 		h.config.Sandbox.DeleteSandbox(ctx)
 	} else {
 		h.config.Sandbox.Shutdown(ctx)
-		h.config.Sandbox.Archive(ctx)
 	}
 
 	for _, id := range h.secretIds {

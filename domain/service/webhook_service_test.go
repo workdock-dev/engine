@@ -98,3 +98,82 @@ func (s *WebhookServiceSuite) TestOn_WebhookError() {
 	s.platform.AssertExpectations(s.T())
 	s.eventBus.AssertNotCalled(s.T(), "Publish")
 }
+
+// --- OnIssueStatusChange tests ---
+
+func (s *WebhookServiceSuite) TestOnIssueStatusChange_PlatformNotInRegistry() {
+	svc := s.newService(ports.WebhooksRegistry{})
+
+	err := svc.OnIssueStatusChange(context.Background(), types.PlatformProvider_Linear, types.WebhookRequest{})
+
+	s.NoError(err)
+}
+
+func (s *WebhookServiceSuite) TestOnIssueStatusChange_PlatformDoesNotSupportInterface() {
+	svc := s.newService(ports.WebhooksRegistry{
+		types.PlatformProvider_Linear: s.platform,
+	})
+
+	err := svc.OnIssueStatusChange(context.Background(), types.PlatformProvider_Linear, types.WebhookRequest{})
+
+	s.NoError(err)
+}
+
+func (s *WebhookServiceSuite) TestOnIssueStatusChange_ParseReturnsNil() {
+	platformWithStatus := new(mocks.WebhooksWithIssueStatusChanges)
+	platformWithStatus.On("ParseIssueStatusChange", mock.Anything, mock.Anything).Return(nil, nil)
+	s.eventBus.On("Publish", mock.Anything, mock.Anything).Return(nil)
+
+	svc := s.newService(ports.WebhooksRegistry{
+		types.PlatformProvider_Linear: platformWithStatus,
+	})
+
+	err := svc.OnIssueStatusChange(context.Background(), types.PlatformProvider_Linear, types.WebhookRequest{})
+
+	s.NoError(err)
+	platformWithStatus.AssertExpectations(s.T())
+	s.eventBus.AssertNotCalled(s.T(), "Publish")
+}
+
+func (s *WebhookServiceSuite) TestOnIssueStatusChange_ParseError() {
+	platformWithStatus := new(mocks.WebhooksWithIssueStatusChanges)
+	parseErr := errors.New("parse error")
+	platformWithStatus.On("ParseIssueStatusChange", mock.Anything, mock.Anything).Return(nil, parseErr)
+
+	svc := s.newService(ports.WebhooksRegistry{
+		types.PlatformProvider_Linear: platformWithStatus,
+	})
+
+	err := svc.OnIssueStatusChange(context.Background(), types.PlatformProvider_Linear, types.WebhookRequest{})
+
+	s.ErrorIs(err, parseErr)
+	platformWithStatus.AssertExpectations(s.T())
+}
+
+func (s *WebhookServiceSuite) TestOnIssueStatusChange_Success() {
+	platformWithStatus := new(mocks.WebhooksWithIssueStatusChanges)
+	payload := &types.IssueStatusChangePayload{
+		OrganizationID: "org-1",
+		IssueId:        "issue-1",
+		PreviousStatus: "In Progress",
+		NewStatus:      "Done",
+	}
+	platformWithStatus.On("ParseIssueStatusChange", mock.Anything, mock.Anything).Return(payload, nil)
+	s.eventBus.On("Publish", mock.Anything, types.IssueStatusChangedEvent{
+		Provider:               types.PlatformProvider_Linear,
+		OrganizationIdentifier: "org-1",
+		IssueId:                "issue-1",
+		PreviousStatus:         "In Progress",
+		NewStatus:              "Done",
+	}).Return(nil)
+
+	svc := s.newService(ports.WebhooksRegistry{
+		types.PlatformProvider_Linear: platformWithStatus,
+	})
+
+	err := svc.OnIssueStatusChange(context.Background(), types.PlatformProvider_Linear, types.WebhookRequest{})
+
+	s.NoError(err)
+	platformWithStatus.AssertExpectations(s.T())
+	s.eventBus.AssertExpectations(s.T())
+}

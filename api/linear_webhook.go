@@ -15,6 +15,8 @@
 package api
 
 import (
+	"bytes"
+	"io"
 	"log/slog"
 	"net/http"
 
@@ -22,18 +24,45 @@ import (
 )
 
 func (s *Server) handleLinearWebhook(w http.ResponseWriter, r *http.Request) {
+	// Buffer the body so it can be read by both the agent session webhook
+	// handler and the issue status change handler.
+	body, err := io.ReadAll(r.Body)
+
+	if err != nil {
+		slog.Error("failed to read linear webhook body", "err", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
 	if err := s.app.WebhookService.On(
 		r.Context(),
 		types.PlatformProvider_Linear,
 		types.WebhookRequest{
 			Headers:    r.Header,
 			RemoteAddr: r.RemoteAddr,
-			Body:       r.Body,
+			Body:       io.NopCloser(bytes.NewReader(body)),
 		},
 	); err != nil {
 		slog.Error("linear webhook rejected", "err", err.Error())
 		w.WriteHeader(s.domainErrToStatusCode(err))
 		return
+	}
+
+	// Also check for issue status change webhooks (e.g., ticket moved to "done").
+	// This is best-effort: if the webhook is not an issue status change, it is
+	// silently ignored.
+	if err := s.app.WebhookService.OnIssueStatusChange(
+		r.Context(),
+		types.PlatformProvider_Linear,
+		types.WebhookRequest{
+			Headers:    r.Header,
+			RemoteAddr: r.RemoteAddr,
+			Body:       io.NopCloser(bytes.NewReader(body)),
+		},
+	); err != nil {
+		// Log the error but don't fail the webhook response since the agent
+		// session event was already accepted.
+		slog.Error("linear issue status change webhook error", "err", err.Error())
 	}
 
 	w.WriteHeader(http.StatusAccepted)

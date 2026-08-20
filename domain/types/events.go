@@ -18,6 +18,7 @@ const (
 	EventType_GitHubConnected      = "github.connected"
 	EventType_Webhook              = "webhook"
 	EventType_PullRequestCommented = "pull_request.comment"
+	EventType_IssueStatusChanged   = "issue.status.changed"
 )
 
 type GitHubConnectedEvent struct {
@@ -50,4 +51,19 @@ type PullRequestCommentedEvent struct {
 
 func (e PullRequestCommentedEvent) EventType() string {
 	return EventType_PullRequestCommented
+}
+
+// IssueStatusChangedEvent is published when a work platform issue transitions
+// to a new status (e.g. done, in progress, etc.). Subscribers react to
+// status changes — for example, archiving sandboxes when an issue is done.
+type IssueStatusChangedEvent struct {
+	Provider               PlatformProvider
+	OrganizationIdentifier string
+	IssueId                string
+	PreviousStatus         string
+	NewStatus               string
+}
+
+func (e IssueStatusChangedEvent) EventType() string {
+	return EventType_IssueStatusChanged
 }

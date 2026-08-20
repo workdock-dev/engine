@@ -16,6 +16,7 @@ package application
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/jazielguerrero/workdock/application/async"
@@ -34,8 +35,9 @@ type Config struct {
 	Organizations repositories.OrganizationRepository
 	Sessions      repositories.SessionRepository
 
-	ForSecrets ports.ForSecrets
-	EventBus   ports.ForEventBus
+	ForSecrets        ports.ForSecrets
+	ForSandboxArchiver ports.ForSandboxArchiver
+	EventBus          ports.ForEventBus
 
 	ForQueue            interfaces.Queue
 	TaskSchedulerConfig async.TaskSchedulerConfig
@@ -44,8 +46,9 @@ type Config struct {
 type App struct {
 	config Config
 
-	aiService  *domain_service.AIService
-	gitService *domain_service.GitService
+	aiService      *domain_service.AIService
+	gitService     *domain_service.GitService
+	sandboxService *domain_service.SandboxService
 
 	taskScheduler  *async.TaskScheduler
 	WebhookService *domain_service.WebhookService
@@ -67,6 +70,26 @@ func New(config Config) (*App, error) {
 		GitHostingPlatformRegistry: config.GitHostingPlatformRegistry,
 		ForEvent:                   config.EventBus,
 	})
+
+	sandboxService := domain_service.NewSandboxService(domain_service.SandboxServiceConfig{
+		ForSandboxArchiver: config.ForSandboxArchiver,
+		Sessions:            config.Sessions,
+	})
+
+	app.sandboxService = sandboxService
+
+	config.EventBus.Subscribe(
+		types.EventType_IssueStatusChanged,
+		func(ctx context.Context, event ports.DomainEvent) error {
+			e, ok := event.(types.IssueStatusChangedEvent)
+
+			if !ok {
+				return fmt.Errorf("expected an issue status changed event, received %s", event.EventType())
+			}
+
+			return sandboxService.OnIssueStatusChanged(ctx, e)
+		},
+	)
 
 	taskScheduler, err := async.NewTaskScheduler(
 		config.ForQueue,

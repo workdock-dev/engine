@@ -466,6 +466,70 @@ func (s *LinearService) Webhook(ctx context.Context, req types.WebhookRequest) (
 	return &payload, nil
 }
 
+// ParseIssueStatusChange validates and parses a Linear Issue data change webhook
+// request that indicates an issue's status has changed. It returns nil if the
+// webhook is not an Issue update with a stateName change.
+//
+//   - Verifies that the request originates from an authorized Linear IP address.
+//   - Validates the webhook signature to ensure the payload is authentic.
+//   - Enforces Linear's timestamp window to protect against replay attacks.
+//   - Checks that the Linear-Event header is "Issue" and the action is "update"
+//     with a stateName change in the updatedFrom field.
+//
+// Requests that fail validation are rejected before parsing.
+func (s *LinearService) ParseIssueStatusChange(ctx context.Context, req types.WebhookRequest) (*linear.IssueStatusChangePayload, error) {
+	if !s.isAllowedIP(req) {
+		slog.Error("received request from invalid IP", "ip", s.clientIP(req))
+		return nil, types.ErrForbidden
+	}
+
+	rawBody, err := io.ReadAll(req.Body)
+
+	if err != nil {
+		slog.Error("failed to parse request body", "err", err)
+		return nil, types.ErrBadRequest
+	}
+
+	if !s.verifyWebhookSignature(req.Get("Linear-Signature"), rawBody) {
+		slog.Error("failed verifying request signature")
+		return nil, types.ErrUnAuthorized
+	}
+
+	eventType := req.Get("Linear-Event")
+
+	if eventType != "Issue" {
+		return nil, nil
+	}
+
+	var payload linear.IssueStatusChangePayload
+
+	if err := json.Unmarshal(rawBody, &payload); err != nil {
+		slog.Error("failed to unmarshal issue status change payload", "err", err)
+		return nil, types.ErrBadRequest
+	}
+
+	if payload.Action != "update" {
+		return nil, nil
+	}
+
+	if payload.UpdatedFrom.StateName == "" {
+		return nil, nil
+	}
+
+	if payload.UpdatedFrom.StateName == payload.Data.StateName {
+		return nil, nil
+	}
+
+	diff := time.Since(time.UnixMilli(payload.WebhookTimestamp))
+
+	if diff < -60*time.Second || diff > 60*time.Second {
+		slog.Error("request is past the 60 seconds expectation from linear")
+		return nil, types.ErrUnAuthorized
+	}
+
+	return &payload, nil
+}
+
 // doRequest executes an authenticated GraphQL request against the Linear API.
 //
 //   - Sends a GraphQL operation using the provided access token.

@@ -219,6 +219,12 @@ func main() {
 	workPlatformRegistry[types.PlatformProvider_Linear] = linearPlatform
 	webhookRegistry[types.PlatformProvider_Linear] = workPlatformRegistry[types.PlatformProvider_Linear]
 
+	sandboxArchiver := daytona_client.NewSandboxArchiver(daytona_client.SandboxConfig{
+		ApiUrl: cfg.Daytona.ApiUrl,
+		ApiKey: cfg.Daytona.ApiKey,
+		Target: cfg.Daytona.Target,
+	})
+
 	app, err := application.New(application.Config{
 		WorkPlatformRegistry:       workPlatformRegistry,
 		GitHostingPlatformRegistry: gitHostingPlatformRegistry,
@@ -226,8 +232,9 @@ func main() {
 		Organizations:              postgresClient,
 		Sessions:                   postgresClient,
 		ForSecrets:                 forSecrets,
-		ForQueue:                   postgresEventQueue,
+		ForSandboxArchiver:         sandboxArchiver,
 		EventBus:                   eventBus,
+		ForQueue:                   postgresEventQueue,
 		TaskSchedulerConfig: async.TaskSchedulerConfig{
 			Workers:       cfg.Workers,
 			LeaseDuration: time.Duration(cfg.WorkerLeaseSeconds) * time.Second,

@@ -678,6 +678,114 @@ func (s *LinearServiceSuite) TestWebhook_Success() {
 	s.Equal(ts, result.WebhookTimestamp)
 }
 
+// --- ParseIssueStatusChange() ---
+
+func (s *LinearServiceSuite) TestParseIssueStatusChange_IPDenied() {
+	svc := s.newServiceNoServer("", "")
+	body := `{}`
+	req := s.newWebhookRequest(body, "", "10.99.99.99:1234", nil)
+	_, err := svc.ParseIssueStatusChange(context.Background(), req)
+	s.ErrorIs(err, types.ErrForbidden)
+}
+
+func (s *LinearServiceSuite) TestParseIssueStatusChange_BodyReadError() {
+	svc := s.newServiceNoServer("", "")
+	req := types.WebhookRequest{
+		Body:       &errorReader{},
+		RemoteAddr: "10.0.0.1:1234",
+		Headers:    map[string][]string{},
+	}
+	_, err := svc.ParseIssueStatusChange(context.Background(), req)
+	s.ErrorIs(err, types.ErrBadRequest)
+}
+
+func (s *LinearServiceSuite) TestParseIssueStatusChange_InvalidSignature() {
+	svc := s.newServiceNoServer("", "")
+	body := `{"action":"update","type":"Issue"}`
+	req := s.newWebhookRequest(body, "0000000000000000000000000000000000000000000000000000000000000000", "10.0.0.1:1234", nil)
+	_, err := svc.ParseIssueStatusChange(context.Background(), req)
+	s.ErrorIs(err, types.ErrUnAuthorized)
+}
+
+func (s *LinearServiceSuite) TestParseIssueStatusChange_NotIssueEvent() {
+	svc := s.newServiceNoServer("", "")
+	ts := time.Now().UnixMilli()
+	body := fmt.Sprintf(`{"action":"create","type":"Comment","webhookTimestamp":%d}`, ts)
+	sig := computeHMAC("test-secret", []byte(body))
+	req := s.newWebhookRequest(body, sig, "10.0.0.1:1234", map[string]string{"Linear-Event": "Comment"})
+	result, err := svc.ParseIssueStatusChange(context.Background(), req)
+	s.NoError(err)
+	s.Nil(result)
+}
+
+func (s *LinearServiceSuite) TestParseIssueStatusChange_NotUpdateAction() {
+	svc := s.newServiceNoServer("", "")
+	ts := time.Now().UnixMilli()
+	body := fmt.Sprintf(`{"action":"create","type":"Issue","data":{"id":"ISS-1","stateName":"In Progress"},"webhookTimestamp":%d}`, ts)
+	sig := computeHMAC("test-secret", []byte(body))
+	req := s.newWebhookRequest(body, sig, "10.0.0.1:1234", map[string]string{"Linear-Event": "Issue"})
+	result, err := svc.ParseIssueStatusChange(context.Background(), req)
+	s.NoError(err)
+	s.Nil(result)
+}
+
+func (s *LinearServiceSuite) TestParseIssueStatusChange_NoStateChange() {
+	svc := s.newServiceNoServer("", "")
+	ts := time.Now().UnixMilli()
+	body := fmt.Sprintf(`{"action":"update","type":"Issue","data":{"id":"ISS-1","stateName":"In Progress"},"updatedFrom":{"stateName":"In Progress"},"webhookTimestamp":%d}`, ts)
+	sig := computeHMAC("test-secret", []byte(body))
+	req := s.newWebhookRequest(body, sig, "10.0.0.1:1234", map[string]string{"Linear-Event": "Issue"})
+	result, err := svc.ParseIssueStatusChange(context.Background(), req)
+	s.NoError(err)
+	s.Nil(result)
+}
+
+func (s *LinearServiceSuite) TestParseIssueStatusChange_EmptyUpdatedFromStateName() {
+	svc := s.newServiceNoServer("", "")
+	ts := time.Now().UnixMilli()
+	body := fmt.Sprintf(`{"action":"update","type":"Issue","data":{"id":"ISS-1","stateName":"Done"},"updatedFrom":{"stateName":""},"webhookTimestamp":%d}`, ts)
+	sig := computeHMAC("test-secret", []byte(body))
+	req := s.newWebhookRequest(body, sig, "10.0.0.1:1234", map[string]string{"Linear-Event": "Issue"})
+	result, err := svc.ParseIssueStatusChange(context.Background(), req)
+	s.NoError(err)
+	s.Nil(result)
+}
+
+func (s *LinearServiceSuite) TestParseIssueStatusChange_BadJSON() {
+	svc := s.newServiceNoServer("", "")
+	body := `{invalid-json`
+	sig := computeHMAC("test-secret", []byte(body))
+	req := s.newWebhookRequest(body, sig, "10.0.0.1:1234", map[string]string{"Linear-Event": "Issue"})
+	_, err := svc.ParseIssueStatusChange(context.Background(), req)
+	s.ErrorIs(err, types.ErrBadRequest)
+}
+
+func (s *LinearServiceSuite) TestParseIssueStatusChange_TimestampExpired() {
+	svc := s.newServiceNoServer("", "")
+	body := fmt.Sprintf(`{"action":"update","type":"Issue","data":{"id":"ISS-1","stateName":"Done"},"updatedFrom":{"stateName":"In Progress"},"webhookTimestamp":%d}`, time.Now().Add(-5*time.Minute).UnixMilli())
+	sig := computeHMAC("test-secret", []byte(body))
+	req := s.newWebhookRequest(body, sig, "10.0.0.1:1234", map[string]string{"Linear-Event": "Issue"})
+	_, err := svc.ParseIssueStatusChange(context.Background(), req)
+	s.ErrorIs(err, types.ErrUnAuthorized)
+}
+
+func (s *LinearServiceSuite) TestParseIssueStatusChange_Success() {
+	svc := s.newServiceNoServer("", "")
+	ts := time.Now().UnixMilli()
+	body := fmt.Sprintf(`{"action":"update","type":"Issue","organizationId":"org-1","data":{"id":"ISS-1","stateName":"Done"},"updatedFrom":{"stateName":"In Progress"},"webhookTimestamp":%d}`, ts)
+	sig := computeHMAC("test-secret", []byte(body))
+	req := s.newWebhookRequest(body, sig, "10.0.0.1:1234", map[string]string{"Linear-Event": "Issue"})
+	result, err := svc.ParseIssueStatusChange(context.Background(), req)
+	s.NoError(err)
+	s.Require().NotNil(result)
+	s.Equal("update", result.Action)
+	s.Equal("Issue", result.Type)
+	s.Equal("org-1", result.OrganizationID)
+	s.Equal("ISS-1", result.Data.ID)
+	s.Equal("Done", result.Data.StateName)
+	s.Equal("In Progress", result.UpdatedFrom.StateName)
+}
+
 // --- doRequest() (tested via getWorkspaceInfo which calls doRequest) ---
 
 func (s *LinearServiceSuite) TestDoRequest_ContextCanceled() {

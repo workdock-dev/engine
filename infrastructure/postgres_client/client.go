@@ -40,6 +40,9 @@ var (
 	//go:embed get_agent_session.sql
 	GetAgentSessionSql string
 
+	//go:embed get_agent_sessions_by_issue_id.sql
+	GetAgentSessionsByIssueIdSql string
+
 	//go:embed get_agent_session_event.sql
 	GetAgentSessionEventSql string
 
@@ -153,6 +156,44 @@ func (s *PostgresService) GetAgentSession(ctx context.Context, identifier string
 	}
 
 	return &row, nil
+}
+
+func (s *PostgresService) GetAgentSessionsByIssueId(ctx context.Context, issueId string) ([]*types.Session, error) {
+	rows, err := s.client.Query(ctx, GetAgentSessionsByIssueIdSql, issueId)
+
+	if err != nil {
+		slog.Error("failed to get agent sessions by issue id", "err", err, "issue_id", issueId)
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	var sessions []*types.Session
+
+	for rows.Next() {
+		var row types.Session
+
+		if err := rows.Scan(
+			&row.OrganizationIdentifier,
+			&row.Identifier,
+			&row.Provider,
+			&row.IssueId,
+			&row.Creator,
+			&row.RepoFullName,
+		); err != nil {
+			slog.Error("failed to scan agent session row", "err", err, "issue_id", issueId)
+			return nil, err
+		}
+
+		sessions = append(sessions, &row)
+	}
+
+	if err := rows.Err(); err != nil {
+		slog.Error("failed to iterate agent session rows", "err", err, "issue_id", issueId)
+		return nil, err
+	}
+
+	return sessions, nil
 }
 
 func (s *PostgresService) GetAgentSessionEvent(ctx context.Context, identifier string) (*types.SessionEvent, error) {

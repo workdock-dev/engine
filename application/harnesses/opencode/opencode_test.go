@@ -644,13 +644,11 @@ func (s *OpenCodeSuite) TestDispose_Shutdown() {
 	ctx := context.Background()
 	s.sandbox.On("DeleteExecutionSession", ctx).Return(nil)
 	s.sandbox.On("Shutdown", ctx).Return(nil)
-	s.sandbox.On("Archive", ctx).Return(nil)
 	s.sandbox.On("DeleteSecret", ctx, "sid-1").Return(nil)
 
 	err := h.Dispose(ctx)
 	s.NoError(err)
 	s.sandbox.AssertCalled(s.T(), "Shutdown", ctx)
-	s.sandbox.AssertCalled(s.T(), "Archive", ctx)
 	s.sandbox.AssertNotCalled(s.T(), "DeleteSandbox", ctx)
 }
 
@@ -662,7 +660,6 @@ func (s *OpenCodeSuite) TestDispose_DeletesSecrets() {
 	ctx := context.Background()
 	s.sandbox.On("DeleteExecutionSession", ctx).Return(nil)
 	s.sandbox.On("Shutdown", ctx).Return(nil)
-	s.sandbox.On("Archive", ctx).Return(nil)
 	s.sandbox.On("DeleteSecret", ctx, "sid-a").Return(nil)
 	s.sandbox.On("DeleteSecret", ctx, "sid-b").Return(nil)
 	s.sandbox.On("DeleteSecret", ctx, "sid-c").Return(nil)
