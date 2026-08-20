@@ -25,6 +25,7 @@ import (
 
 type mockPool struct {
 	queryRowFn func(ctx context.Context, sql string, args ...any) pgx.Row
+	queryFn    func(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	execFn     func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	beginFn    func(ctx context.Context) (pgx.Tx, error)
 	closeFn    func()
@@ -36,6 +37,13 @@ func (m *mockPool) QueryRow(ctx context.Context, sql string, args ...any) pgx.Ro
 		return m.queryRowFn(ctx, sql, args...)
 	}
 	return &mockRow{}
+}
+
+func (m *mockPool) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	if m.queryFn != nil {
+		return m.queryFn(ctx, sql, args...)
+	}
+	return nil, nil
 }
 
 func (m *mockPool) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {

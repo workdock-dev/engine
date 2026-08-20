@@ -262,7 +262,7 @@ func (s *Sandbox) Archive(ctx context.Context) error {
 		s.sandbox = sandbox
 	}
 
-	state := s.sandbox.Info.State
+	state := s.sandbox.State
 
 	if state == "Archived" {
 		slog.Debug("sandbox already archived, skipping", "session_identifier", s.sessionId)
@@ -272,7 +272,7 @@ func (s *Sandbox) Archive(ctx context.Context) error {
 	if state != "Stopped" {
 		slog.Debug("stopping sandbox before archive", "session_identifier", s.sessionId, "state", state)
 
-		if err := s.Stop(ctx); err != nil {
+		if err := s.Shutdown(ctx); err != nil {
 			slog.Error("failed to stop daytona sandbox before archive", "err", err, "session_identifier", s.sessionId)
 			return err
 		}
@@ -283,7 +283,7 @@ func (s *Sandbox) Archive(ctx context.Context) error {
 			return err
 		}
 
-		return s.client.Archive(ctx, s.sessionId)
+		return s.sandbox.Archive(ctx)
 	}); err != nil {
 		slog.Error("failed to archive daytona sandbox", "err", err, "event_identifier", s.sessionEventId)
 		return err
