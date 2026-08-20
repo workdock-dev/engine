@@ -16,12 +16,10 @@ package application
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	"github.com/jazielguerrero/workdock/application/async"
 	"github.com/jazielguerrero/workdock/application/interfaces"
-	"github.com/jazielguerrero/workdock/application/work_platforms/linear"
 	"github.com/jazielguerrero/workdock/domain/ports"
 	"github.com/jazielguerrero/workdock/domain/repositories"
 	domain_service "github.com/jazielguerrero/workdock/domain/service"
@@ -36,9 +34,8 @@ type Config struct {
 	Organizations repositories.OrganizationRepository
 	Sessions      repositories.SessionRepository
 
-	ForSecrets     ports.ForSecrets
-	EventBus       ports.ForEventBus
-	LinearPlatform *linear.Platform
+	ForSecrets ports.ForSecrets
+	EventBus   ports.ForEventBus
 
 	ForQueue            interfaces.Queue
 	TaskSchedulerConfig async.TaskSchedulerConfig
@@ -47,9 +44,8 @@ type Config struct {
 type App struct {
 	config Config
 
-	aiService      *domain_service.AIService
-	gitService     *domain_service.GitService
-	linearPlatform *linear.Platform
+	aiService  *domain_service.AIService
+	gitService *domain_service.GitService
 
 	taskScheduler  *async.TaskScheduler
 	WebhookService *domain_service.WebhookService
@@ -71,33 +67,6 @@ func New(config Config) (*App, error) {
 		GitHostingPlatformRegistry: config.GitHostingPlatformRegistry,
 		ForEvent:                   config.EventBus,
 	})
-
-	// Subscribe to issue-state-updated webhook events to archive sandboxes
-	// when a ticket is marked as done.
-	if app.linearPlatform != nil {
-		config.EventBus.Subscribe(
-			types.EventType_Webhook+"."+string(types.PlatformProvider_Linear),
-			func(ctx context.Context, event ports.DomainEvent) error {
-				e, ok := event.(types.WebhookEvent)
-
-				if !ok {
-					return fmt.Errorf("expected a webhook event, received %s", event.EventType())
-				}
-
-				if e.Type != types.WebhookEventType_IssueStateUpdated {
-					return nil
-				}
-
-				issueChange, ok := e.Payload.(*linear.IssueStatusChangePayload)
-				if !ok {
-					slog.Debug("issue-state-updated event payload is not an IssueStatusChangePayload")
-					return nil
-				}
-
-				return app.linearPlatform.ArchiveSandboxForIssue(ctx, issueChange.Data.ID)
-			},
-		)
-	}
 
 	taskScheduler, err := async.NewTaskScheduler(
 		config.ForQueue,

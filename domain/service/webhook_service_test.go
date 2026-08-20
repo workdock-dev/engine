@@ -87,7 +87,7 @@ func (s *WebhookServiceSuite) TestOn_WebhookError() {
 	req := types.WebhookRequest{}
 	webhookErr := errors.New("invalid signature")
 
-	s.platform.On("Webhook", mock.Anything, req).Return(nil, types.WebhookEventType(""), webhookErr)
+	s.platform.On("Webhook", mock.Anything, req).Return(nil, types.WebhookEventType_Unknown, webhookErr)
 
 	svc := s.newService(ports.WebhooksRegistry{
 		provider: s.platform,

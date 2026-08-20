@@ -125,46 +125,6 @@ func (s *Sandbox) GetOrCreateSandbox(ctx context.Context, secrets, envVars map[s
 		return true, nil
 	}
 
-	// If the sandbox is archived, start it to restore from archive.
-	// Starting an archived sandbox transitions it through Restoring to Started,
-	// which automatically unarchives it.
-	if sandbox.State == "Archived" {
-		slog.Debug("daytona sandbox is archived, restoring", "event_identifier", s.sessionEventId)
-
-		if err := retryRateLimitedVoid(ctx, throttlerSandboxLifecycle, "start archived sandbox", func() error {
-			if err := preflight(ctx, throttlerSandboxLifecycle, "start archived sandbox"); err != nil {
-				return err
-			}
-
-			return sandbox.Start(ctx)
-		}); err != nil {
-			slog.Error("failed to start archived daytona sandbox", "err", err, "event_identifier", s.sessionEventId)
-			return false, err
-		}
-
-		slog.Debug("Restored daytona sandbox from archive", "event_identifier", s.sessionEventId)
-	}
-
-	if err := retryRateLimitedVoid(ctx, throttlerSandboxLifecycle, "update secrets", func() error {
-		if err := preflight(ctx, throttlerSandboxLifecycle, "update secrets"); err != nil {
-			return err
-		}
-
-		return sandbox.UpdateSecrets(ctx, secrets)
-	}); err != nil {
-		slog.Error("failed to update daytona sandbox secrets", "event_identifier", s.sessionEventId, "err", err)
-	}
-
-	if err := retryRateLimitedVoid(ctx, throttlerSandboxLifecycle, "update env vars", func() error {
-		if err := preflight(ctx, throttlerSandboxLifecycle, "update env vars"); err != nil {
-			return err
-		}
-
-		return sandbox.UpdateEnv(ctx, envVars, nil)
-	}); err != nil {
-		slog.Error("failed to update daytona sandbox env vars", "event_identifier", s.sessionEventId, "err", err)
-	}
-
 	s.sandbox = sandbox
 	slog.Debug("reusing daytona sandbox", "event_identifier", s.sessionEventId)
 	return false, nil

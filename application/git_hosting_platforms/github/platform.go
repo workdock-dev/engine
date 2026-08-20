@@ -89,9 +89,9 @@ func (s *githubPlatform) RequestConnection(ctx context.Context, sessionEventIden
 func (s *githubPlatform) Webhook(ctx context.Context, req types.WebhookRequest) (any, types.WebhookEventType, error) {
 	event, err := s.config.Client.Webhook(ctx, req)
 	if err != nil {
-		return nil, types.WebhookEventType(""), err
+		return nil, types.WebhookEventType_Unknown, err
 	}
-	return event, types.WebhookEventType_AIRequest, nil
+	return event, types.WebhookEventType_Git, nil
 }
 
 // handleInstallation processes a GitHub installation event.

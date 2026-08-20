@@ -31,6 +31,7 @@ type Config struct {
 	HarnessRegistry     ports.HarnessPlatformRegistry
 	GitHostingRegistry  ports.GitHostingPlatformRegistry
 	ForSecrets          ports.ForSecrets
+	ForEvent            ports.ForEventBus
 	Sessions            repositories.SessionRepository
 	Organizations       repositories.OrganizationRepository
 	Client              LinearClientInterface
@@ -44,9 +45,41 @@ type linearPlatform struct {
 }
 
 func New(config Config) *linearPlatform {
-	return &linearPlatform{
+	p := &linearPlatform{
 		config: config,
 	}
+
+	// Subscribe to Linear webhook events to archive sandboxes when an issue
+	// transitions to a "done" status.
+	if config.ForEvent != nil {
+		eventType := types.PlatformWebhookEvent(types.PlatformProvider_Linear)
+		slog.Debug("linearPlatform subscribed for event", "event_type", eventType)
+
+		config.ForEvent.Subscribe(
+			eventType,
+			func(ctx context.Context, event ports.DomainEvent) error {
+				e, ok := event.(types.WebhookEvent)
+
+				if !ok {
+					return fmt.Errorf("expected a webhook event, received %s", event.EventType())
+				}
+
+				if e.Type != types.WebhookEventType_IssueStateUpdated {
+					return nil
+				}
+
+				issueChange, ok := e.Payload.(*IssueStatusChangePayload)
+				if !ok {
+					slog.Debug("issue-state-updated event payload is not an IssueStatusChangePayload")
+					return nil
+				}
+
+				return p.ArchiveSandboxForIssue(ctx, issueChange.Data.ID)
+			},
+		)
+	}
+
+	return p
 }
 
 // BeginOAuth initiates the OAuth flow and returns the redirect URL

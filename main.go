@@ -212,6 +212,7 @@ func main() {
 		GitHostingRegistry:  gitHostingPlatformRegistry,
 		Client:              linearClient,
 		ForSecrets:          forSecrets,
+		ForEvent:            eventBus,
 		Sessions:            postgresClient,
 		Organizations:       postgresClient,
 		GitHubAppInstallURL: cfg.Github.AppInstallURL,
@@ -228,7 +229,6 @@ func main() {
 		ForSecrets:                 forSecrets,
 		ForQueue:                   postgresEventQueue,
 		EventBus:                   eventBus,
-		LinearPlatform:            linearPlatform,
 		TaskSchedulerConfig: async.TaskSchedulerConfig{
 			Workers:       cfg.Workers,
 			LeaseDuration: time.Duration(cfg.WorkerLeaseSeconds) * time.Second,
