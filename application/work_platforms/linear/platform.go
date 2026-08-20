@@ -78,7 +78,7 @@ func New(config Config) *linearPlatform {
 					return nil
 				}
 
-				return p.ArchiveSandboxForIssue(ctx, issueChange.Data.ID)
+				return p.archiveSandboxForIssue(ctx, issueChange.Data.ID)
 			},
 		)
 	}
@@ -280,11 +280,11 @@ func (p *linearPlatform) castAnyToAgentSessionEventData(event any) (*AgentSessio
 	return linearEvent, nil
 }
 
-// ArchiveSandboxForIssue archives the sandbox associated with a session when
+// archiveSandboxForIssue archives the sandbox associated with a session when
 // an issue transitions to a "done" status. It looks up all sessions for the
 // given issue ID, constructs a harness from the registry for each session,
 // and calls Archive on it.
-func (p *linearPlatform) ArchiveSandboxForIssue(ctx context.Context, issueId string) error {
+func (p *linearPlatform) archiveSandboxForIssue(ctx context.Context, issueId string) error {
 	sessions, err := p.config.Sessions.GetAgentSessionsByIssueId(ctx, issueId)
 
 	if err != nil {
@@ -306,8 +306,10 @@ func (p *linearPlatform) ArchiveSandboxForIssue(ctx context.Context, issueId str
 		}
 
 		harness, err := harnessConstructor(ports.NewHarnessConstructor{
-			Session:      session,
-			SessionEvent: &types.SessionEvent{SessionIdentifier: session.Identifier},
+			Session: session,
+			Secrets: map[string]string{
+				"linearAccessToken": "nop-secret",
+			},
 		})
 
 		if err != nil {
