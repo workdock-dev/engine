@@ -36,6 +36,8 @@ type SandboxConfig struct {
 
 var errSandboxNotInitialized = errors.New("daytona sandbox not initialized")
 
+const defaultAutoStopInterval = 5 // minutes
+
 // Sandbox is a concrete wrapper around the daytona client. It is not
 // based on any interface; it holds the sandbox associated to a session and
 // exposes the operations needed to configure it.
@@ -96,11 +98,13 @@ func (s *Sandbox) GetOrCreateSandbox(ctx context.Context, secrets, envVars map[s
 			}
 
 			return retryRateLimited(ctx, throttlerSandboxCreate, "create sandbox", func() (*daytona.Sandbox, error) {
+				autoStopInterval := defaultAutoStopInterval
 				return s.client.Create(ctx, types.SnapshotParams{
 					Snapshot: "daytona-small",
 					SandboxBaseParams: types.SandboxBaseParams{
-						Name:   s.sessionId,
-						Public: false,
+						Name:             s.sessionId,
+						Public:           false,
+						AutoStopInterval: &autoStopInterval,
 						Labels: map[string]string{
 							"session_event_identifier": s.sessionEventId,
 						},
