@@ -162,6 +162,10 @@ func (s *linearAISession) Cancel(ctx context.Context) {
 }
 
 func (s *linearAISession) Process(ctx context.Context) error {
+	defer func() {
+		s.Response(ctx, "")
+	}()
+
 	if err := telemetry.SpanErr(ctx, s.tracer, "linear.set_external_urls", func(ctx context.Context) error {
 		return s.setAgentSessionExternalUrls(ctx)
 	}); err != nil {
