@@ -31,6 +31,11 @@ func (m *mockSandbox) GetOrCreateSandbox(ctx context.Context, secrets, envVars m
 	return args.Bool(0), args.Error(1)
 }
 
+func (m *mockSandbox) UpdateExistingSandbox(ctx context.Context, secrets, envVars map[string]string) error {
+	args := m.Called(ctx, secrets, envVars)
+	return args.Error(0)
+}
+
 func (m *mockSandbox) SetSecret(ctx context.Context, secretValue string, hosts []string) (string, string, error) {
 	args := m.Called(ctx, secretValue, hosts)
 	return args.String(0), args.String(1), args.Error(2)

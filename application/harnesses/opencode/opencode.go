@@ -94,6 +94,7 @@ type OpenCode struct {
 	githubAccessToken string
 	secretIds         []string
 	sandboxCreated    bool
+	sandboxSecrets    map[string]string
 	tracer            trace.Tracer
 }
 
@@ -167,12 +168,17 @@ func (h *OpenCode) create(ctx context.Context) error {
 	}
 
 	h.sandboxCreated = created
+	h.sandboxSecrets = sandboxSecrets
 	return nil
 }
 
 func (h *OpenCode) start(ctx context.Context) error {
 	if err := h.config.Sandbox.Start(ctx); err != nil {
 		return err
+	}
+
+	if !h.sandboxCreated {
+		h.config.Sandbox.UpdateExistingSandbox(ctx, h.sandboxSecrets, nil)
 	}
 
 	return nil
