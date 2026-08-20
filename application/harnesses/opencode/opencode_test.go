@@ -517,6 +517,17 @@ func (s *OpenCodeSuite) TestRun_NewSandboxDoesNotCallUpdateExisting() {
 	s.sandbox.AssertNotCalled(s.T(), "UpdateExistingSandbox")
 }
 
+func (s *OpenCodeSuite) TestRun_UpdateExistingSandboxFails() {
+	h := s.newHarness(nil)
+	s.sandbox.On("SetSecret", mock.Anything, "lin_at_123", []string{"mcp.linear.app"}).Return("sid-1", "linear-secret", nil)
+	s.sandbox.On("GetOrCreateSandbox", mock.Anything, mock.Anything, mock.Anything).Return(false, nil)
+	s.sandbox.On("Start", mock.Anything).Return(nil)
+	s.sandbox.On("UpdateExistingSandbox", mock.Anything, mock.Anything, mock.Anything).Return(assert.AnError)
+
+	_, err := h.Run(context.Background())
+	s.Error(err)
+}
+
 func (s *OpenCodeSuite) TestRun_ModelWithProviderSlash() {
 	h := s.newHarness(nil)
 	s.fullHappyPath(true, "")

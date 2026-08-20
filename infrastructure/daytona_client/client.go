@@ -202,6 +202,7 @@ func (s *Sandbox) UpdateExistingSandbox(ctx context.Context, secrets, envVars ma
 		return s.sandbox.UpdateSecrets(ctx, secrets)
 	}); err != nil {
 		slog.Error("failed to update daytona sandbox secrets", "event_identifier", s.sessionEventId, "err", err)
+		return err
 	}
 
 	if err := retryRateLimitedVoid(ctx, throttlerSandboxLifecycle, "update env vars", func() error {
@@ -212,6 +213,7 @@ func (s *Sandbox) UpdateExistingSandbox(ctx context.Context, secrets, envVars ma
 		return s.sandbox.UpdateEnv(ctx, envVars, nil)
 	}); err != nil {
 		slog.Error("failed to update daytona sandbox env vars", "event_identifier", s.sessionEventId, "err", err)
+		return err
 	}
 
 	return nil
