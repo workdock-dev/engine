@@ -209,7 +209,6 @@ type Token struct {
 }
 
 // IssueData represents the data payload of a Linear Issue data change webhook.
-// See: https://linear.app/developers/webhooks
 type IssueData struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`
@@ -224,14 +223,14 @@ type IssueData struct {
 // data change event. The action field is "update" when an issue's state
 // changes, and UpdatedFrom contains the previous field values.
 type IssueStatusChangePayload struct {
-	Action          string    `json:"action"`
-	Type            string    `json:"type"`
-	OrganizationID  string    `json:"organizationId"`
-	WebhookID      string    `json:"webhookId"`
-	CreatedAt       string    `json:"createdAt"`
-	WebhookTimestamp int64    `json:"webhookTimestamp"`
-	Data            IssueData `json:"data"`
-	UpdatedFrom     struct {
+	Action           string `json:"action"`
+	Type             string `json:"type"`
+	OrganizationID   string `json:"organizationId"`
+	WebhookID       string `json:"webhookId"`
+	CreatedAt        string `json:"createdAt"`
+	WebhookTimestamp int64  `json:"webhookTimestamp"`
+	Data             IssueData `json:"data"`
+	UpdatedFrom      struct {
 		StateName string `json:"stateName"`
 	} `json:"updatedFrom"`
 }

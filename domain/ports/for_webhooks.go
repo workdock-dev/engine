@@ -24,18 +24,9 @@ import (
 // deliver events to the application through webhooks.
 type ForWebhooks interface {
 	// Webhook handles an incoming webhook request from the platform.
-	Webhook(ctx context.Context, req types.WebhookRequest) (any, error)
-}
-
-// ForIssueStatusChanges is an optional extension of ForWebhooks for platforms
-// that can parse Issue data change webhooks with status transitions.
-// Platforms that support this interface can react to issue status changes
-// (e.g., archiving sandboxes when an issue is marked as done).
-type ForIssueStatusChanges interface {
-	// ParseIssueStatusChange validates and parses a Linear Issue data change
-	// webhook that indicates an issue's status has changed. Returns nil if
-	// the webhook is not an issue status change.
-	ParseIssueStatusChange(ctx context.Context, req types.WebhookRequest) (*types.IssueStatusChangePayload, error)
+	// It returns the parsed payload, the type of domain webhook event, and
+	// any error encountered during validation or parsing.
+	Webhook(ctx context.Context, req types.WebhookRequest) (any, types.WebhookEventType, error)
 }
 
 // WebhooksRegistry maps platform providers to their webhook adapters.

@@ -28,13 +28,13 @@ import (
 
 // Config holds the dependencies required to run Linear sessions.
 type Config struct {
-	HarnessRegistry       ports.HarnessPlatformRegistry
-	GitHostingRegistry    ports.GitHostingPlatformRegistry
-	ForSecrets            ports.ForSecrets
-	Sessions              repositories.SessionRepository
-	Organizations         repositories.OrganizationRepository
-	Client                LinearClientInterface
-	GitHubAppInstallURL   string
+	HarnessRegistry     ports.HarnessPlatformRegistry
+	GitHostingRegistry  ports.GitHostingPlatformRegistry
+	ForSecrets          ports.ForSecrets
+	Sessions            repositories.SessionRepository
+	Organizations       repositories.OrganizationRepository
+	Client              LinearClientInterface
+	GitHubAppInstallURL string
 }
 
 // linearPlatform adapts AIService to the Linear provider. It normalizes Linear
@@ -43,7 +43,7 @@ type linearPlatform struct {
 	config Config
 }
 
-func New(config Config) ports.ForWorkPlatform {
+func New(config Config) *linearPlatform {
 	return &linearPlatform{
 		config: config,
 	}
@@ -210,29 +210,8 @@ func (p *linearPlatform) IsCancelSignal(ctx context.Context, event any) (bool, e
 }
 
 // Webhook handles an incoming webhook request from the any platform.
-func (p *linearPlatform) Webhook(ctx context.Context, req types.WebhookRequest) (any, error) {
+func (p *linearPlatform) Webhook(ctx context.Context, req types.WebhookRequest) (any, types.WebhookEventType, error) {
 	return p.config.Client.Webhook(ctx, req)
-}
-
-// ParseIssueStatusChange validates and parses a Linear Issue data change webhook
-// that indicates an issue's status has changed.
-func (p *linearPlatform) ParseIssueStatusChange(ctx context.Context, req types.WebhookRequest) (*types.IssueStatusChangePayload, error) {
-	issueChange, err := p.config.Client.ParseIssueStatusChange(ctx, req)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if issueChange == nil {
-		return nil, nil
-	}
-
-	return &types.IssueStatusChangePayload{
-		OrganizationID:  issueChange.OrganizationID,
-		IssueId:         issueChange.Data.ID,
-		PreviousStatus:  issueChange.UpdatedFrom.StateName,
-		NewStatus:       issueChange.Data.StateName,
-	}, nil
 }
 
 func (p *linearPlatform) castAnyToAgentSessionEventData(event any) (*AgentSessionEventData, error) {
@@ -262,4 +241,48 @@ func (p *linearPlatform) castAnyToAgentSessionEventData(event any) (*AgentSessio
 	}
 
 	return linearEvent, nil
+}
+
+// ArchiveSandboxForIssue archives the sandbox associated with a session when
+// an issue transitions to a "done" status. It looks up all sessions for the
+// given issue ID, constructs a harness from the registry for each session,
+// and calls Archive on it.
+func (p *linearPlatform) ArchiveSandboxForIssue(ctx context.Context, issueId string) error {
+	sessions, err := p.config.Sessions.GetAgentSessionsByIssueId(ctx, issueId)
+
+	if err != nil {
+		slog.Error("failed to get sessions for issue", "err", err, "issue_id", issueId)
+		return err
+	}
+
+	if len(sessions) == 0 {
+		slog.Debug("no sessions found for issue, nothing to archive", "issue_id", issueId)
+		return nil
+	}
+
+	for _, session := range sessions {
+		harnessConstructor, ok := p.config.HarnessRegistry[types.HarnessProvider_OpenCode]
+
+		if !ok {
+			slog.Error("harness provider not found in registry", "provider", types.HarnessProvider_OpenCode)
+			continue
+		}
+
+		harness, err := harnessConstructor(ports.NewHarnessConstructor{
+			Session:      session,
+			SessionEvent: &types.SessionEvent{SessionIdentifier: session.Identifier},
+		})
+
+		if err != nil {
+			slog.Error("failed to create harness for archive", "err", err, "session_identifier", session.Identifier)
+			continue
+		}
+
+		if err := harness.Archive(ctx); err != nil {
+			slog.Error("failed to archive sandbox for session", "err", err, "session_identifier", session.Identifier, "issue_id", issueId)
+			continue
+		}
+	}
+
+	return nil
 }

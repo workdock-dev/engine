@@ -18,7 +18,21 @@ const (
 	EventType_GitHubConnected      = "github.connected"
 	EventType_Webhook              = "webhook"
 	EventType_PullRequestCommented = "pull_request.comment"
-	EventType_IssueStatusChanged   = "issue.status.changed"
+)
+
+// WebhookEventType indicates the kind of domain event a webhook payload
+// represents. Platforms return this alongside the parsed payload so the
+// application can route the event to the correct handler.
+type WebhookEventType string
+
+const (
+	// WebhookEventType_AIRequest is returned when a webhook represents an
+	// AI agent session request (e.g. a new comment or agent session event).
+	WebhookEventType_AIRequest WebhookEventType = "ai-request"
+
+	// WebhookEventType_IssueStateUpdated is returned when a webhook represents
+	// an issue state change (e.g. a ticket moved to "Done").
+	WebhookEventType_IssueStateUpdated WebhookEventType = "issue-state-updated"
 )
 
 type GitHubConnectedEvent struct {
@@ -32,6 +46,7 @@ func (e GitHubConnectedEvent) EventType() string {
 type WebhookEvent struct {
 	Provider PlatformProvider
 	Payload  any
+	Type     WebhookEventType
 }
 
 func (e WebhookEvent) EventType() string {
@@ -51,19 +66,4 @@ type PullRequestCommentedEvent struct {
 
 func (e PullRequestCommentedEvent) EventType() string {
 	return EventType_PullRequestCommented
-}
-
-// IssueStatusChangedEvent is published when a work platform issue transitions
-// to a new status (e.g. done, in progress, etc.). Subscribers react to
-// status changes — for example, archiving sandboxes when an issue is done.
-type IssueStatusChangedEvent struct {
-	Provider               PlatformProvider
-	OrganizationIdentifier string
-	IssueId                string
-	PreviousStatus         string
-	NewStatus               string
-}
-
-func (e IssueStatusChangedEvent) EventType() string {
-	return EventType_IssueStatusChanged
 }

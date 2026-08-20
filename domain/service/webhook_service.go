@@ -45,7 +45,7 @@ func (s *WebhookService) On(ctx context.Context, name types.PlatformProvider, re
 		return err
 	}
 
-	event, err := workPlatform.Webhook(ctx, req)
+	event, eventType, err := workPlatform.Webhook(ctx, req)
 
 	if err != nil {
 		return err
@@ -54,49 +54,10 @@ func (s *WebhookService) On(ctx context.Context, name types.PlatformProvider, re
 	s.config.ForEventBus.Publish(context.Background(), types.WebhookEvent{
 		Provider: name,
 		Payload:  event,
+		Type:      eventType,
 	})
 
-	slog.Debug("Webhook event accepted", "from", name, "event", event)
-	return nil
-}
-
-// OnIssueStatusChange handles a Linear Issue data change webhook that
-// indicates an issue's status has changed. It parses the webhook payload and
-// publishes an IssueStatusChangedEvent on the event bus.
-func (s *WebhookService) OnIssueStatusChange(ctx context.Context, name types.PlatformProvider, req types.WebhookRequest) error {
-	slog.Debug("Issue status change webhook received", "from", name)
-
-	issuePlatform, ok := s.config.WebhooksRegistry[name].(ports.ForIssueStatusChanges)
-
-	if !ok {
-		slog.Debug("platform does not support issue status changes", "name", name)
-		return nil
-	}
-
-	payload, err := issuePlatform.ParseIssueStatusChange(ctx, req)
-
-	if err != nil {
-		return err
-	}
-
-	if payload == nil {
-		return nil
-	}
-
-	s.config.ForEventBus.Publish(context.Background(), types.IssueStatusChangedEvent{
-		Provider:               name,
-		OrganizationIdentifier: payload.OrganizationID,
-		IssueId:                payload.IssueId,
-		PreviousStatus:         payload.PreviousStatus,
-		NewStatus:              payload.NewStatus,
-	})
-
-	slog.Info("Issue status change event published",
-		"from", name,
-		"issue_id", payload.IssueId,
-		"previous_status", payload.PreviousStatus,
-		"new_status", payload.NewStatus,
-	)
+	slog.Debug("Webhook event accepted", "from", name, "event", event, "type", eventType)
 	return nil
 }
 

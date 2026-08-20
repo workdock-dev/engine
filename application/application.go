@@ -21,6 +21,7 @@ import (
 
 	"github.com/jazielguerrero/workdock/application/async"
 	"github.com/jazielguerrero/workdock/application/interfaces"
+	"github.com/jazielguerrero/workdock/application/work_platforms/linear"
 	"github.com/jazielguerrero/workdock/domain/ports"
 	"github.com/jazielguerrero/workdock/domain/repositories"
 	domain_service "github.com/jazielguerrero/workdock/domain/service"
@@ -35,9 +36,9 @@ type Config struct {
 	Organizations repositories.OrganizationRepository
 	Sessions      repositories.SessionRepository
 
-	ForSecrets        ports.ForSecrets
-	ForSandboxArchiver ports.ForSandboxArchiver
-	EventBus          ports.ForEventBus
+	ForSecrets     ports.ForSecrets
+	EventBus       ports.ForEventBus
+	LinearPlatform *linear.Platform
 
 	ForQueue            interfaces.Queue
 	TaskSchedulerConfig async.TaskSchedulerConfig
@@ -48,7 +49,7 @@ type App struct {
 
 	aiService      *domain_service.AIService
 	gitService     *domain_service.GitService
-	sandboxService *domain_service.SandboxService
+	linearPlatform *linear.Platform
 
 	taskScheduler  *async.TaskScheduler
 	WebhookService *domain_service.WebhookService
@@ -71,25 +72,32 @@ func New(config Config) (*App, error) {
 		ForEvent:                   config.EventBus,
 	})
 
-	sandboxService := domain_service.NewSandboxService(domain_service.SandboxServiceConfig{
-		ForSandboxArchiver: config.ForSandboxArchiver,
-		Sessions:            config.Sessions,
-	})
+	// Subscribe to issue-state-updated webhook events to archive sandboxes
+	// when a ticket is marked as done.
+	if app.linearPlatform != nil {
+		config.EventBus.Subscribe(
+			types.EventType_Webhook+"."+string(types.PlatformProvider_Linear),
+			func(ctx context.Context, event ports.DomainEvent) error {
+				e, ok := event.(types.WebhookEvent)
 
-	app.sandboxService = sandboxService
+				if !ok {
+					return fmt.Errorf("expected a webhook event, received %s", event.EventType())
+				}
 
-	config.EventBus.Subscribe(
-		types.EventType_IssueStatusChanged,
-		func(ctx context.Context, event ports.DomainEvent) error {
-			e, ok := event.(types.IssueStatusChangedEvent)
+				if e.Type != types.WebhookEventType_IssueStateUpdated {
+					return nil
+				}
 
-			if !ok {
-				return fmt.Errorf("expected an issue status changed event, received %s", event.EventType())
-			}
+				issueChange, ok := e.Payload.(*linear.IssueStatusChangePayload)
+				if !ok {
+					slog.Debug("issue-state-updated event payload is not an IssueStatusChangePayload")
+					return nil
+				}
 
-			return sandboxService.OnIssueStatusChanged(ctx, e)
-		},
-	)
+				return app.linearPlatform.ArchiveSandboxForIssue(ctx, issueChange.Data.ID)
+			},
+		)
+	}
 
 	taskScheduler, err := async.NewTaskScheduler(
 		config.ForQueue,

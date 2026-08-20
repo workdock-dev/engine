@@ -50,6 +50,9 @@ type ForHarnessPlatform interface {
 
 	// Dispose releases the resources associated with the agent session.
 	Dispose(ctx context.Context) error
+
+	// Archive archives the sandbox associated with the agent session.
+	Archive(ctx context.Context) error
 }
 
 // HarnessPlatformRegistry maps harness providers to their constructors.
