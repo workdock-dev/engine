@@ -814,6 +814,7 @@ func (s *LinearAISessionSuite) TestProcess_NoGitHubRegistry() {
 	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{}
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
+	s.client.On("CreateAgentActivity", mock.Anything, "at_valid", mock.Anything).Return(nil)
 
 	err := sess.Process(context.Background())
 	s.Error(err)
@@ -915,6 +916,7 @@ func (s *LinearAISessionSuite) TestProcess_AccessDenied_RequestConnectionError()
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", &repo).Return(false, "", nil)
 	gitHosting.On("RequestConnection", mock.Anything, "evt-1", "org/repo").Return(errors.New("request error"))
+	s.client.On("CreateAgentActivity", mock.Anything, "at_valid", mock.Anything).Return(nil)
 
 	err := sess.Process(context.Background())
 	s.Error(err)
