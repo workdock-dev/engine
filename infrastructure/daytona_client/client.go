@@ -250,7 +250,7 @@ func (s *Sandbox) Archive(ctx context.Context) error {
 		})
 
 		if err != nil {
-			if sdkerrors.IsNotFound(err) {
+			if errors.Is(err, sdkerrors.ErrNotFound) {
 				slog.Debug("sandbox not found for archive, skipping", "session_identifier", s.sessionId)
 				return nil
 			}
@@ -262,7 +262,7 @@ func (s *Sandbox) Archive(ctx context.Context) error {
 		s.sandbox = sandbox
 	}
 
-	state := s.sandbox.State
+	state := s.sandbox.Info.State
 
 	if state == "Archived" {
 		slog.Debug("sandbox already archived, skipping", "session_identifier", s.sessionId)
@@ -283,7 +283,7 @@ func (s *Sandbox) Archive(ctx context.Context) error {
 			return err
 		}
 
-		return s.sandbox.Archive(ctx)
+		return s.client.Archive(ctx, s.sessionId)
 	}); err != nil {
 		slog.Error("failed to archive daytona sandbox", "err", err, "event_identifier", s.sessionEventId)
 		return err

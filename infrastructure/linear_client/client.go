@@ -455,18 +455,18 @@ func (s *LinearService) Webhook(ctx context.Context, req types.WebhookRequest) (
 		var issuePayload linear.IssueStatusChangePayload
 
 		if err := json.Unmarshal(rawBody, &issuePayload); err != nil {
-			slog.Error("failed to unmarshal issue status change payload", "err", err)
+			slog.Error("failed to unmarshal issue payload", "err", err)
 			return nil, types.WebhookEventType_Unknown, types.ErrBadRequest
 		}
 
-		if issuePayload.Action == "update" && issuePayload.UpdatedFrom.StateName != "" && issuePayload.UpdatedFrom.StateName != issuePayload.Data.StateName {
-			slog.Debug("Linear issue state updated webhook detected",
-				"issue_id", issuePayload.Data.ID,
-				"previous_status", issuePayload.UpdatedFrom.StateName,
-				"new_status", issuePayload.Data.StateName,
-			)
-			return &issuePayload, types.WebhookEventType_IssueStateUpdated, nil
+		diff := time.Since(time.UnixMilli(issuePayload.WebhookTimestamp))
+
+		if diff < -60*time.Second || diff > 60*time.Second {
+			slog.Error("request is past the 60 seconds expectation from linear")
+			return nil, types.WebhookEventType_Unknown, types.ErrUnAuthorized
 		}
+
+		return &issuePayload, types.WebhookEventType_IssueStateUpdated, nil
 	}
 
 	var payload linear.AgentSessionEventData

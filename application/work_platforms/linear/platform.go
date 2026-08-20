@@ -74,6 +74,10 @@ func New(config Config) *linearPlatform {
 					return nil
 				}
 
+				if issueChange.Action != "update" || issueChange.UpdatedFrom.StateName == "" || issueChange.UpdatedFrom.StateName == issueChange.Data.StateName {
+					return nil
+				}
+
 				return p.ArchiveSandboxForIssue(ctx, issueChange.Data.ID)
 			},
 		)

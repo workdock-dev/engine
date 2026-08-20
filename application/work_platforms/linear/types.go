@@ -133,6 +133,7 @@ type Issue struct {
 	TeamID      string `json:"teamId"`
 	Team        Team   `json:"team"`
 	Identifier  string `json:"identifier"`
+	StateName   string `json:"stateName"`
 	URL         string `json:"url"`
 	Description string `json:"description"`
 }
@@ -208,17 +209,6 @@ type Token struct {
 	ExpiresAt    time.Time `json:"expires_at"`
 }
 
-// IssueData represents the data payload of a Linear Issue data change webhook.
-type IssueData struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Identifier  string `json:"identifier"`
-	TeamID      string `json:"teamId"`
-	StateName   string `json:"stateName"`
-	URL         string `json:"url"`
-	Description string `json:"description"`
-}
-
 // IssueStatusChangePayload represents a Linear webhook payload for an Issue
 // data change event. The action field is "update" when an issue's state
 // changes, and UpdatedFrom contains the previous field values.
@@ -229,7 +219,7 @@ type IssueStatusChangePayload struct {
 	WebhookID       string `json:"webhookId"`
 	CreatedAt        string `json:"createdAt"`
 	WebhookTimestamp int64  `json:"webhookTimestamp"`
-	Data             IssueData `json:"data"`
+	Data             Issue  `json:"data"`
 	UpdatedFrom      struct {
 		StateName string `json:"stateName"`
 	} `json:"updatedFrom"`

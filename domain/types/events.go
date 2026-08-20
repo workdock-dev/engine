@@ -28,7 +28,7 @@ type WebhookEventType string
 const (
 	// WebhookEventType_Unknown is the default webhook event type when the
 	// specific type cannot be determined or is not relevant.
-	WebhookEventType_Unknown WebhookEventType = ""
+	WebhookEventType_Unknown WebhookEventType = "unknown"
 
 	// WebhookEventType_AIRequest is returned when a webhook represents an
 	// AI agent session request (e.g. a new comment or agent session event).
