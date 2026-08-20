@@ -13,15 +13,18 @@
 -- limitations under the License.
 
 SELECT
-    session_identifier,
-    identifier,
-    payload,
-    seed,
-    git_ref,
-    result
+    se.session_identifier,
+    se.identifier,
+    se.payload,
+    se.seed,
+    se.git_ref,
+    se.result
 FROM
-    public.sessions_events
+    public.sessions_events se
+JOIN
+    public.sessions s ON s.identifier = se.session_identifier
 WHERE
-    git_ref = $1
-ORDER BY updated_at DESC, id DESC
+    se.git_ref = $1
+    AND s.repo_full_name = $2
+ORDER BY se.updated_at DESC, se.id DESC
 LIMIT 1;

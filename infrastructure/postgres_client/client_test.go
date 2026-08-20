@@ -183,6 +183,7 @@ func (s *PostgresServiceSuite) TestGetAgentSessionEvent_Error() {
 func (s *PostgresServiceSuite) TestGetAgentSessionEventByGitRef_Success() {
 	s.pool.queryRowFn = func(ctx context.Context, sql string, args ...any) pgx.Row {
 		s.Equal("abc123", args[0])
+		s.Equal("org/repo", args[1])
 		return &mockRow{scanFn: func(dest ...any) error {
 			*dest[0].(*string) = "session-1"
 			*dest[1].(*string) = "event-1"
@@ -193,7 +194,7 @@ func (s *PostgresServiceSuite) TestGetAgentSessionEventByGitRef_Success() {
 			return nil
 		}}
 	}
-	event, err := s.service.GetAgentSessionEventByGitRef(context.Background(), "abc123")
+	event, err := s.service.GetAgentSessionEventByGitRef(context.Background(), "abc123", "org/repo")
 	s.NoError(err)
 	s.NotNil(event)
 	s.Equal("event-1", event.Identifier)
@@ -206,7 +207,7 @@ func (s *PostgresServiceSuite) TestGetAgentSessionEventByGitRef_NotFound() {
 			return pgx.ErrNoRows
 		}}
 	}
-	event, err := s.service.GetAgentSessionEventByGitRef(context.Background(), "missing")
+	event, err := s.service.GetAgentSessionEventByGitRef(context.Background(), "missing", "org/repo")
 	s.NoError(err)
 	s.Nil(event)
 }
@@ -217,7 +218,7 @@ func (s *PostgresServiceSuite) TestGetAgentSessionEventByGitRef_Error() {
 			return fmt.Errorf("db error")
 		}}
 	}
-	event, err := s.service.GetAgentSessionEventByGitRef(context.Background(), "ref")
+	event, err := s.service.GetAgentSessionEventByGitRef(context.Background(), "ref", "org/repo")
 	s.Error(err)
 	s.Nil(event)
 }

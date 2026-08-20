@@ -118,8 +118,8 @@ func (m *mockSessions) GetAgentSessionEvent(ctx context.Context, identifier stri
 	return args.Get(0).(*types.SessionEvent), args.Error(1)
 }
 
-func (m *mockSessions) GetAgentSessionEventByGitRef(ctx context.Context, identifier string) (*types.SessionEvent, error) {
-	args := m.Called(ctx, identifier)
+func (m *mockSessions) GetAgentSessionEventByGitRef(ctx context.Context, identifier string, repoFullName string) (*types.SessionEvent, error) {
+	args := m.Called(ctx, identifier, repoFullName)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
