@@ -521,9 +521,10 @@ func (s *LinearPlatformSuite) TestWebhook() {
 	}
 	expected := &AgentSessionEventData{Type: "webhook"}
 
-	s.client.On("Webhook", mock.Anything, req).Return(expected, nil)
+	s.client.On("Webhook", mock.Anything, req).Return(expected, types.WebhookEventType_AIRequest, nil)
 
-	result, err := s.platform.Webhook(context.Background(), req)
+	result, eventType, err := s.platform.Webhook(context.Background(), req)
 	s.NoError(err)
+	s.Equal(types.WebhookEventType_AIRequest, eventType)
 	s.Equal(expected, result)
 }

@@ -65,6 +65,11 @@ func NewAIService(config AIServiceConfig) *AIService {
 					return fmt.Errorf("expected a webhook event, received %s", event.EventType())
 				}
 
+				if e.Type != types.WebhookEventType_AIRequest {
+					slog.Debug("AIService skipping non-AI-request webhook event", "type", e.Type)
+					return nil
+				}
+
 				workPlatform, err := s.platform(e.Provider)
 
 				if err != nil {

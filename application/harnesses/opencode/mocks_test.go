@@ -101,6 +101,11 @@ func (m *mockSandbox) DeleteSandbox(ctx context.Context) error {
 	return args.Error(0)
 }
 
+func (m *mockSandbox) Archive(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
 type mockParts struct {
 	mock.Mock
 }

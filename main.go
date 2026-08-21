@@ -212,6 +212,7 @@ func main() {
 		GitHostingRegistry:  gitHostingPlatformRegistry,
 		Client:              linearClient,
 		ForSecrets:          forSecrets,
+		ForEvent:            eventBus,
 		Sessions:            postgresClient,
 		Organizations:       postgresClient,
 		GitHubAppInstallURL: cfg.Github.AppInstallURL,

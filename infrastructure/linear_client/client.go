@@ -431,39 +431,59 @@ func (s *LinearService) SetExternalURLs(ctx context.Context, accessToken string,
 //
 // Requests that fail origin, signature, or timestamp validation are rejected
 // before any business logic is executed.
-func (s *LinearService) Webhook(ctx context.Context, req types.WebhookRequest) (*linear.AgentSessionEventData, error) {
+func (s *LinearService) Webhook(ctx context.Context, req types.WebhookRequest) (any, types.WebhookEventType, error) {
 	if !s.isAllowedIP(req) {
 		slog.Error("received request from invalid IP", "ip", s.clientIP(req))
-		return nil, types.ErrForbidden
+		return nil, types.WebhookEventType_Unknown, types.ErrForbidden
 	}
 
 	rawBody, err := io.ReadAll(req.Body)
 
 	if err != nil {
 		slog.Error("failed to parse request body", "err", err)
-		return nil, types.ErrBadRequest
+		return nil, types.WebhookEventType_Unknown, types.ErrBadRequest
 	}
 
 	if !s.verifyWebhookSignature(req.Get("Linear-Signature"), rawBody) {
 		slog.Error("failed verifying request signature")
-		return nil, types.ErrUnAuthorized
+		return nil, types.WebhookEventType_Unknown, types.ErrUnAuthorized
+	}
+
+	eventType := req.Get("Linear-Event")
+
+	if eventType == "Issue" {
+		var issuePayload linear.IssueStatusChangePayload
+
+		if err := json.Unmarshal(rawBody, &issuePayload); err != nil {
+			slog.Error("failed to unmarshal issue payload", "err", err)
+			return nil, types.WebhookEventType_Unknown, types.ErrBadRequest
+		}
+
+		diff := time.Since(time.UnixMilli(issuePayload.WebhookTimestamp))
+
+		if diff < -60*time.Second || diff > 60*time.Second {
+			slog.Error("request is past the 60 seconds expectation from linear")
+			return nil, types.WebhookEventType_Unknown, types.ErrUnAuthorized
+		}
+
+		return &issuePayload, types.WebhookEventType_IssueStateUpdated, nil
 	}
 
 	var payload linear.AgentSessionEventData
 
 	if err := json.Unmarshal(rawBody, &payload); err != nil {
 		slog.Error("failed unmarshing request bosy", "err", err)
-		return nil, types.ErrBadRequest
+		return nil, types.WebhookEventType_Unknown, types.ErrBadRequest
 	}
 
 	diff := time.Since(time.UnixMilli(payload.WebhookTimestamp))
 
 	if diff < -60*time.Second || diff > 60*time.Second {
 		slog.Error("request is past the 60 seconds expectation from linear")
-		return nil, types.ErrUnAuthorized
+		return nil, types.WebhookEventType_Unknown, types.ErrUnAuthorized
 	}
 
-	return &payload, nil
+	return &payload, types.WebhookEventType_AIRequest, nil
 }
 
 // doRequest executes an authenticated GraphQL request against the Linear API.

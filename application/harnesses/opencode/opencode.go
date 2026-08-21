@@ -382,6 +382,10 @@ func (h *OpenCode) Dispose(ctx context.Context) error {
 	return nil
 }
 
+func (h *OpenCode) Archive(ctx context.Context) error {
+	return h.config.Sandbox.Archive(ctx)
+}
+
 func (h *OpenCode) installOpenCode(ctx context.Context) error {
 	if _, err := h.config.Sandbox.ExecuteCommand(ctx, fmt.Sprintf("%s %s", OPENCODE_INSTALL_SCRIPT, OPENCODE_INSTALL_VERSION), time.Minute*2); err != nil {
 		return err

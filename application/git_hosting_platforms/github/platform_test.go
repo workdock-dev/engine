@@ -649,8 +649,9 @@ func (s *GitHubPlatformSuite) TestWebhook() {
 
 	s.client.On("Webhook", mock.Anything, req).Return(expected, nil)
 
-	result, err := s.platform.Webhook(context.Background(), req)
+	result, eventType, err := s.platform.Webhook(context.Background(), req)
 	s.NoError(err)
+	s.Equal(types.WebhookEventType_Git, eventType)
 	s.Equal(expected, result)
 }
 

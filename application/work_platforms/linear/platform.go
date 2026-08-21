@@ -28,13 +28,14 @@ import (
 
 // Config holds the dependencies required to run Linear sessions.
 type Config struct {
-	HarnessRegistry       ports.HarnessPlatformRegistry
-	GitHostingRegistry    ports.GitHostingPlatformRegistry
-	ForSecrets            ports.ForSecrets
-	Sessions              repositories.SessionRepository
-	Organizations         repositories.OrganizationRepository
-	Client                LinearClientInterface
-	GitHubAppInstallURL   string
+	HarnessRegistry     ports.HarnessPlatformRegistry
+	GitHostingRegistry  ports.GitHostingPlatformRegistry
+	ForSecrets          ports.ForSecrets
+	ForEvent            ports.ForEventBus
+	Sessions            repositories.SessionRepository
+	Organizations       repositories.OrganizationRepository
+	Client              LinearClientInterface
+	GitHubAppInstallURL string
 }
 
 // linearPlatform adapts AIService to the Linear provider. It normalizes Linear
@@ -44,9 +45,45 @@ type linearPlatform struct {
 }
 
 func New(config Config) ports.ForWorkPlatform {
-	return &linearPlatform{
+	p := &linearPlatform{
 		config: config,
 	}
+
+	// Subscribe to Linear webhook events to archive sandboxes when an issue
+	// transitions to a "done" status.
+	if config.ForEvent != nil {
+		eventType := types.PlatformWebhookEvent(types.PlatformProvider_Linear)
+		slog.Debug("linearPlatform subscribed for event", "event_type", eventType)
+
+		config.ForEvent.Subscribe(
+			eventType,
+			func(ctx context.Context, event ports.DomainEvent) error {
+				e, ok := event.(types.WebhookEvent)
+
+				if !ok {
+					return fmt.Errorf("expected a webhook event, received %s", event.EventType())
+				}
+
+				if e.Type != types.WebhookEventType_IssueStateUpdated {
+					return nil
+				}
+
+				issueChange, ok := e.Payload.(*IssueStatusChangePayload)
+				if !ok {
+					slog.Debug("issue-state-updated event payload is not an IssueStatusChangePayload")
+					return nil
+				}
+
+				if issueChange.Action != "update" || issueChange.UpdatedFrom.StateName == "" || issueChange.UpdatedFrom.StateName == issueChange.Data.StateName {
+					return nil
+				}
+
+				return p.archiveSandboxForIssue(ctx, issueChange.Data.ID)
+			},
+		)
+	}
+
+	return p
 }
 
 // BeginOAuth initiates the OAuth flow and returns the redirect URL
@@ -210,7 +247,7 @@ func (p *linearPlatform) IsCancelSignal(ctx context.Context, event any) (bool, e
 }
 
 // Webhook handles an incoming webhook request from the any platform.
-func (p *linearPlatform) Webhook(ctx context.Context, req types.WebhookRequest) (any, error) {
+func (p *linearPlatform) Webhook(ctx context.Context, req types.WebhookRequest) (any, types.WebhookEventType, error) {
 	return p.config.Client.Webhook(ctx, req)
 }
 
@@ -241,4 +278,50 @@ func (p *linearPlatform) castAnyToAgentSessionEventData(event any) (*AgentSessio
 	}
 
 	return linearEvent, nil
+}
+
+// archiveSandboxForIssue archives the sandbox associated with a session when
+// an issue transitions to a "done" status. It looks up all sessions for the
+// given issue ID, constructs a harness from the registry for each session,
+// and calls Archive on it.
+func (p *linearPlatform) archiveSandboxForIssue(ctx context.Context, issueId string) error {
+	sessions, err := p.config.Sessions.GetAgentSessionsByIssueId(ctx, issueId)
+
+	if err != nil {
+		slog.Error("failed to get sessions for issue", "err", err, "issue_id", issueId)
+		return err
+	}
+
+	if len(sessions) == 0 {
+		slog.Debug("no sessions found for issue, nothing to archive", "issue_id", issueId)
+		return nil
+	}
+
+	for _, session := range sessions {
+		harnessConstructor, ok := p.config.HarnessRegistry[types.HarnessProvider_OpenCode]
+
+		if !ok {
+			slog.Error("harness provider not found in registry", "provider", types.HarnessProvider_OpenCode)
+			continue
+		}
+
+		harness, err := harnessConstructor(ports.NewHarnessConstructor{
+			Session: session,
+			Secrets: map[string]string{
+				"linearAccessToken": "nop-secret",
+			},
+		})
+
+		if err != nil {
+			slog.Error("failed to create harness for archive", "err", err, "session_identifier", session.Identifier)
+			continue
+		}
+
+		if err := harness.Archive(ctx); err != nil {
+			slog.Error("failed to archive sandbox for session", "err", err, "session_identifier", session.Identifier, "issue_id", issueId)
+			continue
+		}
+	}
+
+	return nil
 }

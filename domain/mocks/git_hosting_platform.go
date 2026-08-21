@@ -40,7 +40,7 @@ func (m *GitHostingPlatform) RequestConnection(ctx context.Context, sessionEvent
 	return args.Error(0)
 }
 
-func (m *GitHostingPlatform) Webhook(ctx context.Context, req types.WebhookRequest) (any, error) {
+func (m *GitHostingPlatform) Webhook(ctx context.Context, req types.WebhookRequest) (any, types.WebhookEventType, error) {
 	args := m.Called(ctx, req)
-	return args.Get(0), args.Error(1)
+	return args.Get(0), args.Get(1).(types.WebhookEventType), args.Error(2)
 }

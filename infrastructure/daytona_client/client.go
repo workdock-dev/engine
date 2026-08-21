@@ -243,6 +243,59 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 	return nil
 }
 
+func (s *Sandbox) Archive(ctx context.Context) error {
+	if s.client == nil {
+		return errSandboxNotInitialized
+	}
+
+	if s.sandbox == nil {
+		sandbox, err := retryRateLimited(ctx, throttlerAuthenticated, "get sandbox for archive", func() (*daytona.Sandbox, error) {
+			return s.client.Get(ctx, s.sessionId)
+		})
+
+		if err != nil {
+			if errors.Is(err, sdkerrors.ErrNotFound) {
+				slog.Debug("sandbox not found for archive, skipping", "session_identifier", s.sessionId)
+				return nil
+			}
+
+			slog.Error("failed to get daytona sandbox for archive", "err", err, "session_identifier", s.sessionId)
+			return err
+		}
+
+		s.sandbox = sandbox
+	}
+
+	state := s.sandbox.State
+
+	if state == "Archived" {
+		slog.Debug("sandbox already archived, skipping", "session_identifier", s.sessionId)
+		return nil
+	}
+
+	if state != "Stopped" {
+		slog.Debug("stopping sandbox before archive", "session_identifier", s.sessionId, "state", state)
+
+		if err := s.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
+
+	if err := retryRateLimitedVoid(ctx, throttlerSandboxLifecycle, "archive sandbox", func() error {
+		if err := preflight(ctx, throttlerSandboxLifecycle, "archive sandbox"); err != nil {
+			return err
+		}
+
+		return s.sandbox.Archive(ctx)
+	}); err != nil {
+		slog.Error("failed to archive daytona sandbox", "err", err, "event_identifier", s.sessionEventId)
+		return err
+	}
+
+	slog.Info("archived daytona sandbox for done issue", "session_identifier", s.sessionId)
+	return nil
+}
+
 func (s *Sandbox) UploadFile(ctx context.Context, data []byte, path string) error {
 	if s.sandbox == nil {
 		return errSandboxNotInitialized

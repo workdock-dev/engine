@@ -24,7 +24,9 @@ import (
 // deliver events to the application through webhooks.
 type ForWebhooks interface {
 	// Webhook handles an incoming webhook request from the platform.
-	Webhook(ctx context.Context, req types.WebhookRequest) (any, error)
+	// It returns the parsed payload, the type of domain webhook event, and
+	// any error encountered during validation or parsing.
+	Webhook(ctx context.Context, req types.WebhookRequest) (any, types.WebhookEventType, error)
 }
 
 // WebhooksRegistry maps platform providers to their webhook adapters.

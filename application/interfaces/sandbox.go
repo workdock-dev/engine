@@ -27,6 +27,7 @@ type Sandbox interface {
 	DeleteSecret(ctx context.Context, secretId string) error
 	Start(ctx context.Context) error
 	Shutdown(ctx context.Context) error
+	Archive(ctx context.Context) error
 	UploadFile(ctx context.Context, data []byte, path string) error
 	UpdateEnv(ctx context.Context, envVars map[string]string) error
 	ConfigureGitUser(ctx context.Context, name, email string) error

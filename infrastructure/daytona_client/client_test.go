@@ -143,6 +143,12 @@ func (s *ClientSuite) TestUpdateExistingSandbox_NilSandbox() {
 	s.ErrorIs(err, errSandboxNotInitialized)
 }
 
+func (s *ClientSuite) TestArchive_NilSandbox() {
+	sandbox := &Sandbox{sessionId: "s1", sessionEventId: "e1"}
+	err := sandbox.Archive(context.Background())
+	s.ErrorIs(err, errSandboxNotInitialized)
+}
+
 func (s *ClientSuite) TestSetSecret_NilClient() {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

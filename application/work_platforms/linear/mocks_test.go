@@ -71,12 +71,12 @@ func (m *mockLinearClient) SetExternalURLs(ctx context.Context, accessToken stri
 	return args.Get(0).(*AgentSessionUpdatePayload), args.Error(1)
 }
 
-func (m *mockLinearClient) Webhook(ctx context.Context, req types.WebhookRequest) (*AgentSessionEventData, error) {
+func (m *mockLinearClient) Webhook(ctx context.Context, req types.WebhookRequest) (any, types.WebhookEventType, error) {
 	args := m.Called(ctx, req)
 	if args.Get(0) == nil {
-		return nil, args.Error(1)
+		return nil, args.Get(1).(types.WebhookEventType), args.Error(2)
 	}
-	return args.Get(0).(*AgentSessionEventData), args.Error(1)
+	return args.Get(0), args.Get(1).(types.WebhookEventType), args.Error(2)
 }
 
 type mockSecrets struct {
@@ -108,6 +108,14 @@ func (m *mockSessions) GetAgentSession(ctx context.Context, identifier string) (
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*types.Session), args.Error(1)
+}
+
+func (m *mockSessions) GetAgentSessionsByIssueId(ctx context.Context, issueId string) ([]*types.Session, error) {
+	args := m.Called(ctx, issueId)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]*types.Session), args.Error(1)
 }
 
 func (m *mockSessions) GetAgentSessionEvent(ctx context.Context, identifier string) (*types.SessionEvent, error) {
@@ -180,6 +188,11 @@ func (m *mockHarness) Dispose(ctx context.Context) error {
 	return args.Error(0)
 }
 
+func (m *mockHarness) Archive(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
+}
+
 type mockGitHosting struct {
 	mock.Mock
 }
@@ -199,9 +212,9 @@ func (m *mockGitHosting) RequestConnection(ctx context.Context, sessionEventIden
 	return args.Error(0)
 }
 
-func (m *mockGitHosting) Webhook(ctx context.Context, req types.WebhookRequest) (any, error) {
+func (m *mockGitHosting) Webhook(ctx context.Context, req types.WebhookRequest) (any, types.WebhookEventType, error) {
 	args := m.Called(ctx, req)
-	return args.Get(0), args.Error(1)
+	return args.Get(0), args.Get(1).(types.WebhookEventType), args.Error(2)
 }
 
 // Compile-time interface checks.

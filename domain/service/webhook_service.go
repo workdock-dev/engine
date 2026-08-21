@@ -45,7 +45,7 @@ func (s *WebhookService) On(ctx context.Context, name types.PlatformProvider, re
 		return err
 	}
 
-	event, err := workPlatform.Webhook(ctx, req)
+	event, eventType, err := workPlatform.Webhook(ctx, req)
 
 	if err != nil {
 		return err
@@ -54,9 +54,10 @@ func (s *WebhookService) On(ctx context.Context, name types.PlatformProvider, re
 	s.config.ForEventBus.Publish(context.Background(), types.WebhookEvent{
 		Provider: name,
 		Payload:  event,
+		Type:      eventType,
 	})
 
-	slog.Debug("Webhook event accepted", "from", name, "event", event)
+	slog.Debug("Webhook event accepted", "from", name, "event", event, "type", eventType)
 	return nil
 }
 

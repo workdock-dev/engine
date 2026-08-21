@@ -624,7 +624,7 @@ func (s *LinearServiceSuite) TestWebhook_IPDenied() {
 	svc := s.newServiceNoServer("", "")
 	body := `{"webhookTimestamp":` + fmt.Sprintf("%d", time.Now().UnixMilli()) + `}`
 	req := s.newWebhookRequest(body, "", "10.99.99.99:1234", nil)
-	_, err := svc.Webhook(context.Background(), req)
+	_, _, err := svc.Webhook(context.Background(), req)
 	s.ErrorIs(err, types.ErrForbidden)
 }
 
@@ -635,7 +635,7 @@ func (s *LinearServiceSuite) TestWebhook_BodyReadError() {
 		RemoteAddr: "10.0.0.1:1234",
 		Headers:    map[string][]string{},
 	}
-	_, err := svc.Webhook(context.Background(), req)
+	_, _, err := svc.Webhook(context.Background(), req)
 	s.ErrorIs(err, types.ErrBadRequest)
 }
 
@@ -643,7 +643,7 @@ func (s *LinearServiceSuite) TestWebhook_InvalidSignature() {
 	svc := s.newServiceNoServer("", "")
 	body := fmt.Sprintf(`{"webhookTimestamp":%d}`, time.Now().UnixMilli())
 	req := s.newWebhookRequest(body, "0000000000000000000000000000000000000000000000000000000000000000", "10.0.0.1:1234", nil)
-	_, err := svc.Webhook(context.Background(), req)
+	_, _, err := svc.Webhook(context.Background(), req)
 	s.ErrorIs(err, types.ErrUnAuthorized)
 }
 
@@ -652,7 +652,7 @@ func (s *LinearServiceSuite) TestWebhook_BadJSON() {
 	body := `{invalid-json`
 	sig := computeHMAC("test-secret", []byte(body))
 	req := s.newWebhookRequest(body, sig, "10.0.0.1:1234", nil)
-	_, err := svc.Webhook(context.Background(), req)
+	_, _, err := svc.Webhook(context.Background(), req)
 	s.ErrorIs(err, types.ErrBadRequest)
 }
 
@@ -661,7 +661,7 @@ func (s *LinearServiceSuite) TestWebhook_TimestampExpired() {
 	body := fmt.Sprintf(`{"webhookTimestamp":%d}`, time.Now().Add(-5*time.Minute).UnixMilli())
 	sig := computeHMAC("test-secret", []byte(body))
 	req := s.newWebhookRequest(body, sig, "10.0.0.1:1234", nil)
-	_, err := svc.Webhook(context.Background(), req)
+	_, _, err := svc.Webhook(context.Background(), req)
 	s.ErrorIs(err, types.ErrUnAuthorized)
 }
 
@@ -671,11 +671,14 @@ func (s *LinearServiceSuite) TestWebhook_Success() {
 	body := fmt.Sprintf(`{"webhookTimestamp":%d,"action":"create","type":"agentSession"}`, ts)
 	sig := computeHMAC("test-secret", []byte(body))
 	req := s.newWebhookRequest(body, sig, "10.0.0.1:1234", nil)
-	result, err := svc.Webhook(context.Background(), req)
+	result, eventType, err := svc.Webhook(context.Background(), req)
 	s.NoError(err)
-	s.Equal("create", result.Action)
-	s.Equal("agentSession", result.Type)
-	s.Equal(ts, result.WebhookTimestamp)
+	s.Equal(types.WebhookEventType_AIRequest, eventType)
+	parsed, ok := result.(*linear.AgentSessionEventData)
+	s.Require().True(ok)
+	s.Equal("create", parsed.Action)
+	s.Equal("agentSession", parsed.Type)
+	s.Equal(ts, parsed.WebhookTimestamp)
 }
 
 // --- doRequest() (tested via getWorkspaceInfo which calls doRequest) ---

@@ -53,10 +53,11 @@ func (s *WebhookServiceSuite) TestOn_Success() {
 	req := types.WebhookRequest{Headers: map[string][]string{"X-Test": {"value"}}}
 	payload := "parsed-payload"
 
-	s.platform.On("Webhook", mock.Anything, req).Return(payload, nil)
+	s.platform.On("Webhook", mock.Anything, req).Return(payload, types.WebhookEventType_AIRequest, nil)
 	s.eventBus.On("Publish", mock.Anything, types.WebhookEvent{
 		Provider: provider,
 		Payload:  payload,
+		Type:      types.WebhookEventType_AIRequest,
 	}).Return(nil)
 
 	svc := s.newService(ports.WebhooksRegistry{
@@ -86,7 +87,7 @@ func (s *WebhookServiceSuite) TestOn_WebhookError() {
 	req := types.WebhookRequest{}
 	webhookErr := errors.New("invalid signature")
 
-	s.platform.On("Webhook", mock.Anything, req).Return(nil, webhookErr)
+	s.platform.On("Webhook", mock.Anything, req).Return(nil, types.WebhookEventType_Unknown, webhookErr)
 
 	svc := s.newService(ports.WebhooksRegistry{
 		provider: s.platform,

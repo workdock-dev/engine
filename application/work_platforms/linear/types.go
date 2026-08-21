@@ -133,6 +133,7 @@ type Issue struct {
 	TeamID      string `json:"teamId"`
 	Team        Team   `json:"team"`
 	Identifier  string `json:"identifier"`
+	StateName   string `json:"stateName"`
 	URL         string `json:"url"`
 	Description string `json:"description"`
 }
@@ -206,4 +207,20 @@ type Token struct {
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token"`
 	ExpiresAt    time.Time `json:"expires_at"`
+}
+
+// IssueStatusChangePayload represents a Linear webhook payload for an Issue
+// data change event. The action field is "update" when an issue's state
+// changes, and UpdatedFrom contains the previous field values.
+type IssueStatusChangePayload struct {
+	Action           string `json:"action"`
+	Type             string `json:"type"`
+	OrganizationID   string `json:"organizationId"`
+	WebhookID       string `json:"webhookId"`
+	CreatedAt        string `json:"createdAt"`
+	WebhookTimestamp int64  `json:"webhookTimestamp"`
+	Data             Issue  `json:"data"`
+	UpdatedFrom      struct {
+		StateName string `json:"stateName"`
+	} `json:"updatedFrom"`
 }
