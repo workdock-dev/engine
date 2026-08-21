@@ -71,13 +71,14 @@ type SecretSpec struct {
 }
 
 type ConfigExternal struct {
-	Model               string                `yaml:"model"`
-	Permission          map[string]any        `yaml:"permission"`
-	Secrets             map[string]SecretSpec `yaml:"secrets"`
-	Provider            map[string]any        `yaml:"provider"`
-	DestroyOnDispose    bool                  `yaml:"destroy_on_dispose"`
-	LivenessTimeoutSecs int                   `yaml:"liveness_timeout_seconds"`
-	MaxHealthMisses     int                   `yaml:"max_health_misses"`
+	Model                  string                `yaml:"model"`
+	Permission             map[string]any        `yaml:"permission"`
+	Secrets                map[string]SecretSpec `yaml:"secrets"`
+	Provider               map[string]any        `yaml:"provider"`
+	DestroyOnDispose       bool                  `yaml:"destroy_on_dispose"`
+	LivenessTimeoutSecs    int                   `yaml:"liveness_timeout_seconds"`
+	MaxHealthMisses        int                   `yaml:"max_health_misses"`
+	SandboxCreationRetries int                   `yaml:"sandbox_creation_retries"`
 }
 
 type Config struct {
@@ -194,18 +195,15 @@ func (h *OpenCode) start(ctx context.Context) error {
 }
 
 func (h *OpenCode) setup(ctx context.Context) error {
-	// Things todo only when sandbox just got created
 	if h.sandboxCreated {
 		if err := h.installOpenCode(ctx); err != nil {
-			// Delete it so it doesn't stay in an dirty state
 			h.config.Sandbox.DeleteSandbox(context.Background())
-			return err
+			return fmt.Errorf("%w: %w", types.ErrSandboxCreationRetryable, err)
 		}
 
 		if err := h.installGitHubCLI(ctx); err != nil {
-			// Delete it so it doesn't stay in an dirty state
 			h.config.Sandbox.DeleteSandbox(context.Background())
-			return err
+			return fmt.Errorf("%w: %w", types.ErrSandboxCreationRetryable, err)
 		}
 
 		if err := h.config.Sandbox.ConfigureGitUser(ctx, "workdock[bot]", "no-reply@workdock.dev"); err != nil {
@@ -243,22 +241,39 @@ func (h *OpenCode) setup(ctx context.Context) error {
 }
 
 func (h *OpenCode) Run(ctx context.Context) (*types.SessionEventResult, error) {
-	if err := telemetry.SpanErr(ctx, h.tracer, "opencode.create", func(ctx context.Context) error {
-		return h.create(ctx)
-	}); err != nil {
-		return nil, err
-	}
+	var lastErr error
 
-	if err := telemetry.SpanErr(ctx, h.tracer, "opencode.start", func(ctx context.Context) error {
-		return h.start(ctx)
-	}); err != nil {
-		return nil, err
-	}
+	maxRetries := h.config.SandboxCreationRetries
 
-	if err := telemetry.SpanErr(ctx, h.tracer, "opencode.setup", func(ctx context.Context) error {
-		return h.setup(ctx)
-	}); err != nil {
-		return nil, err
+	for attempt := 0; ; attempt++ {
+		if attempt > 0 {
+			slog.Debug("retrying sandbox creation", "event_identifier", h.config.SessionEvent.Identifier, "attempt", attempt, "max_retries", maxRetries)
+		}
+
+		if err := telemetry.SpanErr(ctx, h.tracer, "opencode.create", func(ctx context.Context) error {
+			return h.create(ctx)
+		}); err != nil {
+			return nil, err
+		}
+
+		if err := telemetry.SpanErr(ctx, h.tracer, "opencode.start", func(ctx context.Context) error {
+			return h.start(ctx)
+		}); err != nil {
+			return nil, err
+		}
+
+		if err := telemetry.SpanErr(ctx, h.tracer, "opencode.setup", func(ctx context.Context) error {
+			return h.setup(ctx)
+		}); err != nil {
+			if errors.Is(err, types.ErrSandboxCreationRetryable) && attempt < maxRetries {
+				lastErr = err
+				h.Dispose(context.Background())
+				continue
+			}
+			return nil, err
+		}
+
+		break
 	}
 
 	// We are ready, happy prompting!

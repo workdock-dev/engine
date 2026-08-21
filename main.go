@@ -45,18 +45,19 @@ import (
 )
 
 type Config struct {
-	ServiceName        string                                  `yaml:"service_name"`
-	ServerAddress      string                                  `yaml:"server_address"`
-	Workers            int                                     `yaml:"workers"`
-	WorkerLeaseSeconds int                                     `yaml:"worker_lease_seconds"`
-	DaytonaConfig      daytona_client.SandboxConfig            `yaml:"daytona"`
-	Linear             linear_client.LinearServiceConfig       `yaml:"linear"`
-	Opencode           opencode.ConfigExternal                 `yaml:"opencode"`
-	Infisical          infisical_client.InfisicalServiceConfig `yaml:"infisical"`
-	Secrets            SecretsConfig                           `yaml:"secrets"`
-	Postgres           postgres_client.PostgresServiceConfig   `yaml:"postgres"`
-	Github             github_client.GitHubClientConfig        `yaml:"github"`
-	Otlp               *otlp_client.Config                     `yaml:"otlp"`
+	ServiceName            string                                  `yaml:"service_name"`
+	ServerAddress          string                                  `yaml:"server_address"`
+	Workers                int                                     `yaml:"workers"`
+	WorkerLeaseSeconds     int                                     `yaml:"worker_lease_seconds"`
+	SandboxCreationRetries int                                     `yaml:"sandbox_creation_retries"`
+	DaytonaConfig          daytona_client.SandboxConfig            `yaml:"daytona"`
+	Linear                 linear_client.LinearServiceConfig       `yaml:"linear"`
+	Opencode               opencode.ConfigExternal                 `yaml:"opencode"`
+	Infisical              infisical_client.InfisicalServiceConfig `yaml:"infisical"`
+	Secrets                SecretsConfig                           `yaml:"secrets"`
+	Postgres               postgres_client.PostgresServiceConfig   `yaml:"postgres"`
+	Github                 github_client.GitHubClientConfig        `yaml:"github"`
+	Otlp                   *otlp_client.Config                     `yaml:"otlp"`
 }
 
 // SecretsConfig selects the secrets provider the engine wires as
@@ -94,6 +95,10 @@ func main() {
 
 	if cfg.Workers <= 0 {
 		cfg.Workers = 3
+	}
+
+	if cfg.SandboxCreationRetries < 0 {
+		cfg.SandboxCreationRetries = 0
 	}
 
 	serviceName := fmt.Sprintf("workdock-%s", uuid.NewString())

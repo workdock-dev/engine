@@ -113,6 +113,7 @@ type linearAISessionConfig struct {
 	Session               *types.Session
 	Payload               *AgentSessionEventData
 	GitHubAppInstallURL   string
+	MaxAttempts           int
 }
 
 type linearAISession struct {
@@ -278,7 +279,18 @@ func (s *linearAISession) Process(ctx context.Context) error {
 			return err
 		}
 
-		s.reportServerInternalError(ctx)
+		attemptsLeft := s.config.MaxAttempts - s.config.Job.Attempts
+		if errors.Is(err, types.ErrSandboxCreationRetryable) && attemptsLeft > 0 {
+			slog.Debug("sandbox creation failed but is retryable", "event_identifier", s.config.SessionEvent.Identifier, "attempts_left", attemptsLeft)
+			return err
+		}
+
+		if attemptsLeft > 0 {
+			s.notifyRetryScheduled(ctx, attemptsLeft)
+		} else {
+			s.reportServerInternalError(ctx)
+		}
+
 		return err
 	}
 
@@ -464,4 +476,15 @@ func (s *linearAISession) reportServerInternalError(ctx context.Context) {
 
 func (s *linearAISession) isContextCanceledOrDeadlineExceeded(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
+func (s *linearAISession) notifyRetryScheduled(ctx context.Context, attemptsLeft int) {
+	slog.Debug("notifying user about retry", "event_identifier", s.config.SessionEvent.Identifier, "attempts_left", attemptsLeft)
+	s.config.Client.CreateAgentActivity(ctx, s.accessToken, CreateAgentActivityInput{
+		AgentSessionID: s.config.Session.Identifier,
+		Content: AgentActivityContent{
+			Type: AgentActivityContentType_Error,
+			Body: fmt.Sprintf("Execution failed but will be retried automatically. %d attempt(s) remaining.", attemptsLeft),
+		},
+	})
 }

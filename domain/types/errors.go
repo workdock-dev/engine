@@ -45,4 +45,9 @@ var (
 	// determines the agent process has stopped emitting output and must be
 	// disposed so the job can be retried.
 	ErrHarnessUnhealthy = errors.New("harness declared unhealthy")
+
+	// ErrSandboxCreationRetryable is returned when sandbox creation or setup
+	// fails due to a transient error (e.g., network issues, package download
+	// failures) that may succeed on retry.
+	ErrSandboxCreationRetryable = errors.New("sandbox creation failed but is retryable")
 )

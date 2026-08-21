@@ -24,6 +24,7 @@ type ProcessConfig struct {
 	Job          *types.EventJob
 	SessionEvent *types.SessionEvent
 	Session      *types.Session
+	MaxAttempts  int
 }
 
 // ForWorkPlatform defines the port for integrating a work platform such as
