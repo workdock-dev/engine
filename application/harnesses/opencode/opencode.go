@@ -241,8 +241,6 @@ func (h *OpenCode) setup(ctx context.Context) error {
 }
 
 func (h *OpenCode) Run(ctx context.Context) (*types.SessionEventResult, error) {
-	var lastErr error
-
 	maxRetries := h.config.SandboxCreationRetries
 
 	for attempt := 0; ; attempt++ {
@@ -266,7 +264,6 @@ func (h *OpenCode) Run(ctx context.Context) (*types.SessionEventResult, error) {
 			return h.setup(ctx)
 		}); err != nil {
 			if errors.Is(err, types.ErrSandboxCreationRetryable) && attempt < maxRetries {
-				lastErr = err
 				h.Dispose(context.Background())
 				continue
 			}
