@@ -244,6 +244,10 @@ func (s *Sandbox) Shutdown(ctx context.Context) error {
 }
 
 func (s *Sandbox) Archive(ctx context.Context) error {
+	if s.client == nil {
+		return errSandboxNotInitialized
+	}
+
 	if s.sandbox == nil {
 		sandbox, err := retryRateLimited(ctx, throttlerAuthenticated, "get sandbox for archive", func() (*daytona.Sandbox, error) {
 			return s.client.Get(ctx, s.sessionId)

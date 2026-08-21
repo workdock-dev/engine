@@ -130,7 +130,7 @@ func (s *AIServiceSuite) TestWebhookHandler_NonCancelDelegatesToSession() {
 	s.sessions.On("UpsertAgentSession", mock.Anything, s.session).Return(nil)
 	s.sessions.On("CreateSessionEvent", mock.Anything, s.sessionEvent).Return(nil)
 
-	event := types.WebhookEvent{Provider: s.provider, Payload: payload}
+	event := types.WebhookEvent{Provider: s.provider, Payload: payload, Type: types.WebhookEventType_AIRequest}
 	err := s.eventBus.Invoke(context.Background(), types.PlatformWebhookEvent(s.provider), event)
 
 	s.NoError(err)
@@ -149,7 +149,7 @@ func (s *AIServiceSuite) TestWebhookHandler_CancelDelegatesToCancel() {
 	s.workPlat.On("Cancel", mock.Anything, s.session).Return(nil)
 	s.sessions.On("CancelSession", mock.Anything, "sess-1", "cancelled by user").Return(1, nil)
 
-	event := types.WebhookEvent{Provider: s.provider, Payload: cancelPayload}
+	event := types.WebhookEvent{Provider: s.provider, Payload: cancelPayload, Type: types.WebhookEventType_AIRequest}
 	err := s.eventBus.Invoke(context.Background(), types.PlatformWebhookEvent(s.provider), event)
 
 	s.NoError(err)
@@ -175,7 +175,7 @@ func (s *AIServiceSuite) TestWebhookHandler_IsCancelSignalError() {
 	cancelErr := errors.New("cancel check failed")
 	s.workPlat.On("IsCancelSignal", mock.Anything, payload).Return(false, cancelErr)
 
-	event := types.WebhookEvent{Provider: s.provider, Payload: payload}
+	event := types.WebhookEvent{Provider: s.provider, Payload: payload, Type: types.WebhookEventType_AIRequest}
 	err := s.eventBus.Invoke(context.Background(), types.PlatformWebhookEvent(s.provider), event)
 
 	s.ErrorIs(err, cancelErr)
@@ -191,7 +191,7 @@ func (s *AIServiceSuite) TestWebhookHandler_PlatformNotFound() {
 		otherProvider: s.workPlat,
 	})
 
-	event := types.WebhookEvent{Provider: s.provider, Payload: []byte(`{}`)}
+	event := types.WebhookEvent{Provider: s.provider, Payload: []byte(`{}`), Type: types.WebhookEventType_AIRequest}
 	err := s.eventBus.Invoke(context.Background(), types.PlatformWebhookEvent(otherProvider), event)
 
 	s.Error(err)

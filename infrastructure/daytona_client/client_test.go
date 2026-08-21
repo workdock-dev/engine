@@ -143,12 +143,10 @@ func (s *ClientSuite) TestUpdateExistingSandbox_NilSandbox() {
 	s.ErrorIs(err, errSandboxNotInitialized)
 }
 
-func (s *ClientSuite) TestArchive_NilSandbox_LookupFails() {
+func (s *ClientSuite) TestArchive_NilSandbox() {
 	sandbox := &Sandbox{sessionId: "s1", sessionEventId: "e1"}
-	// With nil sandbox, Archive attempts to look up the sandbox.
-	// Without a real Daytona API, this will fail with a network error.
 	err := sandbox.Archive(context.Background())
-	s.Error(err)
+	s.ErrorIs(err, errSandboxNotInitialized)
 }
 
 func (s *ClientSuite) TestSetSecret_NilClient() {
