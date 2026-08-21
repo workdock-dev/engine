@@ -175,10 +175,15 @@ func main() {
 
 	// Registries configuration
 	opencodeHarness := func(consturctor ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
+		sessionEventId := "not-set"
+		if consturctor.SessionEvent != nil {
+			sessionEventId = consturctor.SessionEvent.Identifier
+		}
+
 		sandbox, err := daytona_client.NewSandbox(
 			cfg.DaytonaConfig,
 			consturctor.Session.Identifier,
-			consturctor.SessionEvent.Identifier,
+			sessionEventId,
 		)
 
 		if err != nil {
