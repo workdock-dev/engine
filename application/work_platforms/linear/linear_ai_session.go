@@ -279,12 +279,17 @@ func (s *linearAISession) Process(ctx context.Context) error {
 			return err
 		}
 
-		attemptsLeft := s.config.MaxAttempts - s.config.Job.Attempts
-		if errors.Is(err, types.ErrSandboxCreationRetryable) && attemptsLeft > 0 {
-			slog.Debug("sandbox creation failed but is retryable", "event_identifier", s.config.SessionEvent.Identifier, "attempts_left", attemptsLeft)
-			return err
+		if errors.Is(err, types.ErrSandboxCreationRetryable) {
+			if s.config.Job != nil && s.config.MaxAttempts-s.config.Job.Attempts > 0 {
+				slog.Debug("sandbox creation failed but is retryable", "event_identifier", s.config.SessionEvent.Identifier)
+				return err
+			}
 		}
 
+		attemptsLeft := 0
+		if s.config.Job != nil {
+			attemptsLeft = s.config.MaxAttempts - s.config.Job.Attempts
+		}
 		if attemptsLeft > 0 {
 			s.notifyRetryScheduled(ctx, attemptsLeft)
 		} else {
