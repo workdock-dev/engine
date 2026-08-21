@@ -58,6 +58,8 @@ else
     printf '%s\n' "$output" >&2
     exit "$exit_code"
 fi`
+
+	MaxInstallRetries = 3
 )
 
 // SecretSpec describes a dynamic secret configured per deployment: its
@@ -394,21 +396,31 @@ func (h *OpenCode) Archive(ctx context.Context) error {
 }
 
 func (h *OpenCode) installOpenCode(ctx context.Context) error {
-	if _, err := h.config.Sandbox.ExecuteCommand(ctx, fmt.Sprintf("%s %s", OPENCODE_INSTALL_SCRIPT, OPENCODE_INSTALL_VERSION), time.Minute*2); err != nil {
-		return err
-	}
-
-	slog.Debug("Installed opencode", "event_identifier", h.config.SessionEvent.Identifier, "version", OPENCODE_INSTALL_VERSION)
-	return nil
+	return h.retryWithBackoff(ctx, "opencode installation", func(ctx context.Context) (string, error) {
+		return h.config.Sandbox.ExecuteCommand(ctx, fmt.Sprintf("%s %s", OPENCODE_INSTALL_SCRIPT, OPENCODE_INSTALL_VERSION), time.Minute*2)
+	})
 }
 
 func (h *OpenCode) installGitHubCLI(ctx context.Context) error {
-	if _, err := h.config.Sandbox.ExecuteCommand(ctx, GITHUB_CLI_INSTALL_SCRIPT, time.Minute*5); err != nil {
-		return err
-	}
+	return h.retryWithBackoff(ctx, "github cli installation", func(ctx context.Context) (string, error) {
+		return h.config.Sandbox.ExecuteCommand(ctx, GITHUB_CLI_INSTALL_SCRIPT, time.Minute*5)
+	})
+}
 
-	slog.Debug("Installed gh cli", "event_identifier", h.config.SessionEvent.Identifier)
-	return nil
+func (h *OpenCode) retryWithBackoff(ctx context.Context, operation string, fn func(context.Context) (string, error)) error {
+	var lastErr error
+	for attempt := 1; attempt <= MaxInstallRetries; attempt++ {
+		if attempt > 1 {
+			slog.Debug(fmt.Sprintf("retrying %s", operation), "event_identifier", h.config.SessionEvent.Identifier, "attempt", attempt)
+		}
+		if _, err := fn(ctx); err != nil {
+			lastErr = err
+			continue
+		}
+		slog.Debug(fmt.Sprintf("installed %s", operation), "event_identifier", h.config.SessionEvent.Identifier)
+		return nil
+	}
+	return lastErr
 }
 
 func (h *OpenCode) setupGitHubCredentials(ctx context.Context) error {

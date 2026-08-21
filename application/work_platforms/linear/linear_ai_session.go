@@ -103,16 +103,16 @@ It may clarify, refine, override, or replace previous requirements. When it conf
 )
 
 type linearAISessionConfig struct {
-	HarnessRegistry       ports.HarnessPlatformRegistry
-	GitHostingRegistry    ports.GitHostingPlatformRegistry
-	Client                LinearClientInterface
-	ForSecrets            ports.ForSecrets
-	Sessions              repositories.SessionRepository
-	Job                   *types.EventJob
-	SessionEvent          *types.SessionEvent
-	Session               *types.Session
-	Payload               *AgentSessionEventData
-	GitHubAppInstallURL   string
+	HarnessRegistry     ports.HarnessPlatformRegistry
+	GitHostingRegistry  ports.GitHostingPlatformRegistry
+	Client              LinearClientInterface
+	ForSecrets          ports.ForSecrets
+	Sessions            repositories.SessionRepository
+	Job                 *types.EventJob
+	SessionEvent        *types.SessionEvent
+	Session             *types.Session
+	Payload             *AgentSessionEventData
+	GitHubAppInstallURL string
 }
 
 type linearAISession struct {
@@ -273,12 +273,12 @@ func (s *linearAISession) Process(ctx context.Context) error {
 			return nil
 		}
 
-		if errors.Is(err, types.ErrHarnessUnhealthy) {
-			slog.Error("harness declared unhealthy; job will be retried", "event_identifier", s.config.SessionEvent.Identifier)
-			return err
+		if s.config.Job != nil && s.config.Job.WillRetry {
+			s.notifyRetryScheduled(ctx)
+		} else {
+			s.reportServerInternalError(ctx)
 		}
 
-		s.reportServerInternalError(ctx)
 		return err
 	}
 
@@ -464,4 +464,15 @@ func (s *linearAISession) reportServerInternalError(ctx context.Context) {
 
 func (s *linearAISession) isContextCanceledOrDeadlineExceeded(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
+func (s *linearAISession) notifyRetryScheduled(ctx context.Context) {
+	slog.Debug("notifying user about retry", "event_identifier", s.config.SessionEvent.Identifier)
+	s.config.Client.CreateAgentActivity(ctx, s.accessToken, CreateAgentActivityInput{
+		AgentSessionID: s.config.Session.Identifier,
+		Content: AgentActivityContent{
+			Type: AgentActivityContentType_Error,
+			Body: "Execution failed but will be retried automatically.",
+		},
+	})
 }
