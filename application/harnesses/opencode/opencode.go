@@ -196,23 +196,28 @@ func (h *OpenCode) start(ctx context.Context) error {
 }
 
 func (h *OpenCode) setup(ctx context.Context) error {
+	// Things todo only when sandbox just got created
 	if h.sandboxCreated {
 		if err := h.installOpenCode(ctx); err != nil {
+			// Delete it so it doesn't stay in an dirty state
 			h.config.Sandbox.DeleteSandbox(context.Background())
 			return err
 		}
 
 		if err := h.installGitHubCLI(ctx); err != nil {
+			// Delete it so it doesn't stay in an dirty state
 			h.config.Sandbox.DeleteSandbox(context.Background())
 			return err
 		}
 
 		if err := h.config.Sandbox.ConfigureGitUser(ctx, "workdock[bot]", "no-reply@workdock.dev"); err != nil {
+			// Delete it so it doesn't stay in an dirty state
 			h.config.Sandbox.DeleteSandbox(context.Background())
 			return err
 		}
 	}
 
+	// Things todo always
 	if err := h.uploadOpenCodeConfig(ctx); err != nil {
 		return err
 	}
