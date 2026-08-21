@@ -74,7 +74,7 @@ func New(config Config) ports.ForWorkPlatform {
 					return nil
 				}
 
-				if issueChange.Action != "update" || issueChange.UpdatedFrom.StateName == "" || issueChange.UpdatedFrom.StateName == issueChange.Data.StateName {
+				if issueChange.Action != "update" {
 					return nil
 				}
 
@@ -282,8 +282,8 @@ func (p *linearPlatform) castAnyToAgentSessionEventData(event any) (*AgentSessio
 
 // archiveSandboxForIssue archives the sandbox associated with a session when
 // an issue transitions to a "done" status. It looks up all sessions for the
-// given issue ID, constructs a harness from the registry for each session,
-// and calls Archive on it.
+// given issue ID, queries Linear for the current issue state, and only proceeds
+// with archiving when the issue state type is "completed".
 func (p *linearPlatform) archiveSandboxForIssue(ctx context.Context, issueId string) error {
 	sessions, err := p.config.Sessions.GetAgentSessionsByIssueId(ctx, issueId)
 
@@ -294,6 +294,28 @@ func (p *linearPlatform) archiveSandboxForIssue(ctx context.Context, issueId str
 
 	if len(sessions) == 0 {
 		slog.Debug("no sessions found for issue, nothing to archive", "issue_id", issueId)
+		return nil
+	}
+
+	accessToken, err := newTokenHandler(tokenHandlerConfig{
+		ForSecrets: p.config.ForSecrets,
+		Client:     p.config.Client,
+	}).GetLinearAccessToken(ctx, sessions[0].OrganizationIdentifier)
+
+	if err != nil {
+		slog.Error("failed to get linear access token for issue", "err", err, "issue_id", issueId)
+		return err
+	}
+
+	issue, err := p.config.Client.GetIssue(ctx, accessToken, issueId)
+
+	if err != nil {
+		slog.Error("failed to get issue state from linear", "err", err, "issue_id", issueId)
+		return err
+	}
+
+	if issue.StateType != "completed" {
+		slog.Debug("issue state is not done, skipping archive", "issue_id", issueId, "state_type", issue.StateType)
 		return nil
 	}
 

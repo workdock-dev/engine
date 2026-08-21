@@ -317,6 +317,66 @@ func (s *LinearService) CreateAgentActivity(ctx context.Context, accessToken str
 	return nil
 }
 
+// GetIssue retrieves the state information of a Linear issue.
+//
+//   - Queries Linear for the issue's state metadata including the state name
+//     and type.
+//   - Returns an IssueStateResult containing the issue ID, state name and state
+//     type.
+//
+// An error is returned if the specified issue cannot be found or the request
+// fails.
+func (s *LinearService) GetIssue(ctx context.Context, accessToken string, issueId string) (*linear.IssueStateResult, error) {
+	query := `query GetIssue($id: String!) {
+  issue(id: $id) {
+    id
+    state {
+      name
+      type
+    }
+  }
+}`
+
+	vars := map[string]any{
+		"id": issueId,
+	}
+
+	body, err := s.doRequest(ctx, query, vars, accessToken)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Issue *struct {
+			ID    string `json:"id"`
+			State *struct {
+				Name string `json:"name"`
+				Type string `json:"type"`
+			} `json:"state"`
+		} `json:"issue"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	if result.Issue == nil {
+		return nil, fmt.Errorf("issue not found: %s", issueId)
+	}
+
+	issueResult := &linear.IssueStateResult{
+		ID: result.Issue.ID,
+	}
+
+	if result.Issue.State != nil {
+		issueResult.StateName = result.Issue.State.Name
+		issueResult.StateType = result.Issue.State.Type
+	}
+
+	return issueResult, nil
+}
+
 // GetIssueLabels retrieves the labels currently assigned to a Linear issue.
 //
 //   - Queries Linear for the issue's label metadata.

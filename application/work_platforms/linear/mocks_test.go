@@ -63,6 +63,14 @@ func (m *mockLinearClient) GetIssueLabels(ctx context.Context, accessToken strin
 	return args.Get(0).([]IssueLabel), args.Error(1)
 }
 
+func (m *mockLinearClient) GetIssue(ctx context.Context, accessToken string, issueId string) (*IssueStateResult, error) {
+	args := m.Called(ctx, accessToken, issueId)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*IssueStateResult), args.Error(1)
+}
+
 func (m *mockLinearClient) SetExternalURLs(ctx context.Context, accessToken string, input SetExternalURLsInput) (*AgentSessionUpdatePayload, error) {
 	args := m.Called(ctx, accessToken, input)
 	if args.Get(0) == nil {

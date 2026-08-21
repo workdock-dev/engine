@@ -224,3 +224,11 @@ type IssueStatusChangePayload struct {
 		StateName string `json:"stateName"`
 	} `json:"updatedFrom"`
 }
+
+// IssueStateResult holds the state information for a Linear issue returned
+// by the GetIssue query.
+type IssueStateResult struct {
+	ID        string `json:"id"`
+	StateName string `json:"stateName"`
+	StateType string `json:"stateType"`
+}
