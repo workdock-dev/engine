@@ -60,17 +60,24 @@ else
 fi`
 )
 
+// SecretSpec describes a dynamic secret configured per deployment: its
+// plaintext value and the host allowlist Daytona may substitute it into.
+// The fields must be exported so yaml unmarshalling can populate them;
+// unexported fields are silently skipped, which used to create secrets
+// with an empty value and no host allowlist.
+type SecretSpec struct {
+	Value string   `yaml:"value"`
+	Hosts []string `yaml:"hosts"`
+}
+
 type ConfigExternal struct {
-	Model      string         `yaml:"model"`
-	Permission map[string]any `yaml:"permission"`
-	Secrets    map[string]struct {
-		value string   `yaml:"value"`
-		hosts []string `yaml:"hosts"`
-	} `yaml:"secrets"`
-	Provider            map[string]any `yaml:"provider"`
-	DestroyOnDispose    bool           `yaml:"destroy_on_dispose"`
-	LivenessTimeoutSecs int            `yaml:"liveness_timeout_seconds"`
-	MaxHealthMisses     int            `yaml:"max_health_misses"`
+	Model               string                `yaml:"model"`
+	Permission          map[string]any        `yaml:"permission"`
+	Secrets             map[string]SecretSpec `yaml:"secrets"`
+	Provider            map[string]any        `yaml:"provider"`
+	DestroyOnDispose    bool                  `yaml:"destroy_on_dispose"`
+	LivenessTimeoutSecs int                   `yaml:"liveness_timeout_seconds"`
+	MaxHealthMisses     int                   `yaml:"max_health_misses"`
 }
 
 type Config struct {
@@ -150,7 +157,7 @@ func (h *OpenCode) create(ctx context.Context) error {
 	// Setup dynamic secrets
 	if h.config.ConfigExternal.Secrets != nil {
 		for env, secret := range h.config.ConfigExternal.Secrets {
-			secretId, secretName, err := h.config.Sandbox.SetSecret(ctx, secret.value, secret.hosts)
+			secretId, secretName, err := h.config.Sandbox.SetSecret(ctx, secret.Value, secret.Hosts)
 
 			if err != nil {
 				return err

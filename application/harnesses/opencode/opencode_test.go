@@ -26,6 +26,7 @@ import (
 	"go.opentelemetry.io/otel"
 	otelmetricnoop "go.opentelemetry.io/otel/metric/noop"
 	oteltracenoop "go.opentelemetry.io/otel/trace/noop"
+	"gopkg.in/yaml.v3"
 )
 
 type OpenCodeSuite struct {
@@ -129,6 +130,50 @@ func (s *OpenCodeSuite) TestNew_WithGitHubToken() {
 	s.Equal("ghp_abc", h.githubAccessToken)
 }
 
+// --- ConfigExternal yaml parsing tests ---
+
+// Regression test: secret value and hosts used to be unexported struct
+// fields, so yaml unmarshalling silently skipped them and every dynamic
+// secret was created with an empty value and no host allowlist, making
+// provider calls (e.g. ollama) fail with Unauthorized.
+func (s *OpenCodeSuite) TestConfigExternal_SecretsYamlParsing() {
+	yml := `
+model: ollama/glm-5.1:cloud
+permission:
+  "external_directory": "deny"
+  "*": "allow"
+secrets:
+  OLLAMA_API_KEY:
+    value: ollama-secret-api-key
+    hosts: ["ollama.com"]
+  OPENROUTER_API_KEY:
+    value: openrouter-secret-api-key
+    hosts: ["*.openrouter.ai"]
+provider:
+  ollama:
+    options:
+      baseURL: https://ollama.com/v1
+      apiKey: "{env:OLLAMA_API_KEY}"
+    models:
+      glm-5.1:cloud: {}
+`
+	var cfg ConfigExternal
+	s.Require().NoError(yaml.Unmarshal([]byte(yml), &cfg))
+
+	s.Equal("ollama/glm-5.1:cloud", cfg.Model)
+	s.Len(cfg.Secrets, 2)
+
+	ollama, ok := cfg.Secrets["OLLAMA_API_KEY"]
+	s.Require().True(ok, "OLLAMA_API_KEY should be present")
+	s.Equal("ollama-secret-api-key", ollama.Value, "secret value must be parsed from yaml")
+	s.Equal([]string{"ollama.com"}, ollama.Hosts, "secret hosts must be parsed from yaml")
+
+	openrouter, ok := cfg.Secrets["OPENROUTER_API_KEY"]
+	s.Require().True(ok, "OPENROUTER_API_KEY should be present")
+	s.Equal("openrouter-secret-api-key", openrouter.Value)
+	s.Equal([]string{"*.openrouter.ai"}, openrouter.Hosts)
+}
+
 // --- Run() tests ---
 
 func (s *OpenCodeSuite) TestRun_HappyPath() {
@@ -172,11 +217,8 @@ func (s *OpenCodeSuite) TestRun_GitHubSecretFails() {
 
 func (s *OpenCodeSuite) TestRun_DynamicSecretFails() {
 	cfg := s.baseConfig()
-	cfg.ConfigExternal.Secrets = map[string]struct {
-		value string   `yaml:"value"`
-		hosts []string `yaml:"hosts"`
-	}{
-		"MY_SECRET": {value: "s3cret", hosts: []string{"example.com"}},
+	cfg.ConfigExternal.Secrets = map[string]SecretSpec{
+		"MY_SECRET": {Value: "s3cret", Hosts: []string{"example.com"}},
 	}
 	h, _ := New(cfg, "test-service")
 
@@ -440,11 +482,8 @@ func (s *OpenCodeSuite) TestRun_WithGitHubToken_AllPaths() {
 
 func (s *OpenCodeSuite) TestRun_WithDynamicSecrets() {
 	cfg := s.baseConfig()
-	cfg.ConfigExternal.Secrets = map[string]struct {
-		value string   `yaml:"value"`
-		hosts []string `yaml:"hosts"`
-	}{
-		"CUSTOM_VAR": {value: "val1", hosts: []string{"api.example.com"}},
+	cfg.ConfigExternal.Secrets = map[string]SecretSpec{
+		"CUSTOM_VAR": {Value: "val1", Hosts: []string{"api.example.com"}},
 	}
 	h, _ := New(cfg, "test-service")
 
