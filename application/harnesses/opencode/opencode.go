@@ -391,32 +391,28 @@ func (h *OpenCode) Archive(ctx context.Context) error {
 }
 
 func (h *OpenCode) installOpenCode(ctx context.Context) error {
-	var lastErr error
-	for attempt := 1; attempt <= MaxInstallRetries; attempt++ {
-		if attempt > 1 {
-			slog.Debug("retrying opencode installation", "event_identifier", h.config.SessionEvent.Identifier, "attempt", attempt)
-		}
-		if _, err := h.config.Sandbox.ExecuteCommand(ctx, fmt.Sprintf("%s %s", OPENCODE_INSTALL_SCRIPT, OPENCODE_INSTALL_VERSION), time.Minute*2); err != nil {
-			lastErr = err
-			continue
-		}
-		slog.Debug("Installed opencode", "event_identifier", h.config.SessionEvent.Identifier, "version", OPENCODE_INSTALL_VERSION)
-		return nil
-	}
-	return lastErr
+	return h.retryWithBackoff(ctx, "opencode installation", func(ctx context.Context) (string, error) {
+		return h.config.Sandbox.ExecuteCommand(ctx, fmt.Sprintf("%s %s", OPENCODE_INSTALL_SCRIPT, OPENCODE_INSTALL_VERSION), time.Minute*2)
+	})
 }
 
 func (h *OpenCode) installGitHubCLI(ctx context.Context) error {
+	return h.retryWithBackoff(ctx, "github cli installation", func(ctx context.Context) (string, error) {
+		return h.config.Sandbox.ExecuteCommand(ctx, GITHUB_CLI_INSTALL_SCRIPT, time.Minute*5)
+	})
+}
+
+func (h *OpenCode) retryWithBackoff(ctx context.Context, operation string, fn func(context.Context) (string, error)) error {
 	var lastErr error
 	for attempt := 1; attempt <= MaxInstallRetries; attempt++ {
 		if attempt > 1 {
-			slog.Debug("retrying github cli installation", "event_identifier", h.config.SessionEvent.Identifier, "attempt", attempt)
+			slog.Debug(fmt.Sprintf("retrying %s", operation), "event_identifier", h.config.SessionEvent.Identifier, "attempt", attempt)
 		}
-		if _, err := h.config.Sandbox.ExecuteCommand(ctx, GITHUB_CLI_INSTALL_SCRIPT, time.Minute*5); err != nil {
+		if _, err := fn(ctx); err != nil {
 			lastErr = err
 			continue
 		}
-		slog.Debug("Installed gh cli", "event_identifier", h.config.SessionEvent.Identifier)
+		slog.Debug(fmt.Sprintf("installed %s", operation), "event_identifier", h.config.SessionEvent.Identifier)
 		return nil
 	}
 	return lastErr
