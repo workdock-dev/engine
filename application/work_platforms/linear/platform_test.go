@@ -528,3 +528,133 @@ func (s *LinearPlatformSuite) TestWebhook() {
 	s.Equal(types.WebhookEventType_AIRequest, eventType)
 	s.Equal(expected, result)
 }
+
+// ---------------------------------------------------------------------------
+// archiveSandboxForIssue
+// ---------------------------------------------------------------------------
+
+func (s *LinearPlatformSuite) TestArchiveSandboxForIssue_SessionsError() {
+	s.sessions.On("GetAgentSessionsByIssueId", mock.Anything, "issue-1").Return(nil, errors.New("db error"))
+
+	err := s.platform.archiveSandboxForIssue(context.Background(), "issue-1")
+	s.Error(err)
+	s.Contains(err.Error(), "db error")
+}
+
+func (s *LinearPlatformSuite) TestArchiveSandboxForIssue_NoSessions() {
+	s.sessions.On("GetAgentSessionsByIssueId", mock.Anything, "issue-1").Return([]*types.Session{}, nil)
+
+	err := s.platform.archiveSandboxForIssue(context.Background(), "issue-1")
+	s.NoError(err)
+}
+
+func (s *LinearPlatformSuite) TestArchiveSandboxForIssue_TokenError() {
+	sessions := []*types.Session{
+		{OrganizationIdentifier: "org-1", Identifier: "session-1", IssueId: "issue-1"},
+	}
+	s.sessions.On("GetAgentSessionsByIssueId", mock.Anything, "issue-1").Return(sessions, nil)
+	s.secrets.On("Get", mock.Anything, SecretsPath, "org-1").Return("", errors.New("secrets error"))
+
+	err := s.platform.archiveSandboxForIssue(context.Background(), "issue-1")
+	s.Error(err)
+}
+
+func (s *LinearPlatformSuite) TestArchiveSandboxForIssue_GetIssueError() {
+	sessions := []*types.Session{
+		{OrganizationIdentifier: "org-1", Identifier: "session-1", IssueId: "issue-1"},
+	}
+	validToken := `{"access_token":"at","refresh_token":"rt","expires_at":"2099-01-01T00:00:00Z"}`
+	s.sessions.On("GetAgentSessionsByIssueId", mock.Anything, "issue-1").Return(sessions, nil)
+	s.secrets.On("Get", mock.Anything, SecretsPath, "org-1").Return(validToken, nil)
+	s.client.On("GetIssue", mock.Anything, "at", "issue-1").Return(nil, errors.New("api error"))
+
+	err := s.platform.archiveSandboxForIssue(context.Background(), "issue-1")
+	s.Error(err)
+	s.Contains(err.Error(), "api error")
+}
+
+func (s *LinearPlatformSuite) TestArchiveSandboxForIssue_StateNotDone() {
+	sessions := []*types.Session{
+		{OrganizationIdentifier: "org-1", Identifier: "session-1", IssueId: "issue-1"},
+	}
+	validToken := `{"access_token":"at","refresh_token":"rt","expires_at":"2099-01-01T00:00:00Z"}`
+	s.sessions.On("GetAgentSessionsByIssueId", mock.Anything, "issue-1").Return(sessions, nil)
+	s.secrets.On("Get", mock.Anything, SecretsPath, "org-1").Return(validToken, nil)
+	s.client.On("GetIssue", mock.Anything, "at", "issue-1").Return(&IssueStateResult{
+		ID:        "issue-1",
+		StateName: "In Progress",
+		StateType: "started",
+	}, nil)
+
+	err := s.platform.archiveSandboxForIssue(context.Background(), "issue-1")
+	s.NoError(err)
+}
+
+func (s *LinearPlatformSuite) TestArchiveSandboxForIssue_DoneState_Archives() {
+	sessions := []*types.Session{
+		{OrganizationIdentifier: "org-1", Identifier: "session-1", IssueId: "issue-1"},
+	}
+	validToken := `{"access_token":"at","refresh_token":"rt","expires_at":"2099-01-01T00:00:00Z"}`
+	s.sessions.On("GetAgentSessionsByIssueId", mock.Anything, "issue-1").Return(sessions, nil)
+	s.secrets.On("Get", mock.Anything, SecretsPath, "org-1").Return(validToken, nil)
+	s.client.On("GetIssue", mock.Anything, "at", "issue-1").Return(&IssueStateResult{
+		ID:        "issue-1",
+		StateName: "Done",
+		StateType: "completed",
+	}, nil)
+
+	harness := new(mockHarness)
+	s.platform.config.HarnessRegistry[types.HarnessProvider_OpenCode] = func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
+		return harness, nil
+	}
+	harness.On("Archive", mock.Anything).Return(nil)
+
+	err := s.platform.archiveSandboxForIssue(context.Background(), "issue-1")
+	s.NoError(err)
+	harness.AssertCalled(s.T(), "Archive", mock.Anything)
+}
+
+func (s *LinearPlatformSuite) TestArchiveSandboxForIssue_DoneState_HarnessConstructorError() {
+	sessions := []*types.Session{
+		{OrganizationIdentifier: "org-1", Identifier: "session-1", IssueId: "issue-1"},
+	}
+	validToken := `{"access_token":"at","refresh_token":"rt","expires_at":"2099-01-01T00:00:00Z"}`
+	s.sessions.On("GetAgentSessionsByIssueId", mock.Anything, "issue-1").Return(sessions, nil)
+	s.secrets.On("Get", mock.Anything, SecretsPath, "org-1").Return(validToken, nil)
+	s.client.On("GetIssue", mock.Anything, "at", "issue-1").Return(&IssueStateResult{
+		ID:        "issue-1",
+		StateName: "Done",
+		StateType: "completed",
+	}, nil)
+
+	s.platform.config.HarnessRegistry[types.HarnessProvider_OpenCode] = func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
+		return nil, errors.New("harness error")
+	}
+
+	err := s.platform.archiveSandboxForIssue(context.Background(), "issue-1")
+	s.NoError(err)
+}
+
+func (s *LinearPlatformSuite) TestArchiveSandboxForIssue_DoneState_ArchiveError_Continues() {
+	sessions := []*types.Session{
+		{OrganizationIdentifier: "org-1", Identifier: "session-1", IssueId: "issue-1"},
+	}
+	validToken := `{"access_token":"at","refresh_token":"rt","expires_at":"2099-01-01T00:00:00Z"}`
+	s.sessions.On("GetAgentSessionsByIssueId", mock.Anything, "issue-1").Return(sessions, nil)
+	s.secrets.On("Get", mock.Anything, SecretsPath, "org-1").Return(validToken, nil)
+	s.client.On("GetIssue", mock.Anything, "at", "issue-1").Return(&IssueStateResult{
+		ID:        "issue-1",
+		StateName: "Done",
+		StateType: "completed",
+	}, nil)
+
+	harness := new(mockHarness)
+	s.platform.config.HarnessRegistry[types.HarnessProvider_OpenCode] = func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
+		return harness, nil
+	}
+	harness.On("Archive", mock.Anything).Return(errors.New("archive failed"))
+
+	err := s.platform.archiveSandboxForIssue(context.Background(), "issue-1")
+	s.NoError(err)
+	harness.AssertCalled(s.T(), "Archive", mock.Anything)
+}

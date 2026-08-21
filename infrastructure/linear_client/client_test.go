@@ -517,7 +517,54 @@ func (s *LinearServiceSuite) TestCreateAgentActivity_DoRequestFailure() {
 	s.Error(err)
 }
 
-// --- GetIssueLabels() ---
+// --- GetIssue() ---
+
+func (s *LinearServiceSuite) TestGetIssue_DoRequestFailure() {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	svc := s.newService(handler)
+	_, err := svc.GetIssue(context.Background(), "token", "issue-1")
+	s.Error(err)
+}
+
+func (s *LinearServiceSuite) TestGetIssue_BadJSON() {
+	handler := okJSONHandler(`{"data": "not-an-object"}`)
+	svc := s.newService(handler)
+	_, err := svc.GetIssue(context.Background(), "token", "issue-1")
+	s.Error(err)
+	s.Contains(err.Error(), "failed to unmarshal response")
+}
+
+func (s *LinearServiceSuite) TestGetIssue_NilIssue() {
+	handler := okJSONHandler(`{"data":{"issue":null}}`)
+	svc := s.newService(handler)
+	_, err := svc.GetIssue(context.Background(), "token", "issue-1")
+	s.Error(err)
+	s.Contains(err.Error(), "issue not found")
+}
+
+func (s *LinearServiceSuite) TestGetIssue_Success() {
+	issueJSON := `{"data":{"issue":{"id":"issue-1","state":{"name":"Done","type":"completed"}}}}`
+	handler := okJSONHandler(issueJSON)
+	svc := s.newService(handler)
+	issue, err := svc.GetIssue(context.Background(), "token", "issue-1")
+	s.NoError(err)
+	s.Equal("issue-1", issue.ID)
+	s.Equal("Done", issue.StateName)
+	s.Equal("completed", issue.StateType)
+}
+
+func (s *LinearServiceSuite) TestGetIssue_Success_NilState() {
+	issueJSON := `{"data":{"issue":{"id":"issue-1","state":null}}}`
+	handler := okJSONHandler(issueJSON)
+	svc := s.newService(handler)
+	issue, err := svc.GetIssue(context.Background(), "token", "issue-1")
+	s.NoError(err)
+	s.Equal("issue-1", issue.ID)
+	s.Empty(issue.StateName)
+	s.Empty(issue.StateType)
+}
 
 func (s *LinearServiceSuite) TestGetIssueLabels_DoRequestFailure() {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
