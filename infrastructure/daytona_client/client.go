@@ -268,15 +268,15 @@ func (s *Sandbox) Archive(ctx context.Context) error {
 
 	state := s.sandbox.State
 
-	if state == "Archived" {
+	if state == daytona.SandboxStateArchived || state == daytona.SandboxStateArchiving {
 		slog.Debug("sandbox already archived, skipping", "session_identifier", s.sessionId)
 		return nil
 	}
 
-	if state != "Stopped" {
+	if state != daytona.SandboxStateStopped && state != daytona.SandboxStateStopping {
 		slog.Debug("stopping sandbox before archive", "session_identifier", s.sessionId, "state", state)
 
-		if err := s.Shutdown(ctx); err != nil {
+		if err := s.sandbox.StopWithTimeout(ctx, 2*time.Minute, true); err != nil {
 			return err
 		}
 	}
