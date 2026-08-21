@@ -239,6 +239,8 @@ func (s *TaskScheduler) worker(ctx context.Context, workerId int) {
 			s.running.Store(job.SessionEventIdentifier, cancel)
 			slog.Debug("worker claimed job", "worker_id", workerId, "event_identifier", job.SessionEventIdentifier)
 
+			job.WillRetry = job.Attempts < s.config.MaxAttempts
+
 			telemetry.SpanDo(exCtx, s.tracer, "job.handler", func(ctx context.Context) {
 				s.execute(ctx, job, startedAt)
 			}, trace.WithAttributes(

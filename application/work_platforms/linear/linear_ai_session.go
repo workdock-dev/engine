@@ -103,17 +103,16 @@ It may clarify, refine, override, or replace previous requirements. When it conf
 )
 
 type linearAISessionConfig struct {
-	HarnessRegistry       ports.HarnessPlatformRegistry
-	GitHostingRegistry    ports.GitHostingPlatformRegistry
-	Client                LinearClientInterface
-	ForSecrets            ports.ForSecrets
-	Sessions              repositories.SessionRepository
-	Job                   *types.EventJob
-	SessionEvent          *types.SessionEvent
-	Session               *types.Session
-	Payload               *AgentSessionEventData
-	GitHubAppInstallURL   string
-	MaxAttempts           int
+	HarnessRegistry     ports.HarnessPlatformRegistry
+	GitHostingRegistry  ports.GitHostingPlatformRegistry
+	Client              LinearClientInterface
+	ForSecrets          ports.ForSecrets
+	Sessions            repositories.SessionRepository
+	Job                 *types.EventJob
+	SessionEvent        *types.SessionEvent
+	Session             *types.Session
+	Payload             *AgentSessionEventData
+	GitHubAppInstallURL string
 }
 
 type linearAISession struct {
@@ -279,19 +278,8 @@ func (s *linearAISession) Process(ctx context.Context) error {
 			return err
 		}
 
-		if errors.Is(err, types.ErrSandboxCreationRetryable) {
-			if s.config.Job != nil && s.config.MaxAttempts-s.config.Job.Attempts > 0 {
-				slog.Debug("sandbox creation failed but is retryable", "event_identifier", s.config.SessionEvent.Identifier)
-				return err
-			}
-		}
-
-		attemptsLeft := 0
-		if s.config.Job != nil {
-			attemptsLeft = s.config.MaxAttempts - s.config.Job.Attempts
-		}
-		if attemptsLeft > 0 {
-			s.notifyRetryScheduled(ctx, attemptsLeft)
+		if s.config.Job != nil && s.config.Job.WillRetry {
+			s.notifyRetryScheduled(ctx)
 		} else {
 			s.reportServerInternalError(ctx)
 		}
@@ -483,13 +471,13 @@ func (s *linearAISession) isContextCanceledOrDeadlineExceeded(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
-func (s *linearAISession) notifyRetryScheduled(ctx context.Context, attemptsLeft int) {
-	slog.Debug("notifying user about retry", "event_identifier", s.config.SessionEvent.Identifier, "attempts_left", attemptsLeft)
+func (s *linearAISession) notifyRetryScheduled(ctx context.Context) {
+	slog.Debug("notifying user about retry", "event_identifier", s.config.SessionEvent.Identifier)
 	s.config.Client.CreateAgentActivity(ctx, s.accessToken, CreateAgentActivityInput{
 		AgentSessionID: s.config.Session.Identifier,
 		Content: AgentActivityContent{
 			Type: AgentActivityContentType_Error,
-			Body: fmt.Sprintf("Execution failed but will be retried automatically. %d attempt(s) remaining.", attemptsLeft),
+			Body: "Execution failed but will be retried automatically.",
 		},
 	})
 }

@@ -791,7 +791,6 @@ func (s *LinearAISessionSuite) newProcessSession(payload *AgentSessionEventData)
 			Client:       s.client,
 			ForSecrets:   s.secrets,
 			Sessions:     s.sessions,
-			MaxAttempts:  2,
 		},
 		accessToken: "at_valid",
 		tracer:      tracerNoop(),

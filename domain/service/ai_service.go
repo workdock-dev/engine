@@ -34,7 +34,6 @@ type AIServiceConfig struct {
 	ForEvent             ports.ForEventBus
 	Organizations        repositories.OrganizationRepository
 	Sessions             repositories.SessionRepository
-	MaxAttempts          int
 }
 
 // AIService owns the business logic for agent sessions across providers.
@@ -301,7 +300,6 @@ func (s *AIService) Process(ctx context.Context, job *types.EventJob) error {
 			Job:          job,
 			SessionEvent: sessionEvent,
 			Session:      session,
-			MaxAttempts:  s.config.MaxAttempts,
 		})
 	}, trace.WithAttributes(
 		attribute.String("session.organization.id", session.OrganizationIdentifier),

@@ -211,7 +211,6 @@ func (p *linearPlatform) Process(ctx context.Context, config ports.ProcessConfig
 		Session:             config.Session,
 		Payload:             &linearEvent,
 		GitHubAppInstallURL: p.config.GitHubAppInstallURL,
-		MaxAttempts:         config.MaxAttempts,
 	})
 
 	if err != nil {

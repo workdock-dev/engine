@@ -61,7 +61,6 @@ func New(config Config) (*App, error) {
 		ForEvent:             config.EventBus,
 		Organizations:        config.Organizations,
 		Sessions:             config.Sessions,
-		MaxAttempts:          config.TaskSchedulerConfig.MaxAttempts,
 	})
 
 	app.gitService = domain_service.NewGitService(domain_service.GitServiceConfig{
