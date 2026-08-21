@@ -273,11 +273,6 @@ func (s *linearAISession) Process(ctx context.Context) error {
 			return nil
 		}
 
-		if errors.Is(err, types.ErrHarnessUnhealthy) {
-			slog.Error("harness declared unhealthy; job will be retried", "event_identifier", s.config.SessionEvent.Identifier)
-			return err
-		}
-
 		if s.config.Job != nil && s.config.Job.WillRetry {
 			s.notifyRetryScheduled(ctx)
 		} else {
