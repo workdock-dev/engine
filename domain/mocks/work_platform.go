@@ -64,7 +64,12 @@ func (m *WorkPlatform) IsCancelSignal(ctx context.Context, any any) (bool, error
 	return args.Bool(0), args.Error(1)
 }
 
-func (m *WorkPlatform) Webhook(ctx context.Context, req types.WebhookRequest) (any, error) {
+func (m *WorkPlatform) Webhook(ctx context.Context, req types.WebhookRequest) (any, types.WebhookEventType, error) {
 	args := m.Called(ctx, req)
-	return args.Get(0), args.Error(1)
+	return args.Get(0), args.Get(1).(types.WebhookEventType), args.Error(2)
+}
+
+func (m *WorkPlatform) Archive(ctx context.Context) error {
+	args := m.Called(ctx)
+	return args.Error(0)
 }
