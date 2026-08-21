@@ -264,6 +264,9 @@ func (h *OpenCode) Run(ctx context.Context) (*types.SessionEventResult, error) {
 			return h.setup(ctx)
 		}); err != nil {
 			if errors.Is(err, types.ErrSandboxCreationRetryable) && attempt < maxRetries {
+				h.sandboxSecrets = nil
+				h.secretIds = nil
+				h.sandboxCreated = false
 				h.Dispose(context.Background())
 				continue
 			}
