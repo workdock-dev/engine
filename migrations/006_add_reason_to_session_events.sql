@@ -16,7 +16,6 @@
 ALTER TABLE public.sessions_events ADD COLUMN reason TEXT;
 
 ---- create above / drop below ----
-
 ALTER TABLE public.sessions_events DROP COLUMN reason;
 
 -- Write your migrate down statements here. If this migration is irreversible
