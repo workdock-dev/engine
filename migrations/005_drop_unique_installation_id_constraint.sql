@@ -12,6 +12,17 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
+-- Write your migrate up statements here
+
 DROP INDEX idx_github_connections_installation_id;
 
 CREATE INDEX idx_github_connections_installation_id ON github_connections (installation_id) WHERE installation_id IS NOT NULL;
+
+---- create above / drop below ----
+
+-- Write your migrate down statements here. If this migration is irreversible
+-- Then delete the separator line above.
+
+DROP INDEX idx_github_connections_installation_id;
+
+CREATE UNIQUE INDEX idx_github_connections_installation_id ON github_connections (installation_id) WHERE installation_id IS NOT NULL;
