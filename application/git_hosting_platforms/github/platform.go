@@ -199,7 +199,13 @@ func (s *githubPlatform) handleInstallationRepositories(ctx context.Context, eve
 		repos = append(repos, repo.FullName)
 	}
 
-	if err := s.access.CompleteConnection(ctx, installationId, repos, sessionEventIdentifier); err != nil {
+	var err error
+	if sessionEventIdentifier != "" {
+		err = s.access.CompleteConnection(ctx, installationId, repos, sessionEventIdentifier)
+	} else {
+		err = s.access.CompleteConnection(ctx, installationId, repos)
+	}
+	if err != nil {
 		return err
 	}
 
