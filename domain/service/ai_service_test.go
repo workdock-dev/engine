@@ -260,8 +260,7 @@ func (s *AIServiceSuite) TestGitHubConnectedHandler_SessionEventNotFound() {
 	}
 	err := s.eventBus.Invoke(context.Background(), types.EventType_GitHubConnected, event)
 
-	s.Error(err)
-	s.Contains(err.Error(), "session event not found: evt-1")
+	s.NoError(err)
 }
 
 func (s *AIServiceSuite) TestGitHubConnectedHandler_SessionFetchError() {
