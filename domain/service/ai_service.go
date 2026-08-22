@@ -101,14 +101,20 @@ func NewAIService(config AIServiceConfig) *AIService {
 				return fmt.Errorf("expected a github connection event, received %s", event.EventType())
 			}
 
-			sessionEvent, err := s.config.Sessions.GetAgentSessionEvent(ctx, connection.Connection.SessionEventIdentifier)
+			if connection.Connection.SessionEventIdentifier == nil {
+				slog.Debug("GitHubConnectedEvent received but session_event_identifier is nil, skipping AI session resumption")
+				return nil
+			}
+
+			sessionEvent, err := s.config.Sessions.GetAgentSessionEvent(ctx, *connection.Connection.SessionEventIdentifier)
 
 			if err != nil {
 				return err
 			}
 
 			if sessionEvent == nil {
-				return fmt.Errorf("session event not found: %s", connection.Connection.SessionEventIdentifier)
+				slog.Debug("session event not found for GitHubConnectedEvent, skipping AI session resumption", "session_event_identifier", *connection.Connection.SessionEventIdentifier)
+				return nil
 			}
 
 			session, err := s.config.Sessions.GetAgentSession(ctx, sessionEvent.SessionIdentifier)

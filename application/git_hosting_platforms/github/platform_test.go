@@ -700,7 +700,7 @@ func (s *GitHubPlatformSuite) TestRequestConnection() {
 	err := s.platform.RequestConnection(context.Background(), "evt-1", "org/repo")
 	s.NoError(err)
 	s.connections.AssertCalled(s.T(), "UpsertGitHubConnection", mock.Anything, mock.MatchedBy(func(c *types.GitHubConnection) bool {
-		return c.RepoFullName == "org/repo" && c.SessionEventIdentifier == "evt-1" && !c.Connected && c.InstallationId == nil
+		return c.RepoFullName == "org/repo" && c.SessionEventIdentifier != nil && *c.SessionEventIdentifier == "evt-1" && !c.Connected && c.InstallationId == nil
 	}))
 }
 

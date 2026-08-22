@@ -255,7 +255,7 @@ func (s *GitHubAccessSuite) TestRequestConnection() {
 	err := s.access.RequestConnection(context.Background(), "evt-1", "org/repo")
 	s.NoError(err)
 	s.connections.AssertCalled(s.T(), "UpsertGitHubConnection", mock.Anything, mock.MatchedBy(func(c *types.GitHubConnection) bool {
-		return c.RepoFullName == "org/repo" && c.SessionEventIdentifier == "evt-1" && !c.Connected && c.InstallationId == nil
+		return c.RepoFullName == "org/repo" && c.SessionEventIdentifier != nil && *c.SessionEventIdentifier == "evt-1" && !c.Connected && c.InstallationId == nil
 	}))
 }
 
@@ -327,8 +327,9 @@ func (s *GitHubAccessSuite) TestCompleteConnection_UpsertError() {
 
 func (s *GitHubAccessSuite) TestCompleteConnection_PublishesCorrectEvent() {
 	var publishedEvent types.GitHubConnectedEvent
+	sessionEventId := "evt-1"
 	existingConn := &types.GitHubConnection{
-		SessionEventIdentifier: "evt-1",
+		SessionEventIdentifier: &sessionEventId,
 		RepoFullName:           "org/repo",
 		Connected:              false,
 	}
@@ -344,13 +345,14 @@ func (s *GitHubAccessSuite) TestCompleteConnection_PublishesCorrectEvent() {
 	s.Equal("org/repo", publishedEvent.Connection.RepoFullName)
 	s.True(publishedEvent.Connection.Connected)
 	s.Equal(&installId, publishedEvent.Connection.InstallationId)
-	s.Equal("evt-1", publishedEvent.Connection.SessionEventIdentifier)
+	s.NotNil(publishedEvent.Connection.SessionEventIdentifier)
+	s.Equal("evt-1", *publishedEvent.Connection.SessionEventIdentifier)
 }
 
 func (s *GitHubAccessSuite) TestCompleteConnection_MixedRepos_CopiesSessionEventIdentifier() {
 	sessionEventId := "evt-1"
 	existingConn := &types.GitHubConnection{
-		SessionEventIdentifier: sessionEventId,
+		SessionEventIdentifier: &sessionEventId,
 		RepoFullName:           "org/requested-repo",
 		Connected:              false,
 	}
@@ -368,9 +370,11 @@ func (s *GitHubAccessSuite) TestCompleteConnection_MixedRepos_CopiesSessionEvent
 	s.connections.AssertNumberOfCalls(s.T(), "UpsertGitHubConnection", 2)
 	s.Len(publishedEvents, 2)
 	s.Equal("org/requested-repo", publishedEvents[0].Connection.RepoFullName)
-	s.Equal("evt-1", publishedEvents[0].Connection.SessionEventIdentifier)
+	s.NotNil(publishedEvents[0].Connection.SessionEventIdentifier)
+	s.Equal("evt-1", *publishedEvents[0].Connection.SessionEventIdentifier)
 	s.Equal("org/additional-repo", publishedEvents[1].Connection.RepoFullName)
-	s.Equal("evt-1", publishedEvents[1].Connection.SessionEventIdentifier)
+	s.NotNil(publishedEvents[1].Connection.SessionEventIdentifier)
+	s.Equal("evt-1", *publishedEvents[1].Connection.SessionEventIdentifier)
 }
 
 func (s *GitHubAccessSuite) TestCompleteConnection_GetConnectionError() {

@@ -74,7 +74,7 @@ type SessionEventResult struct {
 }
 
 type GitHubConnection struct {
-	SessionEventIdentifier string
+	SessionEventIdentifier *string
 	RepoFullName           string
 	Connected              bool
 	InstallationId         *string

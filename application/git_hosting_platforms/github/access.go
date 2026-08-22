@@ -115,10 +115,11 @@ func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentif
 // RequestConnection persists a pending GitHub connection for a repository so
 // that the user is prompted to link it and future sessions can pick it up.
 func (s *githubAccess) RequestConnection(ctx context.Context, sessionEventIdentifier, repoFullName string) error {
+	sessionEventId := sessionEventIdentifier
 	return s.config.GitHubConnections.UpsertGitHubConnection(
 		ctx,
 		&types.GitHubConnection{
-			SessionEventIdentifier: sessionEventIdentifier,
+			SessionEventIdentifier: &sessionEventId,
 			RepoFullName:           repoFullName,
 			Connected:              false,
 			InstallationId:         nil,
@@ -160,15 +161,20 @@ func (s *githubAccess) CompleteConnection(ctx context.Context, installationId st
 			return err
 		}
 
-		if existing != nil && existing.SessionEventIdentifier != "" {
-			sessionEventIdentifier = existing.SessionEventIdentifier
+		if existing != nil && existing.SessionEventIdentifier != nil && *existing.SessionEventIdentifier != "" {
+			sessionEventIdentifier = *existing.SessionEventIdentifier
 			break
 		}
 	}
 
 	for _, repo := range repos {
+		var sessionEventId *string
+		if sessionEventIdentifier != "" {
+			sessionEventId = &sessionEventIdentifier
+		}
+
 		connection := &types.GitHubConnection{
-			SessionEventIdentifier: sessionEventIdentifier,
+			SessionEventIdentifier: sessionEventId,
 			RepoFullName:           repo,
 			Connected:              true,
 			InstallationId:         &installationId,

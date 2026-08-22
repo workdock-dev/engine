@@ -215,7 +215,7 @@ func (s *AIServiceSuite) TestGitHubConnectedHandler_Success() {
 	s.sessions.On("CreateSessionEvent", mock.Anything, s.sessionEvent).Return(nil)
 
 	event := types.GitHubConnectedEvent{
-		Connection: types.GitHubConnection{SessionEventIdentifier: "evt-1", RepoFullName: "org/repo", Connected: true},
+		Connection: types.GitHubConnection{SessionEventIdentifier: strPtr("evt-1"), RepoFullName: "org/repo", Connected: true},
 	}
 	err := s.eventBus.Invoke(context.Background(), types.EventType_GitHubConnected, event)
 
@@ -242,7 +242,7 @@ func (s *AIServiceSuite) TestGitHubConnectedHandler_SessionEventFetchError() {
 	s.sessions.On("GetAgentSessionEvent", mock.Anything, "evt-1").Return(nil, fetchErr)
 
 	event := types.GitHubConnectedEvent{
-		Connection: types.GitHubConnection{SessionEventIdentifier: "evt-1"},
+		Connection: types.GitHubConnection{SessionEventIdentifier: strPtr("evt-1")},
 	}
 	err := s.eventBus.Invoke(context.Background(), types.EventType_GitHubConnected, event)
 
@@ -256,12 +256,11 @@ func (s *AIServiceSuite) TestGitHubConnectedHandler_SessionEventNotFound() {
 	s.sessions.On("GetAgentSessionEvent", mock.Anything, "evt-1").Return(nil, nil)
 
 	event := types.GitHubConnectedEvent{
-		Connection: types.GitHubConnection{SessionEventIdentifier: "evt-1"},
+		Connection: types.GitHubConnection{SessionEventIdentifier: strPtr("evt-1")},
 	}
 	err := s.eventBus.Invoke(context.Background(), types.EventType_GitHubConnected, event)
 
-	s.Error(err)
-	s.Contains(err.Error(), "session event not found: evt-1")
+	s.NoError(err)
 }
 
 func (s *AIServiceSuite) TestGitHubConnectedHandler_SessionFetchError() {
@@ -273,7 +272,7 @@ func (s *AIServiceSuite) TestGitHubConnectedHandler_SessionFetchError() {
 	s.sessions.On("GetAgentSession", mock.Anything, "sess-1").Return(nil, fetchErr)
 
 	event := types.GitHubConnectedEvent{
-		Connection: types.GitHubConnection{SessionEventIdentifier: "evt-1"},
+		Connection: types.GitHubConnection{SessionEventIdentifier: strPtr("evt-1")},
 	}
 	err := s.eventBus.Invoke(context.Background(), types.EventType_GitHubConnected, event)
 
@@ -288,7 +287,7 @@ func (s *AIServiceSuite) TestGitHubConnectedHandler_SessionNotFound() {
 	s.sessions.On("GetAgentSession", mock.Anything, "sess-1").Return(nil, nil)
 
 	event := types.GitHubConnectedEvent{
-		Connection: types.GitHubConnection{SessionEventIdentifier: "evt-1"},
+		Connection: types.GitHubConnection{SessionEventIdentifier: strPtr("evt-1")},
 	}
 	err := s.eventBus.Invoke(context.Background(), types.EventType_GitHubConnected, event)
 
@@ -788,4 +787,8 @@ func (s *AIServiceSuite) TestProcess_ProcessError() {
 	err := svc.Process(context.Background(), job)
 
 	s.ErrorIs(err, processErr)
+}
+
+func strPtr(s string) *string {
+	return &s
 }

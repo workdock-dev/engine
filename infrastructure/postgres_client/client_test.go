@@ -229,7 +229,7 @@ func (s *PostgresServiceSuite) TestGetGitHubConnection_Success() {
 	s.pool.queryRowFn = func(ctx context.Context, sql string, args ...any) pgx.Row {
 		s.Equal("owner/repo", args[0])
 		return &mockRow{scanFn: func(dest ...any) error {
-			*dest[0].(*string) = "event-1"
+			*dest[0].(**string) = strPtr("event-1")
 			*dest[1].(*string) = "owner/repo"
 			*dest[2].(*bool) = true
 			*dest[3].(**string) = strPtr("inst-1")
@@ -242,7 +242,8 @@ func (s *PostgresServiceSuite) TestGetGitHubConnection_Success() {
 	s.Equal("owner/repo", conn.RepoFullName)
 	s.True(conn.Connected)
 	s.Equal("inst-1", *conn.InstallationId)
-	s.Equal("event-1", conn.SessionEventIdentifier)
+	s.NotNil(conn.SessionEventIdentifier)
+	s.Equal("event-1", *conn.SessionEventIdentifier)
 }
 
 func (s *PostgresServiceSuite) TestGetGitHubConnection_NotFound() {
@@ -350,19 +351,20 @@ func (s *PostgresServiceSuite) TestUpdateSessionEventResult_Error() {
 func (s *PostgresServiceSuite) TestUpsertGitHubConnection_Success() {
 	s.pool.queryRowFn = func(ctx context.Context, sql string, args ...any) pgx.Row {
 		return &mockRow{scanFn: func(dest ...any) error {
-			*dest[0].(*string) = "event-1"
+			*dest[0].(**string) = strPtr("event-1")
 			return nil
 		}}
 	}
 	conn := &types.GitHubConnection{
-		SessionEventIdentifier: "event-1",
+		SessionEventIdentifier: strPtr("event-1"),
 		RepoFullName:           "owner/repo",
 		Connected:              true,
 		InstallationId:         strPtr("inst-1"),
 	}
 	err := s.service.UpsertGitHubConnection(context.Background(), conn)
 	s.NoError(err)
-	s.Equal("event-1", conn.SessionEventIdentifier)
+	s.NotNil(conn.SessionEventIdentifier)
+	s.Equal("event-1", *conn.SessionEventIdentifier)
 }
 
 func (s *PostgresServiceSuite) TestUpsertGitHubConnection_Error() {
@@ -372,7 +374,7 @@ func (s *PostgresServiceSuite) TestUpsertGitHubConnection_Error() {
 		}}
 	}
 	err := s.service.UpsertGitHubConnection(context.Background(), &types.GitHubConnection{
-		SessionEventIdentifier: "event-1",
+		SessionEventIdentifier: strPtr("event-1"),
 		RepoFullName:           "owner/repo",
 	})
 	s.Error(err)
