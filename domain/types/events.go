@@ -38,6 +38,10 @@ const (
 	// an issue state change (e.g. a ticket moved to "Done").
 	WebhookEventType_IssueStateUpdated WebhookEventType = "issue-state-updated"
 
+	// WebhookEventType_AISessionArchived is returned when a webhook represents
+	// an AI session archive event (e.g. a user archived the agent session).
+	WebhookEventType_AISessionArchived WebhookEventType = "ai-session-archived"
+
 	// WebhookEventType_Git is returned when a webhook represents a Git event
 	// (e.g. a pull request comment).
 	WebhookEventType_Git WebhookEventType = "git"

@@ -50,7 +50,7 @@ func New(config Config) ports.ForWorkPlatform {
 	}
 
 	// Subscribe to Linear webhook events to archive sandboxes when an issue
-	// transitions to a "done" status.
+	// transitions to a "done" status or when an AI session is archived.
 	if config.ForEvent != nil {
 		eventType := types.PlatformWebhookEvent(types.PlatformProvider_Linear)
 		slog.Debug("linearPlatform subscribed for event", "event_type", eventType)
@@ -64,26 +64,86 @@ func New(config Config) ports.ForWorkPlatform {
 					return fmt.Errorf("expected a webhook event, received %s", event.EventType())
 				}
 
-				if e.Type != types.WebhookEventType_IssueStateUpdated {
+				switch e.Type {
+				case types.WebhookEventType_IssueStateUpdated:
+					issueChange, ok := e.Payload.(*IssueStatusChangePayload)
+					if !ok {
+						slog.Debug("issue-state-updated event payload is not an IssueStatusChangePayload")
+						return nil
+					}
+
+					if issueChange.Action != "update" {
+						return nil
+					}
+
+					return p.archiveSandboxForIssue(ctx, issueChange.Data.ID)
+
+				case types.WebhookEventType_AISessionArchived:
+					sessionEvent, ok := e.Payload.(*AgentSessionEventData)
+					if !ok {
+						slog.Debug("ai-session-archived event payload is not an AgentSessionEventData")
+						return nil
+					}
+
+					return p.archiveSandboxForSession(ctx, sessionEvent)
+
+				default:
 					return nil
 				}
-
-				issueChange, ok := e.Payload.(*IssueStatusChangePayload)
-				if !ok {
-					slog.Debug("issue-state-updated event payload is not an IssueStatusChangePayload")
-					return nil
-				}
-
-				if issueChange.Action != "update" {
-					return nil
-				}
-
-				return p.archiveSandboxForIssue(ctx, issueChange.Data.ID)
 			},
 		)
 	}
 
 	return p
+}
+
+// archiveSandboxForSession archives the sandbox for a specific session when
+// that session is archived in Linear. The session may still be associated
+// with an open issue.
+func (p *linearPlatform) archiveSandboxForSession(ctx context.Context, event *AgentSessionEventData) error {
+	if event.AgentSession == nil {
+		slog.Debug("ai-session-archived event has no agent session, skipping")
+		return nil
+	}
+
+	session, err := p.config.Sessions.GetAgentSession(ctx, event.AgentSession.ID)
+
+	if err != nil {
+		slog.Error("failed to get session for archive", "err", err, "session_identifier", event.AgentSession.ID)
+		return err
+	}
+
+	if session == nil {
+		slog.Debug("no session found for archive, skipping", "session_identifier", event.AgentSession.ID)
+		return nil
+	}
+
+	harnessConstructor, ok := p.config.HarnessRegistry[types.HarnessProvider_OpenCode]
+
+	if !ok {
+		slog.Error("harness provider not found in registry", "provider", types.HarnessProvider_OpenCode)
+		return fmt.Errorf("harness provider not found: %s", types.HarnessProvider_OpenCode)
+	}
+
+	harness, err := harnessConstructor(ports.NewHarnessConstructor{
+		Session: session,
+		Secrets: map[string]string{
+			"linearAccessToken": "nop-secret",
+		},
+	})
+
+	if err != nil {
+		slog.Error("failed to create harness for archive", "err", err, "session_identifier", session.Identifier)
+		return err
+	}
+
+	if err := harness.Archive(ctx); err != nil {
+		slog.Error("failed to archive sandbox for session", "err", err, "session_identifier", session.Identifier)
+		return err
+	}
+
+	slog.Info("archived sandbox for archived session", "session_identifier", session.Identifier)
+	return nil
 }
 
 // BeginOAuth initiates the OAuth flow and returns the redirect URL

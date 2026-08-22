@@ -543,6 +543,10 @@ func (s *LinearService) Webhook(ctx context.Context, req types.WebhookRequest) (
 		return nil, types.WebhookEventType_Unknown, types.ErrUnAuthorized
 	}
 
+	if payload.Action == "archived" {
+		return &payload, types.WebhookEventType_AISessionArchived, nil
+	}
+
 	return &payload, types.WebhookEventType_AIRequest, nil
 }
 
