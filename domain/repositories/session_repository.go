@@ -17,7 +17,7 @@ package repositories
 import (
 	"context"
 
-	"github.com/jazielguerrero/workdock/domain/types"
+	"github.com/workdock-dev/engine/domain/types"
 )
 
 // SessionRepository persists agent sessions, their events, and the jobs

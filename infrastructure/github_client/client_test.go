@@ -40,7 +40,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/jazielguerrero/workdock/domain/types"
+	"github.com/workdock-dev/engine/domain/types"
 	"github.com/stretchr/testify/suite"
 )
 

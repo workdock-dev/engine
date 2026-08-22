@@ -17,7 +17,7 @@ package ports
 import (
 	"context"
 
-	"github.com/jazielguerrero/workdock/domain/types"
+	"github.com/workdock-dev/engine/domain/types"
 )
 
 // ForGitHostingPlatform defines the port for integrating with Git hosting

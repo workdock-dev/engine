@@ -23,7 +23,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jazielguerrero/workdock/domain/types"
+	"github.com/workdock-dev/engine/domain/types"
 )
 
 const (

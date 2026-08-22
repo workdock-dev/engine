@@ -18,7 +18,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/jazielguerrero/workdock/domain/types"
+	"github.com/workdock-dev/engine/domain/types"
 )
 
 func (s *Server) handleLinearWebhook(w http.ResponseWriter, r *http.Request) {

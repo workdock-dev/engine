@@ -23,9 +23,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jazielguerrero/workdock/application/interfaces"
-	"github.com/jazielguerrero/workdock/domain/telemetry"
-	"github.com/jazielguerrero/workdock/domain/types"
+	"github.com/workdock-dev/engine/application/interfaces"
+	"github.com/workdock-dev/engine/domain/telemetry"
+	"github.com/workdock-dev/engine/domain/types"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"

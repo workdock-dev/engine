@@ -21,8 +21,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jazielguerrero/workdock/application/interfaces"
-	"github.com/jazielguerrero/workdock/domain/types"
+	"github.com/workdock-dev/engine/application/interfaces"
+	"github.com/workdock-dev/engine/domain/types"
 	"github.com/stretchr/testify/suite"
 )
 

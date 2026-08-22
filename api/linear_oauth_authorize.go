@@ -17,7 +17,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/jazielguerrero/workdock/domain/types"
+	"github.com/workdock-dev/engine/domain/types"
 )
 
 func (s *Server) handleLinearOauthAuthorize(w http.ResponseWriter, r *http.Request) {

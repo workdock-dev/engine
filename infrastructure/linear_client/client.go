@@ -33,9 +33,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jazielguerrero/workdock/application/work_platforms/linear"
-	"github.com/jazielguerrero/workdock/domain/ports"
-	"github.com/jazielguerrero/workdock/domain/types"
+	"github.com/workdock-dev/engine/application/work_platforms/linear"
+	"github.com/workdock-dev/engine/domain/ports"
+	"github.com/workdock-dev/engine/domain/types"
 )
 
 const (
