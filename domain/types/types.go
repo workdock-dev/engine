@@ -29,7 +29,7 @@ type EventJobStatus string
 type SessionEventTriggerReason string
 
 const (
-	SessionEventTriggerReason_Unknown       SessionEventTriggerReason = ""
+	SessionEventTriggerReason_Unknown       SessionEventTriggerReason = "unknown"
 	SessionEventTriggerReason_PRComment     SessionEventTriggerReason = "pr_comment"
 	SessionEventTriggerReason_CheckRun     SessionEventTriggerReason = "check_run"
 )
