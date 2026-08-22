@@ -96,7 +96,7 @@ func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentif
 			)
 
 			// TODO: Safe to ignore returned error?
-			s.ResetInstallation(ctx, *connection.InstallationId)
+			s.ResetInstallation(ctx, *connection.InstallationId, []string{*repoFullName})
 
 			if err := s.RequestConnection(ctx, sessionEventIdentifier, *repoFullName); err != nil {
 				return false, "", err
@@ -128,10 +128,10 @@ func (s *githubAccess) RequestConnection(ctx context.Context, sessionEventIdenti
 }
 
 // ResetInstallation cleans up a GitHub installation that is no longer
-// available: it disconnects every repository linked to it and deletes its
+// available: it disconnects the specified repositories linked to it and deletes its
 // stored credentials, so future sessions request a fresh GitHub connection.
-func (s *githubAccess) ResetInstallation(ctx context.Context, installationId string) error {
-	if err := s.config.GitHubConnections.ResetGitHubConnection(ctx, installationId); err != nil {
+func (s *githubAccess) ResetInstallation(ctx context.Context, installationId string, repos []string) error {
+	if err := s.config.GitHubConnections.ResetGitHubConnection(ctx, installationId, repos); err != nil {
 		return err
 	}
 

@@ -15,5 +15,6 @@
 delete from
     public.github_connections
 where
-    installation_id = $1;
+    installation_id = $1
+    and repo_full_name = any($2);
 

@@ -110,8 +110,8 @@ func (m *mockGitHubConnections) UpsertGitHubConnection(ctx context.Context, conn
 	return args.Error(0)
 }
 
-func (m *mockGitHubConnections) ResetGitHubConnection(ctx context.Context, installationId string) error {
-	args := m.Called(ctx, installationId)
+func (m *mockGitHubConnections) ResetGitHubConnection(ctx context.Context, installationId string, repos []string) error {
+	args := m.Called(ctx, installationId, repos)
 	return args.Error(0)
 }
 
@@ -278,12 +278,12 @@ func (s *GitHubPlatformSuite) TestIngest_Installation_Deleted() {
 		Installation: &Installation{ID: 42},
 	}
 
-	s.connections.On("ResetGitHubConnection", mock.Anything, "42").Return(nil)
+	s.connections.On("ResetGitHubConnection", mock.Anything, "42", mock.Anything).Return(nil)
 	s.secrets.On("Delete", mock.Anything, GitHub_SecretPath, "42").Return(nil)
 
 	err := s.platform.Ingest(context.Background(), event)
 	s.NoError(err)
-	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42")
+	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42", mock.Anything)
 	s.secrets.AssertCalled(s.T(), "Delete", mock.Anything, GitHub_SecretPath, "42")
 }
 
@@ -294,7 +294,7 @@ func (s *GitHubPlatformSuite) TestIngest_Installation_Deleted_Error() {
 		Installation: &Installation{ID: 42},
 	}
 
-	s.connections.On("ResetGitHubConnection", mock.Anything, "42").Return(errors.New("reset failed"))
+	s.connections.On("ResetGitHubConnection", mock.Anything, "42", mock.Anything).Return(errors.New("reset failed"))
 
 	err := s.platform.Ingest(context.Background(), event)
 	s.Error(err)
@@ -308,12 +308,12 @@ func (s *GitHubPlatformSuite) TestIngest_Installation_Removed() {
 		Installation: &Installation{ID: 42},
 	}
 
-	s.connections.On("ResetGitHubConnection", mock.Anything, "42").Return(nil)
+	s.connections.On("ResetGitHubConnection", mock.Anything, "42", mock.Anything).Return(nil)
 	s.secrets.On("Delete", mock.Anything, GitHub_SecretPath, "42").Return(nil)
 
 	err := s.platform.Ingest(context.Background(), event)
 	s.NoError(err)
-	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42")
+	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42", mock.Anything)
 }
 
 func (s *GitHubPlatformSuite) TestIngest_Installation_Created_NoRepos() {
@@ -724,7 +724,7 @@ func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_NilInstallatio
 func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_NonAddedAction() {
 	event := &WebhookEvent{
 		EventType:    "installation_repositories",
-		Action:       "removed",
+		Action:       "suspend",
 		Installation: &Installation{ID: 42},
 		RepositoriesAdded: []Repository{
 			{ID: 1, FullName: "org/repo"},
@@ -733,6 +733,7 @@ func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_NonAddedAction
 	err := s.platform.Ingest(context.Background(), event)
 	s.NoError(err)
 	s.connections.AssertNotCalled(s.T(), "UpsertGitHubConnection")
+	s.connections.AssertNotCalled(s.T(), "ResetGitHubConnection")
 }
 
 func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_NoReposAdded() {
@@ -802,6 +803,72 @@ func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_MultipleRepos(
 	s.NoError(err)
 	s.connections.AssertNumberOfCalls(s.T(), "UpsertGitHubConnection", 2)
 	s.events.AssertNumberOfCalls(s.T(), "Publish", 2)
+}
+
+func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_Removed() {
+	event := &WebhookEvent{
+		EventType:    "installation_repositories",
+		Action:       "removed",
+		Installation: &Installation{ID: 42},
+		RepositoriesRemoved: []Repository{
+			{ID: 1, FullName: "org/repo-removed"},
+		},
+	}
+
+	s.connections.On("ResetGitHubConnection", mock.Anything, "42", mock.Anything).Return(nil)
+	s.secrets.On("Delete", mock.Anything, GitHub_SecretPath, "42").Return(nil)
+
+	err := s.platform.Ingest(context.Background(), event)
+	s.NoError(err)
+	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42", mock.Anything)
+}
+
+func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_Removed_MultipleRepos() {
+	event := &WebhookEvent{
+		EventType:    "installation_repositories",
+		Action:       "removed",
+		Installation: &Installation{ID: 42},
+		RepositoriesRemoved: []Repository{
+			{ID: 1, FullName: "org/repo-removed-1"},
+			{ID: 2, FullName: "org/repo-removed-2"},
+		},
+	}
+
+	s.connections.On("ResetGitHubConnection", mock.Anything, "42", mock.Anything).Return(nil)
+	s.secrets.On("Delete", mock.Anything, GitHub_SecretPath, "42").Return(nil)
+
+	err := s.platform.Ingest(context.Background(), event)
+	s.NoError(err)
+	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42", mock.Anything)
+}
+
+func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_Removed_Error() {
+	event := &WebhookEvent{
+		EventType:    "installation_repositories",
+		Action:       "removed",
+		Installation: &Installation{ID: 42},
+		RepositoriesRemoved: []Repository{
+			{ID: 1, FullName: "org/repo-removed"},
+		},
+	}
+
+	s.connections.On("ResetGitHubConnection", mock.Anything, "42", mock.Anything).Return(errors.New("reset failed"))
+
+	err := s.platform.Ingest(context.Background(), event)
+	s.Error(err)
+	s.Contains(err.Error(), "reset failed")
+}
+
+func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_Removed_NoRepos() {
+	event := &WebhookEvent{
+		EventType:           "installation_repositories",
+		Action:              "removed",
+		Installation:        &Installation{ID: 42},
+		RepositoriesRemoved: []Repository{},
+	}
+	err := s.platform.Ingest(context.Background(), event)
+	s.NoError(err)
+	s.connections.AssertNotCalled(s.T(), "ResetGitHubConnection")
 }
 
 // ---------------------------------------------------------------------------
