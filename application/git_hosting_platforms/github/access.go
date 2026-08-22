@@ -152,29 +152,9 @@ func (s *githubAccess) ResetInstallation(ctx context.Context, installationId str
 // authorization flow (i.e., another repo in the same batch that already has a
 // connection record).
 func (s *githubAccess) CompleteConnection(ctx context.Context, installationId string, repos []string) error {
-	var sessionEventIdentifier string
-
 	for _, repo := range repos {
-		existing, err := s.config.GitHubConnections.GetGitHubConnection(ctx, repo)
-
-		if err != nil {
-			return err
-		}
-
-		if existing != nil && existing.SessionEventIdentifier != nil && *existing.SessionEventIdentifier != "" {
-			sessionEventIdentifier = *existing.SessionEventIdentifier
-			break
-		}
-	}
-
-	for _, repo := range repos {
-		var sessionEventId *string
-		if sessionEventIdentifier != "" {
-			sessionEventId = &sessionEventIdentifier
-		}
-
 		connection := &types.GitHubConnection{
-			SessionEventIdentifier: sessionEventId,
+			SessionEventIdentifier: nil,
 			RepoFullName:           repo,
 			Connected:              true,
 			InstallationId:         &installationId,

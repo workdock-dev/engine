@@ -67,6 +67,8 @@ func (s *githubPlatform) Ingest(ctx context.Context, event any) error {
 		return nil
 	case "installation":
 		return s.handleInstallation(ctx, e)
+	case "installation_repositories":
+		return s.handleInstallationRepositories(ctx, e)
 	case "issues":
 		return s.handleIssues(e)
 	case "pull_request_review_comment":
@@ -158,6 +160,39 @@ func (s *githubPlatform) handleInstallation(ctx context.Context, event *WebhookE
 	}
 
 	slog.Debug("GitHub installation stored", "installation_id", event.Installation.ID, "expires_at", token.ExpiresAt)
+	return nil
+}
+
+func (s *githubPlatform) handleInstallationRepositories(ctx context.Context, event *WebhookEvent) error {
+	if event.Installation == nil {
+		slog.Warn("installation_repositories event without installation data", "action", event.Action)
+		return nil
+	}
+
+	slog.Debug("Processing GitHub installation_repositories event", "action", event.Action, "installation_id", event.Installation.ID)
+
+	if event.Action != "added" {
+		slog.Debug("ignoring non-added installation_repositories event", "action", event.Action)
+		return nil
+	}
+
+	if len(event.RepositoriesAdded) <= 0 {
+		slog.Debug("no repositories added in installation_repositories event")
+		return nil
+	}
+
+	installationId := strconv.Itoa(event.Installation.ID)
+
+	repos := make([]string, 0, len(event.RepositoriesAdded))
+	for _, repo := range event.RepositoriesAdded {
+		repos = append(repos, repo.FullName)
+	}
+
+	if err := s.access.CompleteConnection(ctx, installationId, repos); err != nil {
+		return err
+	}
+
+	slog.Debug("GitHub installation_repositories handled", "installation_id", event.Installation.ID, "repos_count", len(repos))
 	return nil
 }
 
