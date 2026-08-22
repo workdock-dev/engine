@@ -278,12 +278,12 @@ func (s *GitHubPlatformSuite) TestIngest_Installation_Deleted() {
 		Installation: &Installation{ID: 42},
 	}
 
-	s.connections.On("ResetGitHubConnection", mock.Anything, "42", []string(nil)).Return(nil)
+	s.connections.On("ResetGitHubConnection", mock.Anything, "42", []string{}).Return(nil)
 	s.secrets.On("Delete", mock.Anything, GitHub_SecretPath, "42").Return(nil)
 
 	err := s.platform.Ingest(context.Background(), event)
 	s.NoError(err)
-	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42", []string(nil))
+	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42", []string{})
 	s.secrets.AssertCalled(s.T(), "Delete", mock.Anything, GitHub_SecretPath, "42")
 }
 
@@ -294,7 +294,7 @@ func (s *GitHubPlatformSuite) TestIngest_Installation_Deleted_Error() {
 		Installation: &Installation{ID: 42},
 	}
 
-	s.connections.On("ResetGitHubConnection", mock.Anything, "42", []string(nil)).Return(errors.New("reset failed"))
+	s.connections.On("ResetGitHubConnection", mock.Anything, "42", []string{}).Return(errors.New("reset failed"))
 
 	err := s.platform.Ingest(context.Background(), event)
 	s.Error(err)
@@ -308,12 +308,12 @@ func (s *GitHubPlatformSuite) TestIngest_Installation_Removed() {
 		Installation: &Installation{ID: 42},
 	}
 
-	s.connections.On("ResetGitHubConnection", mock.Anything, "42", []string(nil)).Return(nil)
+	s.connections.On("ResetGitHubConnection", mock.Anything, "42", []string{}).Return(nil)
 	s.secrets.On("Delete", mock.Anything, GitHub_SecretPath, "42").Return(nil)
 
 	err := s.platform.Ingest(context.Background(), event)
 	s.NoError(err)
-	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42", []string(nil))
+	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42", []string{})
 }
 
 func (s *GitHubPlatformSuite) TestIngest_Installation_Created_NoRepos() {
