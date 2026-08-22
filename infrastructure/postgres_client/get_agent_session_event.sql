@@ -18,7 +18,8 @@ select
     payload,
     seed,
     git_ref,
-    result
+    result,
+    reason
 from
     public.sessions_events
 where identifier = $1;

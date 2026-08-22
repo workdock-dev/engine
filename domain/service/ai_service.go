@@ -86,7 +86,7 @@ func NewAIService(config AIServiceConfig) *AIService {
 					return s.Cancel(ctx, e.Provider, e.Payload)
 				}
 
-				return s.Session(ctx, e.Provider, e.Payload, nil, nil)
+				return s.Session(ctx, e.Provider, e.Payload, nil, nil, types.SessionEventTriggerReason_Unknown)
 			},
 		)
 	}
@@ -127,7 +127,7 @@ func NewAIService(config AIServiceConfig) *AIService {
 				return fmt.Errorf("session not found: %s", sessionEvent.SessionIdentifier)
 			}
 
-			return s.Session(ctx, session.Provider, sessionEvent.Payload, new(uuid.NewString()), sessionEvent)
+			return s.Session(ctx, session.Provider, sessionEvent.Payload, new(uuid.NewString()), sessionEvent, types.SessionEventTriggerReason_Unknown)
 		},
 	)
 
@@ -162,7 +162,42 @@ func NewAIService(config AIServiceConfig) *AIService {
 					return fmt.Errorf("session not found: %s", sessionEvent.SessionIdentifier)
 				}
 
-				return s.Session(ctx, session.Provider, sessionEvent.Payload, new(uuid.NewString()), sessionEvent)
+				return s.Session(ctx, session.Provider, sessionEvent.Payload, new(uuid.NewString()), sessionEvent, types.SessionEventTriggerReason_PRComment)
+			},
+		)
+
+	slog.Debug("AIService subscribed for event", "event_type", types.EventType_PullRequestChecksFailed)
+	s.config.ForEvent.
+		Subscribe(
+			types.EventType_PullRequestChecksFailed,
+			func(ctx context.Context, event ports.DomainEvent) error {
+				e, ok := event.(types.PullRequestChecksFailedEvent)
+
+				if !ok {
+					return fmt.Errorf("expected a pull request checks failed event, received %s", event.EventType())
+				}
+
+				sessionEvent, err := s.config.Sessions.GetAgentSessionEventByGitRef(ctx, e.GitRef, e.RepoFullName)
+
+				if err != nil {
+					return err
+				}
+
+				if sessionEvent == nil {
+					return fmt.Errorf("session event not found: %s@%s", e.GitRef, e.RepoFullName)
+				}
+
+				session, err := s.config.Sessions.GetAgentSession(ctx, sessionEvent.SessionIdentifier)
+
+				if err != nil {
+					return err
+				}
+
+				if session == nil {
+					return fmt.Errorf("session not found: %s", sessionEvent.SessionIdentifier)
+				}
+
+				return s.Session(ctx, session.Provider, sessionEvent.Payload, new(uuid.NewString()), sessionEvent, types.SessionEventTriggerReason_CheckRun)
 			},
 		)
 
@@ -179,8 +214,11 @@ func NewAIService(config AIServiceConfig) *AIService {
 //
 // The seed is use by the providers to alters the generated idempotency key,
 // useful for when it's needed to process the same request without altering
-// the request's payload
-func (s *AIService) Session(ctx context.Context, name types.PlatformProvider, event any, seed *string, from *types.SessionEvent) error {
+// the request's payload.
+//
+// The reason parameter indicates why the session was re-triggered
+// and is stored on the new session event to provide context to the AI.
+func (s *AIService) Session(ctx context.Context, name types.PlatformProvider, event any, seed *string, from *types.SessionEvent, reason types.SessionEventTriggerReason) error {
 	workPlatform, err := s.platform(name)
 
 	if err != nil {
@@ -192,6 +230,8 @@ func (s *AIService) Session(ctx context.Context, name types.PlatformProvider, ev
 	if err != nil {
 		return err
 	}
+
+	sessionEvent.Reason = reason
 
 	if org, err := s.config.Organizations.GetOrganization(ctx, session.OrganizationIdentifier); err != nil {
 		return err

@@ -209,6 +209,7 @@ func (s *PostgresService) GetAgentSessionEvent(ctx context.Context, identifier s
 			&row.Seed,
 			&row.GitRef,
 			&row.Result,
+			&row.Reason,
 		)
 
 	if err != nil {
@@ -236,6 +237,7 @@ func (s *PostgresService) GetAgentSessionEventByGitRef(ctx context.Context, ref 
 			&row.Seed,
 			&row.GitRef,
 			&row.Result,
+			&row.Reason,
 		)
 
 	if err != nil {
@@ -293,6 +295,7 @@ func (s *PostgresService) CreateSessionEvent(ctx context.Context, event *types.S
 		event.Seed,
 		event.GitRef,
 		event.Result,
+		event.Reason,
 	); err != nil {
 		slog.Error("failed to insert session event", "event_identifier", event.Identifier, "err", err)
 

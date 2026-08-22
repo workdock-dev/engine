@@ -39,6 +39,8 @@ type WebhookEvent struct {
 	RepositoriesRemoved []Repository  `json:"repositories_removed,omitempty"`
 	Sender              *User         `json:"sender,omitempty"`
 	PullRequest         *PullRequest  `json:"pull_request"`
+	CheckRun            *CheckRun     `json:"check_run,omitempty"`
+	CheckSuite         *CheckSuite   `json:"check_suite,omitempty"`
 }
 
 type Installation struct {
@@ -61,14 +63,39 @@ type User struct {
 }
 
 type PullRequest struct {
-	Head Head `json:"head"`
+	Head     Head    `json:"head"`
+	Number   int     `json:"number"`
+	URL      string  `json:"url"`
+	Title    string  `json:"title"`
 }
 
 type Head struct {
 	Ref  string `json:"ref"`
+	SHA  string `json:"sha"`
 	Repo Repo   `json:"repo"`
 }
 
 type Repo struct {
 	FullName string `json:"full_name"`
+}
+
+type CheckRun struct {
+	ID          int64         `json:"id"`
+	NodeID      string        `json:"node_id"`
+	HeadBranch  string        `json:"head_branch"`
+	HeadSHA     string        `json:"head_sha"`
+	Status      string        `json:"status"`
+	Conclusion  *string       `json:"conclusion"`
+	URL         string        `json:"url"`
+	CheckSuite  *CheckSuite  `json:"check_suite,omitempty"`
+	PullRequests []PullRequest `json:"pull_requests,omitempty"`
+}
+
+type CheckSuite struct {
+	ID        int64    `json:"id"`
+	NodeID    string   `json:"node_id"`
+	HeadBranch string  `json:"head_branch"`
+	HeadSHA   string   `json:"head_sha"`
+	Status    string   `json:"status"`
+	Conclusion *string `json:"conclusion"`
 }
