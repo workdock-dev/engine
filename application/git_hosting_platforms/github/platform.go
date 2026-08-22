@@ -199,14 +199,14 @@ func (s *githubPlatform) handleInstallationRepositories(ctx context.Context, eve
 		repos = append(repos, repo.FullName)
 	}
 
-	var err error
+	var connErr error
 	if sessionEventIdentifier != "" {
-		err = s.access.CompleteConnection(ctx, installationId, repos, sessionEventIdentifier)
+		connErr = s.access.CompleteConnection(ctx, installationId, repos, sessionEventIdentifier)
 	} else {
-		err = s.access.CompleteConnection(ctx, installationId, repos)
+		connErr = s.access.CompleteConnection(ctx, installationId, repos)
 	}
-	if err != nil {
-		return err
+	if connErr != nil {
+		return connErr
 	}
 
 	slog.Debug("GitHub installation_repositories handled", "installation_id", event.Installation.ID, "repos_count", len(repos))
