@@ -22,8 +22,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/jazielguerrero/workdock/application"
-	"github.com/jazielguerrero/workdock/domain/types"
+	"github.com/workdock-dev/engine/application"
+	"github.com/workdock-dev/engine/domain/types"
 )
 
 type Server struct {

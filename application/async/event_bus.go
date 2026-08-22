@@ -19,7 +19,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/jazielguerrero/workdock/domain/ports"
+	"github.com/workdock-dev/engine/domain/ports"
 )
 
 // InMemoryEventBus is the application-layer implementation of ports.ForEventBus.

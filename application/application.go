@@ -18,12 +18,12 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/jazielguerrero/workdock/application/async"
-	"github.com/jazielguerrero/workdock/application/interfaces"
-	"github.com/jazielguerrero/workdock/domain/ports"
-	"github.com/jazielguerrero/workdock/domain/repositories"
-	domain_service "github.com/jazielguerrero/workdock/domain/service"
-	"github.com/jazielguerrero/workdock/domain/types"
+	"github.com/workdock-dev/engine/application/async"
+	"github.com/workdock-dev/engine/application/interfaces"
+	"github.com/workdock-dev/engine/domain/ports"
+	"github.com/workdock-dev/engine/domain/repositories"
+	domain_service "github.com/workdock-dev/engine/domain/service"
+	"github.com/workdock-dev/engine/domain/types"
 )
 
 type Config struct {

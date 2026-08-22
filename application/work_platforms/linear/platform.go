@@ -21,9 +21,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/jazielguerrero/workdock/domain/ports"
-	"github.com/jazielguerrero/workdock/domain/repositories"
-	"github.com/jazielguerrero/workdock/domain/types"
+	"github.com/workdock-dev/engine/domain/ports"
+	"github.com/workdock-dev/engine/domain/repositories"
+	"github.com/workdock-dev/engine/domain/types"
 )
 
 // Config holds the dependencies required to run Linear sessions.

@@ -1,4 +1,4 @@
-module github.com/jazielguerrero/workdock
+module github.com/workdock-dev/engine
 
 go 1.26.3
 

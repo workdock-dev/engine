@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jazielguerrero/workdock/domain/ports"
-	"github.com/jazielguerrero/workdock/domain/repositories"
-	"github.com/jazielguerrero/workdock/domain/types"
+	"github.com/workdock-dev/engine/domain/ports"
+	"github.com/workdock-dev/engine/domain/repositories"
+	"github.com/workdock-dev/engine/domain/types"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 )

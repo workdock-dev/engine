@@ -17,8 +17,8 @@ package mocks
 import (
 	"context"
 
-	"github.com/jazielguerrero/workdock/domain/ports"
-	"github.com/jazielguerrero/workdock/domain/types"
+	"github.com/workdock-dev/engine/domain/ports"
+	"github.com/workdock-dev/engine/domain/types"
 	"github.com/stretchr/testify/mock"
 )
 

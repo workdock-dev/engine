@@ -18,7 +18,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/jazielguerrero/workdock/domain/types"
+	"github.com/workdock-dev/engine/domain/types"
 )
 
 // ErrJobNotRunnable is returned by Claim when the job is not eligible for

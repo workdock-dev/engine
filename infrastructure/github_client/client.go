@@ -35,8 +35,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/jazielguerrero/workdock/application/git_hosting_platforms/github"
-	"github.com/jazielguerrero/workdock/domain/types"
+	"github.com/workdock-dev/engine/application/git_hosting_platforms/github"
+	"github.com/workdock-dev/engine/domain/types"
 )
 
 var (
