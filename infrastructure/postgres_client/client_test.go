@@ -229,7 +229,7 @@ func (s *PostgresServiceSuite) TestGetGitHubConnection_Success() {
 	s.pool.queryRowFn = func(ctx context.Context, sql string, args ...any) pgx.Row {
 		s.Equal("owner/repo", args[0])
 		return &mockRow{scanFn: func(dest ...any) error {
-			*dest[0].(*string) = "event-1"
+			*dest[0].(**string) = strPtr("event-1")
 			*dest[1].(*string) = "owner/repo"
 			*dest[2].(*bool) = true
 			*dest[3].(**string) = strPtr("inst-1")
