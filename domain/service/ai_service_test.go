@@ -99,6 +99,7 @@ func (s *AIServiceSuite) newServiceWithRegistry(registry ports.WorkPlatformRegis
 func (s *AIServiceSuite) expectCoreSubscriptions() {
 	s.eventBus.On("Subscribe", types.EventType_GitHubConnected, mock.AnythingOfType("ports.EventHandler"))
 	s.eventBus.On("Subscribe", types.EventType_PullRequestCommented, mock.AnythingOfType("ports.EventHandler"))
+	s.eventBus.On("Subscribe", types.EventType_PullRequestChecksFailed, mock.AnythingOfType("ports.EventHandler"))
 }
 
 // ---------------------------------------------------------------------------
