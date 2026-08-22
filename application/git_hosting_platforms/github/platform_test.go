@@ -432,7 +432,7 @@ func (s *GitHubPlatformSuite) TestIngest_Installation_Created_GetConnectionError
 
 	s.client.On("CreateInstallationAccessToken", 42).Return(token, nil)
 	s.secrets.On("Set", mock.Anything, GitHub_SecretPath, "42", mock.Anything).Return(nil)
-	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(nil, errors.New("db error"))
+	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(errors.New("db error"))
 
 	err := s.platform.Ingest(context.Background(), event)
 	s.Error(err)
