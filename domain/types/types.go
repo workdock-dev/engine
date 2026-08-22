@@ -26,6 +26,13 @@ import (
 type PlatformProvider string
 type HarnessProvider string
 type EventJobStatus string
+type SessionEventTriggerReason string
+
+const (
+	SessionEventTriggerReason_Unknown       SessionEventTriggerReason = "unknown"
+	SessionEventTriggerReason_PRComment     SessionEventTriggerReason = "pr_comment"
+	SessionEventTriggerReason_CheckRun     SessionEventTriggerReason = "check_run"
+)
 
 const (
 	PlatformProvider_Linear PlatformProvider = "linear"
@@ -67,6 +74,12 @@ type SessionEvent struct {
 	Seed   *string
 	Result *SessionEventResult
 	GitRef *string
+
+	// Reason indicates why a session event was re-triggered.
+	// This is set when the event originates from a GitHub webhook
+	// (e.g., pull_request_review_comment, check_run) to preserve
+	// context about what happened.
+	Reason SessionEventTriggerReason
 }
 
 type SessionEventResult struct {

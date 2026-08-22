@@ -75,6 +75,7 @@ func (s *AIServiceSuite) expectSubscriptions() {
 	s.eventBus.On("Subscribe", types.PlatformWebhookEvent(s.provider), mock.AnythingOfType("ports.EventHandler"))
 	s.eventBus.On("Subscribe", types.EventType_GitHubConnected, mock.AnythingOfType("ports.EventHandler"))
 	s.eventBus.On("Subscribe", types.EventType_PullRequestCommented, mock.AnythingOfType("ports.EventHandler"))
+	s.eventBus.On("Subscribe", types.EventType_PullRequestChecksFailed, mock.AnythingOfType("ports.EventHandler"))
 }
 
 func (s *AIServiceSuite) newService() *AIService {
@@ -98,6 +99,7 @@ func (s *AIServiceSuite) newServiceWithRegistry(registry ports.WorkPlatformRegis
 func (s *AIServiceSuite) expectCoreSubscriptions() {
 	s.eventBus.On("Subscribe", types.EventType_GitHubConnected, mock.AnythingOfType("ports.EventHandler"))
 	s.eventBus.On("Subscribe", types.EventType_PullRequestCommented, mock.AnythingOfType("ports.EventHandler"))
+	s.eventBus.On("Subscribe", types.EventType_PullRequestChecksFailed, mock.AnythingOfType("ports.EventHandler"))
 }
 
 // ---------------------------------------------------------------------------
@@ -186,6 +188,7 @@ func (s *AIServiceSuite) TestWebhookHandler_PlatformNotFound() {
 	s.eventBus.On("Subscribe", types.PlatformWebhookEvent(otherProvider), mock.AnythingOfType("ports.EventHandler"))
 	s.eventBus.On("Subscribe", types.EventType_GitHubConnected, mock.AnythingOfType("ports.EventHandler"))
 	s.eventBus.On("Subscribe", types.EventType_PullRequestCommented, mock.AnythingOfType("ports.EventHandler"))
+	s.eventBus.On("Subscribe", types.EventType_PullRequestChecksFailed, mock.AnythingOfType("ports.EventHandler"))
 
 	s.newServiceWithRegistry(ports.WorkPlatformRegistry{
 		otherProvider: s.workPlat,
@@ -402,7 +405,7 @@ func (s *AIServiceSuite) TestSession_NewSession() {
 	s.sessions.On("UpsertAgentSession", mock.Anything, s.session).Return(nil)
 	s.sessions.On("CreateSessionEvent", mock.Anything, s.sessionEvent).Return(nil)
 
-	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil)
+	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil, types.SessionEventTriggerReason_Unknown)
 
 	s.NoError(err)
 	s.sessions.AssertCalled(s.T(), "UpsertAgentSession", mock.Anything, s.session)
@@ -426,7 +429,7 @@ func (s *AIServiceSuite) TestSession_ExistingSessionNewEvent() {
 	s.sessions.On("GetAgentSessionEvent", mock.Anything, "evt-1").Return(nil, nil)
 	s.sessions.On("CreateSessionEvent", mock.Anything, s.sessionEvent).Return(nil)
 
-	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil)
+	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil, types.SessionEventTriggerReason_Unknown)
 
 	s.NoError(err)
 	s.sessions.AssertNotCalled(s.T(), "UpsertAgentSession")
@@ -453,7 +456,7 @@ func (s *AIServiceSuite) TestSession_DuplicateEvent() {
 	s.sessions.On("GetAgentSession", mock.Anything, "sess-1").Return(existingSession, nil)
 	s.sessions.On("GetAgentSessionEvent", mock.Anything, "evt-1").Return(existingEvent, nil)
 
-	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil)
+	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil, types.SessionEventTriggerReason_Unknown)
 
 	s.NoError(err)
 	s.sessions.AssertNotCalled(s.T(), "UpsertAgentSession")
@@ -464,7 +467,7 @@ func (s *AIServiceSuite) TestSession_PlatformNotFound() {
 	s.expectCoreSubscriptions()
 	svc := s.newServiceWithRegistry(ports.WorkPlatformRegistry{})
 
-	err := svc.Session(context.Background(), s.provider, nil, nil, nil)
+	err := svc.Session(context.Background(), s.provider, nil, nil, nil, types.SessionEventTriggerReason_Unknown)
 
 	s.Error(err)
 	s.Contains(err.Error(), "failed to load work platform from registry")
@@ -478,7 +481,7 @@ func (s *AIServiceSuite) TestSession_IngestError() {
 	s.workPlat.On("Ingest", s.sessionEvent.Payload, (*string)(nil), (*types.SessionEvent)(nil)).
 		Return(nil, nil, ingestErr)
 
-	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil)
+	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil, types.SessionEventTriggerReason_Unknown)
 
 	s.ErrorIs(err, ingestErr)
 }
@@ -492,7 +495,7 @@ func (s *AIServiceSuite) TestSession_GetOrganizationError() {
 		Return(s.session, s.sessionEvent, nil)
 	s.orgs.On("GetOrganization", mock.Anything, "org-1").Return(nil, orgErr)
 
-	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil)
+	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil, types.SessionEventTriggerReason_Unknown)
 
 	s.ErrorIs(err, orgErr)
 }
@@ -505,7 +508,7 @@ func (s *AIServiceSuite) TestSession_OrganizationNil() {
 		Return(s.session, s.sessionEvent, nil)
 	s.orgs.On("GetOrganization", mock.Anything, "org-1").Return(nil, nil)
 
-	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil)
+	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil, types.SessionEventTriggerReason_Unknown)
 
 	s.NoError(err)
 }
@@ -520,7 +523,7 @@ func (s *AIServiceSuite) TestSession_GetSessionError() {
 	s.orgs.On("GetOrganization", mock.Anything, "org-1").Return(s.org, nil)
 	s.sessions.On("GetAgentSession", mock.Anything, "sess-1").Return(nil, sessionErr)
 
-	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil)
+	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil, types.SessionEventTriggerReason_Unknown)
 
 	s.ErrorIs(err, sessionErr)
 }
@@ -536,7 +539,7 @@ func (s *AIServiceSuite) TestSession_UpsertError() {
 	s.sessions.On("GetAgentSession", mock.Anything, "sess-1").Return(nil, nil)
 	s.sessions.On("UpsertAgentSession", mock.Anything, s.session).Return(upsertErr)
 
-	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil)
+	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil, types.SessionEventTriggerReason_Unknown)
 
 	s.ErrorIs(err, upsertErr)
 }
@@ -558,7 +561,7 @@ func (s *AIServiceSuite) TestSession_DuplicateCheckError() {
 	s.sessions.On("GetAgentSession", mock.Anything, "sess-1").Return(existingSession, nil)
 	s.sessions.On("GetAgentSessionEvent", mock.Anything, "evt-1").Return(nil, dupCheckErr)
 
-	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil)
+	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil, types.SessionEventTriggerReason_Unknown)
 
 	s.ErrorIs(err, dupCheckErr)
 }
@@ -575,7 +578,7 @@ func (s *AIServiceSuite) TestSession_CreateEventError() {
 	s.sessions.On("UpsertAgentSession", mock.Anything, s.session).Return(nil)
 	s.sessions.On("CreateSessionEvent", mock.Anything, s.sessionEvent).Return(createErr)
 
-	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil)
+	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, nil, nil, types.SessionEventTriggerReason_Unknown)
 
 	s.ErrorIs(err, createErr)
 }
@@ -597,7 +600,7 @@ func (s *AIServiceSuite) TestSession_WithSeedAndFrom() {
 	s.sessions.On("UpsertAgentSession", mock.Anything, s.session).Return(nil)
 	s.sessions.On("CreateSessionEvent", mock.Anything, s.sessionEvent).Return(nil)
 
-	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, &seed, from)
+	err := svc.Session(context.Background(), s.provider, s.sessionEvent.Payload, &seed, from, types.SessionEventTriggerReason_Unknown)
 
 	s.NoError(err)
 	s.workPlat.AssertCalled(s.T(), "Ingest", s.sessionEvent.Payload, &seed, from)

@@ -100,6 +100,17 @@ It may clarify, refine, override, or replace previous requirements. When it conf
 
 %s
 `
+
+	PromptTemplate_PullRequestChecksFailed = `
+
+### Latest User Comment (Highest Priority)
+
+The following message is the most recent instruction from the user.
+
+It may clarify, refine, override, or replace previous requirements. When it conflicts with earlier information, follow this message.
+
+%s
+`
 )
 
 type linearAISessionConfig struct {
@@ -312,7 +323,11 @@ func (s *linearAISession) createPrompt() string {
 	// condition is true, it means the event did not came from
 	// linear, but from a pr comment event
 	if s.config.SessionEvent.GitRef != nil && s.config.SessionEvent.Seed != nil {
-		prompt += fmt.Sprintf(PromptTemplate_LatestUserComment, "There are review comments on the pull request. Retrieve all review comments and address each one that is applicable to the current implementation. Make the necessary code changes, verify the changes, and ensure the pull request is ready for review again.")
+		if s.config.SessionEvent.Reason == types.SessionEventTriggerReason_CheckRun {
+			prompt += fmt.Sprintf(PromptTemplate_PullRequestChecksFailed, "The pull request checks have failed. Review the check failures, fix the issues, and ensure all checks pass before the pull request can be merged.")
+		} else {
+			prompt += fmt.Sprintf(PromptTemplate_LatestUserComment, "There are review comments on the pull request. Retrieve all review comments and address each one that is applicable to the current implementation. Make the necessary code changes, verify the changes, and ensure the pull request is ready for review again.")
+		}
 	} else if s.config.Payload.AgentActivity != nil {
 		prompt += fmt.Sprintf(PromptTemplate_LatestUserComment, s.config.Payload.AgentActivity.Content.Body)
 	}
