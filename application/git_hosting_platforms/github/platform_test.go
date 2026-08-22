@@ -766,6 +766,7 @@ func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_Valid() {
 	}
 
 	s.connections.On("GetGitHubConnectionByInstallationId", mock.Anything, "42").Return(nil, nil)
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo-new").Return(nil, nil)
 	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(nil)
 	s.events.On("Publish", mock.Anything, mock.Anything).Return(nil)
 
@@ -787,6 +788,7 @@ func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_CompleteConnec
 	}
 
 	s.connections.On("GetGitHubConnectionByInstallationId", mock.Anything, "42").Return(nil, nil)
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo-new").Return(nil, nil)
 	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(errors.New("connection failed"))
 
 	err := s.platform.Ingest(context.Background(), event)
@@ -806,6 +808,8 @@ func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_MultipleRepos(
 	}
 
 	s.connections.On("GetGitHubConnectionByInstallationId", mock.Anything, "42").Return(nil, nil)
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo-new-1").Return(nil, nil)
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo-new-2").Return(nil, nil)
 	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(nil)
 	s.events.On("Publish", mock.Anything, mock.Anything).Return(nil)
 
