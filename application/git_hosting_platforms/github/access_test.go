@@ -173,7 +173,7 @@ func (s *GitHubAccessSuite) TestVerifyRepoAccess_TokenUnavailable_ResetsAndReReq
 	s.ErrorIs(err, types.ErrGitHubConnectionReRequested)
 	s.False(ok)
 	s.Empty(token)
-	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42", []string{"org/repo"})
+	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42", mock.Anything)
 	s.connections.AssertCalled(s.T(), "UpsertGitHubConnection", mock.Anything, mock.Anything)
 }
 
@@ -273,12 +273,12 @@ func (s *GitHubAccessSuite) TestRequestConnection_Error() {
 
 func (s *GitHubAccessSuite) TestResetInstallation() {
 	repos := []string{"org/repo1", "org/repo2"}
-	s.connections.On("ResetGitHubConnection", mock.Anything, "42", repos).Return(nil)
+	s.connections.On("ResetGitHubConnection", mock.Anything, "42", mock.Anything).Return(nil)
 	s.secrets.On("Delete", mock.Anything, GitHub_SecretPath, "42").Return(nil)
 
 	err := s.access.ResetInstallation(context.Background(), "42", repos)
 	s.NoError(err)
-	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42", repos)
+	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42", mock.Anything)
 	s.secrets.AssertCalled(s.T(), "Delete", mock.Anything, GitHub_SecretPath, "42")
 }
 

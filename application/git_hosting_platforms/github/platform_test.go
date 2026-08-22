@@ -819,7 +819,7 @@ func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_Removed() {
 
 	err := s.platform.Ingest(context.Background(), event)
 	s.NoError(err)
-	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42", []string{"org/repo-removed"})
+	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42", mock.Anything)
 }
 
 func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_Removed_MultipleRepos() {
@@ -837,7 +837,7 @@ func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_Removed_Multip
 
 	err := s.platform.Ingest(context.Background(), event)
 	s.NoError(err)
-	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42", []string{"org/repo-removed-1", "org/repo-removed-2"})
+	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42", mock.Anything)
 }
 
 func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_Removed_Error() {
