@@ -105,6 +105,14 @@ func (m *mockGitHubConnections) GetGitHubConnection(ctx context.Context, repoFul
 	return args.Get(0).(*types.GitHubConnection), args.Error(1)
 }
 
+func (m *mockGitHubConnections) GetGitHubConnectionByInstallationId(ctx context.Context, installationId string) (*types.GitHubConnection, error) {
+	args := m.Called(ctx, installationId)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.GitHubConnection), args.Error(1)
+}
+
 func (m *mockGitHubConnections) UpsertGitHubConnection(ctx context.Context, connection *types.GitHubConnection) error {
 	args := m.Called(ctx, connection)
 	return args.Error(0)
@@ -702,6 +710,154 @@ func (s *GitHubPlatformSuite) TestRequestConnection() {
 	s.connections.AssertCalled(s.T(), "UpsertGitHubConnection", mock.Anything, mock.MatchedBy(func(c *types.GitHubConnection) bool {
 		return c.RepoFullName == "org/repo" && c.SessionEventIdentifier != nil && *c.SessionEventIdentifier == "evt-1" && !c.Connected && c.InstallationId == nil
 	}))
+}
+
+// ---------------------------------------------------------------------------
+// handleInstallationRepositories
+// ---------------------------------------------------------------------------
+
+func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_NilInstallation() {
+	event := &WebhookEvent{
+		EventType:          "installation_repositories",
+		Action:             "added",
+		Installation:       nil,
+		RepositoriesAdded: []Repository{
+			{ID: 1, FullName: "org/repo"},
+		},
+	}
+	err := s.platform.Ingest(context.Background(), event)
+	s.NoError(err)
+}
+
+func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_NonAddedAction() {
+	event := &WebhookEvent{
+		EventType:    "installation_repositories",
+		Action:       "removed",
+		Installation: &Installation{ID: 42},
+		RepositoriesAdded: []Repository{
+			{ID: 1, FullName: "org/repo"},
+		},
+	}
+	err := s.platform.Ingest(context.Background(), event)
+	s.NoError(err)
+	s.connections.AssertNotCalled(s.T(), "UpsertGitHubConnection")
+}
+
+func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_NoReposAdded() {
+	event := &WebhookEvent{
+		EventType:          "installation_repositories",
+		Action:             "added",
+		Installation:       &Installation{ID: 42},
+		RepositoriesAdded: []Repository{},
+	}
+	err := s.platform.Ingest(context.Background(), event)
+	s.NoError(err)
+	s.connections.AssertNotCalled(s.T(), "UpsertGitHubConnection")
+}
+
+func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_Valid() {
+	event := &WebhookEvent{
+		EventType:    "installation_repositories",
+		Action:       "added",
+		Installation: &Installation{ID: 42},
+		RepositoriesAdded: []Repository{
+			{ID: 1, FullName: "org/repo-new"},
+		},
+	}
+
+	s.connections.On("GetGitHubConnectionByInstallationId", mock.Anything, "42").Return(nil, nil)
+	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(nil)
+	s.events.On("Publish", mock.Anything, mock.Anything).Return(nil)
+
+	err := s.platform.Ingest(context.Background(), event)
+	s.NoError(err)
+	s.connections.AssertCalled(s.T(), "UpsertGitHubConnection", mock.Anything, mock.MatchedBy(func(c *types.GitHubConnection) bool {
+		return c.RepoFullName == "org/repo-new" && c.Connected == true && *c.InstallationId == "42"
+	}))
+}
+
+func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_CompleteConnectionError() {
+	event := &WebhookEvent{
+		EventType:    "installation_repositories",
+		Action:       "added",
+		Installation: &Installation{ID: 42},
+		RepositoriesAdded: []Repository{
+			{ID: 1, FullName: "org/repo-new"},
+		},
+	}
+
+	s.connections.On("GetGitHubConnectionByInstallationId", mock.Anything, "42").Return(nil, nil)
+	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(errors.New("connection failed"))
+
+	err := s.platform.Ingest(context.Background(), event)
+	s.Error(err)
+	s.Contains(err.Error(), "connection failed")
+}
+
+func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_MultipleRepos() {
+	event := &WebhookEvent{
+		EventType:    "installation_repositories",
+		Action:       "added",
+		Installation: &Installation{ID: 42},
+		RepositoriesAdded: []Repository{
+			{ID: 1, FullName: "org/repo-new-1"},
+			{ID: 2, FullName: "org/repo-new-2"},
+		},
+	}
+
+	s.connections.On("GetGitHubConnectionByInstallationId", mock.Anything, "42").Return(nil, nil)
+	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(nil)
+	s.events.On("Publish", mock.Anything, mock.Anything).Return(nil)
+
+	err := s.platform.Ingest(context.Background(), event)
+	s.NoError(err)
+	s.connections.AssertNumberOfCalls(s.T(), "UpsertGitHubConnection", 2)
+	s.events.AssertNumberOfCalls(s.T(), "Publish", 2)
+}
+
+func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_WithExistingConnection() {
+	event := &WebhookEvent{
+		EventType:    "installation_repositories",
+		Action:       "added",
+		Installation: &Installation{ID: 42},
+		RepositoriesAdded: []Repository{
+			{ID: 1, FullName: "org/repo-new"},
+		},
+	}
+
+	sessionEventId := "existing-evt-id"
+	existingConn := &types.GitHubConnection{
+		SessionEventIdentifier: &sessionEventId,
+		RepoFullName:          "org/existing-repo",
+		Connected:             true,
+		InstallationId:        strPtr("42"),
+	}
+	s.connections.On("GetGitHubConnectionByInstallationId", mock.Anything, "42").Return(existingConn, nil)
+	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(nil)
+	s.events.On("Publish", mock.Anything, mock.Anything).Return(nil)
+
+	err := s.platform.Ingest(context.Background(), event)
+	s.NoError(err)
+	s.connections.AssertCalled(s.T(), "UpsertGitHubConnection", mock.Anything, mock.MatchedBy(func(c *types.GitHubConnection) bool {
+		return c.RepoFullName == "org/repo-new" && c.Connected == true && *c.InstallationId == "42" && c.SessionEventIdentifier != nil && *c.SessionEventIdentifier == "existing-evt-id"
+	}))
+}
+
+func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_GetByInstallationIdError() {
+	event := &WebhookEvent{
+		EventType:    "installation_repositories",
+		Action:       "added",
+		Installation: &Installation{ID: 42},
+		RepositoriesAdded: []Repository{
+			{ID: 1, FullName: "org/repo-new"},
+		},
+	}
+
+	s.connections.On("GetGitHubConnectionByInstallationId", mock.Anything, "42").Return(nil, errors.New("db error"))
+
+	err := s.platform.Ingest(context.Background(), event)
+	s.Error(err)
+	s.Contains(err.Error(), "db error")
 }
 
 // ---------------------------------------------------------------------------
