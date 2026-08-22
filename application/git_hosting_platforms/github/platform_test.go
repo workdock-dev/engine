@@ -105,14 +105,6 @@ func (m *mockGitHubConnections) GetGitHubConnection(ctx context.Context, repoFul
 	return args.Get(0).(*types.GitHubConnection), args.Error(1)
 }
 
-func (m *mockGitHubConnections) GetGitHubConnectionByInstallationId(ctx context.Context, installationId string) (*types.GitHubConnection, error) {
-	args := m.Called(ctx, installationId)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*types.GitHubConnection), args.Error(1)
-}
-
 func (m *mockGitHubConnections) UpsertGitHubConnection(ctx context.Context, connection *types.GitHubConnection) error {
 	args := m.Called(ctx, connection)
 	return args.Error(0)

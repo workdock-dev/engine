@@ -24,7 +24,6 @@ import (
 // and the GitHub installations authorized to access them.
 type GitHubConnectionRepository interface {
 	GetGitHubConnection(ctx context.Context, repoFullName string) (*types.GitHubConnection, error)
-	GetGitHubConnectionByInstallationId(ctx context.Context, installationId string) (*types.GitHubConnection, error)
 	UpsertGitHubConnection(ctx context.Context, connection *types.GitHubConnection) error
 	ResetGitHubConnection(ctx context.Context, installationId string) error
 }

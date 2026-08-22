@@ -52,9 +52,6 @@ var (
 	//go:embed get_github_connection.sql
 	GetGitHubConnectionSql string
 
-	//go:embed get_github_connection_by_install.sql
-	GetGitHubConnectionByInstallationIdSql string
-
 	//go:embed insert_session_event.sql
 	InsertSessionEventSql string
 
@@ -273,31 +270,6 @@ func (s *PostgresService) GetGitHubConnection(ctx context.Context, repoFullName 
 		}
 
 		slog.Error("failed to get github connection by repo full name", "err", err, "repo_full_name", repoFullName)
-		return nil, err
-	}
-
-	return &row, nil
-}
-
-func (s *PostgresService) GetGitHubConnectionByInstallationId(ctx context.Context, installationId string) (*types.GitHubConnection, error) {
-	var row types.GitHubConnection
-
-	err := s.client.
-		QueryRow(ctx, GetGitHubConnectionByInstallationIdSql, installationId).
-		Scan(
-			&row.SessionEventIdentifier,
-			&row.RepoFullName,
-			&row.Connected,
-			&row.InstallationId,
-		)
-
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			slog.Debug("github connection doesn't exist in the database for installation id", "installation_id", installationId)
-			return nil, nil
-		}
-
-		slog.Error("failed to get github connection by installation id", "err", err, "installation_id", installationId)
 		return nil, err
 	}
 
