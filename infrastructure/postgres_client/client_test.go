@@ -144,6 +144,7 @@ func (s *PostgresServiceSuite) TestGetAgentSessionEvent_Success() {
 			*dest[3].(**string) = strPtr("seed-1")
 			*dest[4].(**string) = strPtr("main")
 			*dest[5].(**types.SessionEventResult) = nil
+			*dest[6].(*types.SessionEventTriggerReason) = types.SessionEventTriggerReason_Unknown
 			return nil
 		}}
 	}
@@ -191,6 +192,7 @@ func (s *PostgresServiceSuite) TestGetAgentSessionEventByGitRef_Success() {
 			*dest[3].(**string) = nil
 			*dest[4].(**string) = strPtr("abc123")
 			*dest[5].(**types.SessionEventResult) = nil
+			*dest[6].(*types.SessionEventTriggerReason) = types.SessionEventTriggerReason_Unknown
 			return nil
 		}}
 	}

@@ -12,20 +12,13 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
-SELECT
-    se.session_identifier,
-    se.identifier,
-    se.payload,
-    se.seed,
-    se.git_ref,
-    se.result,
-    se.reason
-FROM
-    public.sessions_events se
-JOIN
-    public.sessions s ON s.identifier = se.session_identifier
-WHERE
-    se.git_ref = $1
-    AND s.repo_full_name = $2
-ORDER BY se.updated_at DESC, se.id DESC
-LIMIT 1;
+-- Write your migrate up statements here
+
+ALTER TABLE public.sessions_events ADD COLUMN reason TEXT;
+
+---- create above / drop below ----
+
+-- Write your migrate down statements here. If this migration is irreversible
+-- Then delete the separator line above.
+
+ALTER TABLE public.sessions_events DROP COLUMN reason;

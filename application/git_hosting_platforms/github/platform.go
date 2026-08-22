@@ -73,6 +73,8 @@ func (s *githubPlatform) Ingest(ctx context.Context, event any) error {
 		return s.handleIssues(e)
 	case "pull_request_review_comment":
 		return s.handlePullRequestComment(e)
+	case "check_run":
+		return s.handleCheckRun(e)
 	default:
 		slog.Warn("unhandled github event", "event", e.EventType)
 	}
@@ -256,6 +258,60 @@ func (s *githubPlatform) handlePullRequestComment(event *WebhookEvent) error {
 		RepoFullName:   event.PullRequest.Head.Repo.FullName,
 		InstallationId: installationId,
 	})
+
+	return nil
+}
+
+func (s *githubPlatform) handleCheckRun(event *WebhookEvent) error {
+	if event.Sender != nil && event.Sender.Login == s.config.BotLoginName {
+		slog.Debug("check_run event received, ignoring", "action", event.Action, "sender", s.config.BotLoginName)
+		return nil
+	}
+
+	if event.Action != "completed" {
+		slog.Debug("check_run event not completed, ignoring", "action", event.Action)
+		return nil
+	}
+
+	if event.CheckRun == nil {
+		slog.Warn("check_run event without check_run data", "action", event.Action)
+		return nil
+	}
+
+	if event.CheckRun.Conclusion == nil {
+		slog.Debug("check_run event without conclusion, ignoring", "action", event.Action)
+		return nil
+	}
+
+	conclusion := *event.CheckRun.Conclusion
+	if conclusion != "failure" && conclusion != "timed_out" {
+		slog.Debug("check_run event not failed, ignoring", "conclusion", conclusion)
+		return nil
+	}
+
+	if event.Installation == nil {
+		slog.Warn("check_run event without installation data", "action", event.Action)
+		return nil
+	}
+
+	if len(event.CheckRun.PullRequests) == 0 {
+		slog.Debug("check_run event without pull requests, ignoring")
+		return nil
+	}
+
+	installationId := strconv.Itoa(event.Installation.ID)
+
+	for _, pr := range event.CheckRun.PullRequests {
+		slog.Debug("github check_run event", "action", event.Action, "conclusion", conclusion, "check_run_id", event.CheckRun.ID, "pr", pr.Head.Ref)
+
+		s.config.ForEvents.Publish(context.Background(), types.PullRequestChecksFailedEvent{
+			Provider:       types.PlatformProvider_GitHub,
+			GitRef:         pr.Head.Ref,
+			RepoFullName:   pr.Head.Repo.FullName,
+			InstallationId: installationId,
+			ChecksFailed:   []string{event.CheckRun.URL},
+		})
+	}
 
 	return nil
 }

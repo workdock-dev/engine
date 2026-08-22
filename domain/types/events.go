@@ -15,9 +15,10 @@
 package types
 
 const (
-	EventType_GitHubConnected      = "github.connected"
-	EventType_Webhook              = "webhook"
-	EventType_PullRequestCommented = "pull_request.comment"
+	EventType_GitHubConnected         = "github.connected"
+	EventType_Webhook               = "webhook"
+	EventType_PullRequestCommented  = "pull_request.comment"
+	EventType_PullRequestChecksFailed = "pull_request.checks_failed"
 )
 
 // WebhookEventType indicates the kind of domain event a webhook payload
@@ -74,4 +75,16 @@ type PullRequestCommentedEvent struct {
 
 func (e PullRequestCommentedEvent) EventType() string {
 	return EventType_PullRequestCommented
+}
+
+type PullRequestChecksFailedEvent struct {
+	Provider       PlatformProvider
+	GitRef         string
+	InstallationId string
+	RepoFullName   string
+	ChecksFailed   []string
+}
+
+func (e PullRequestChecksFailedEvent) EventType() string {
+	return EventType_PullRequestChecksFailed
 }

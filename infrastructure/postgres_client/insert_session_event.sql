@@ -18,6 +18,7 @@ insert into public.sessions_events (
     payload,
     seed,
     git_ref,
-    result
-) values($1, $2, $3, $4, $5, $6);
+    result,
+    reason
+) values($1, $2, $3, $4, $5, $6, $7);
 
