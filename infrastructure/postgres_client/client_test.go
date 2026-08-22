@@ -351,7 +351,7 @@ func (s *PostgresServiceSuite) TestUpdateSessionEventResult_Error() {
 func (s *PostgresServiceSuite) TestUpsertGitHubConnection_Success() {
 	s.pool.queryRowFn = func(ctx context.Context, sql string, args ...any) pgx.Row {
 		return &mockRow{scanFn: func(dest ...any) error {
-			*dest[0].(*string) = "event-1"
+			*dest[0].(**string) = strPtr("event-1")
 			return nil
 		}}
 	}
