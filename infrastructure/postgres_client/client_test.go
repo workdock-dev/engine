@@ -242,7 +242,8 @@ func (s *PostgresServiceSuite) TestGetGitHubConnection_Success() {
 	s.Equal("owner/repo", conn.RepoFullName)
 	s.True(conn.Connected)
 	s.Equal("inst-1", *conn.InstallationId)
-	s.Equal("event-1", conn.SessionEventIdentifier)
+	s.NotNil(conn.SessionEventIdentifier)
+	s.Equal("event-1", *conn.SessionEventIdentifier)
 }
 
 func (s *PostgresServiceSuite) TestGetGitHubConnection_NotFound() {
@@ -355,14 +356,15 @@ func (s *PostgresServiceSuite) TestUpsertGitHubConnection_Success() {
 		}}
 	}
 	conn := &types.GitHubConnection{
-		SessionEventIdentifier: "event-1",
+		SessionEventIdentifier: strPtr("event-1"),
 		RepoFullName:           "owner/repo",
 		Connected:              true,
 		InstallationId:         strPtr("inst-1"),
 	}
 	err := s.service.UpsertGitHubConnection(context.Background(), conn)
 	s.NoError(err)
-	s.Equal("event-1", conn.SessionEventIdentifier)
+	s.NotNil(conn.SessionEventIdentifier)
+	s.Equal("event-1", *conn.SessionEventIdentifier)
 }
 
 func (s *PostgresServiceSuite) TestUpsertGitHubConnection_Error() {
@@ -372,7 +374,7 @@ func (s *PostgresServiceSuite) TestUpsertGitHubConnection_Error() {
 		}}
 	}
 	err := s.service.UpsertGitHubConnection(context.Background(), &types.GitHubConnection{
-		SessionEventIdentifier: "event-1",
+		SessionEventIdentifier: strPtr("event-1"),
 		RepoFullName:           "owner/repo",
 	})
 	s.Error(err)

@@ -263,6 +263,10 @@ func (s *PostgresService) GetGitHubConnection(ctx context.Context, repoFullName 
 			&row.InstallationId,
 		)
 
+	if row.SessionEventIdentifier != nil && *row.SessionEventIdentifier == "" {
+		row.SessionEventIdentifier = nil
+	}
+
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			slog.Debug("github connection doesn't exist in the database", "repo_full_name", repoFullName)

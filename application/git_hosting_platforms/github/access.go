@@ -160,15 +160,20 @@ func (s *githubAccess) CompleteConnection(ctx context.Context, installationId st
 			return err
 		}
 
-		if existing != nil && existing.SessionEventIdentifier != "" {
-			sessionEventIdentifier = existing.SessionEventIdentifier
+		if existing != nil && existing.SessionEventIdentifier != nil && *existing.SessionEventIdentifier != "" {
+			sessionEventIdentifier = *existing.SessionEventIdentifier
 			break
 		}
 	}
 
 	for _, repo := range repos {
+		var sessionEventId *string
+		if sessionEventIdentifier != "" {
+			sessionEventId = &sessionEventIdentifier
+		}
+
 		connection := &types.GitHubConnection{
-			SessionEventIdentifier: sessionEventIdentifier,
+			SessionEventIdentifier: sessionEventId,
 			RepoFullName:           repo,
 			Connected:              true,
 			InstallationId:         &installationId,
