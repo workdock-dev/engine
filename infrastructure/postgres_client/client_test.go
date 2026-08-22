@@ -383,19 +383,22 @@ func (s *PostgresServiceSuite) TestUpsertGitHubConnection_Error() {
 // --- ResetGitHubConnection ---
 
 func (s *PostgresServiceSuite) TestResetGitHubConnection_Success() {
+	repos := []string{"org/repo1", "org/repo2"}
 	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		s.Equal("inst-1", args[0])
+		s.Equal(repos, args[1])
 		return pgconn.CommandTag{}, nil
 	}
-	err := s.service.ResetGitHubConnection(context.Background(), "inst-1")
+	err := s.service.ResetGitHubConnection(context.Background(), "inst-1", repos)
 	s.NoError(err)
 }
 
 func (s *PostgresServiceSuite) TestResetGitHubConnection_Error() {
+	repos := []string{"org/repo1"}
 	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		return pgconn.CommandTag{}, fmt.Errorf("db error")
 	}
-	err := s.service.ResetGitHubConnection(context.Background(), "inst-1")
+	err := s.service.ResetGitHubConnection(context.Background(), "inst-1", repos)
 	s.Error(err)
 }
 

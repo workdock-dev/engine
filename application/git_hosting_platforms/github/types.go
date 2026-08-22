@@ -30,14 +30,15 @@ type InstallationAccessToken struct {
 }
 
 type WebhookEvent struct {
-	DeliveryID        string        `json:"-"`
-	EventType         string        `json:"event_type"`
-	Action            string        `json:"action"`
-	Installation      *Installation `json:"installation,omitempty"`
-	Repositories      []Repository  `json:"repositories,omitempty"`
-	RepositoriesAdded []Repository  `json:"repositories_added,omitempty"`
-	Sender            *User         `json:"sender,omitempty"`
-	PullRequest       *PullRequest  `json:"pull_request"`
+	DeliveryID          string        `json:"-"`
+	EventType           string        `json:"event_type"`
+	Action              string        `json:"action"`
+	Installation        *Installation `json:"installation,omitempty"`
+	Repositories        []Repository  `json:"repositories,omitempty"`
+	RepositoriesAdded   []Repository  `json:"repositories_added,omitempty"`
+	RepositoriesRemoved []Repository  `json:"repositories_removed,omitempty"`
+	Sender              *User         `json:"sender,omitempty"`
+	PullRequest         *PullRequest  `json:"pull_request"`
 }
 
 type Installation struct {

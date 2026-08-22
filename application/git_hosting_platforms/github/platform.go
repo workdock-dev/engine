@@ -107,7 +107,11 @@ func (s *githubPlatform) handleInstallation(ctx context.Context, event *WebhookE
 	installationId := strconv.Itoa(event.Installation.ID)
 
 	if event.Action == "deleted" || event.Action == "removed" {
-		if err := s.access.ResetInstallation(ctx, installationId); err != nil {
+		repos := make([]string, 0, len(event.Repositories))
+		for _, repo := range event.Repositories {
+			repos = append(repos, repo.FullName)
+		}
+		if err := s.access.ResetInstallation(ctx, installationId, repos); err != nil {
 			slog.Error("failed to reset github installation", "installation_id", installationId, "err", err)
 			return err
 		}
@@ -170,29 +174,47 @@ func (s *githubPlatform) handleInstallationRepositories(ctx context.Context, eve
 	}
 
 	slog.Debug("Processing GitHub installation_repositories event", "action", event.Action, "installation_id", event.Installation.ID)
-
-	if event.Action != "added" {
-		slog.Debug("ignoring non-added installation_repositories event", "action", event.Action)
-		return nil
-	}
-
-	if len(event.RepositoriesAdded) <= 0 {
-		slog.Debug("no repositories added in installation_repositories event")
-		return nil
-	}
-
 	installationId := strconv.Itoa(event.Installation.ID)
 
-	repos := make([]string, 0, len(event.RepositoriesAdded))
-	for _, repo := range event.RepositoriesAdded {
-		repos = append(repos, repo.FullName)
+	if event.Action == "added" {
+		if len(event.RepositoriesAdded) <= 0 {
+			slog.Debug("no repositories added in installation_repositories event")
+			return nil
+		}
+
+		repos := make([]string, 0, len(event.RepositoriesAdded))
+		for _, repo := range event.RepositoriesAdded {
+			repos = append(repos, repo.FullName)
+		}
+
+		if err := s.access.CompleteConnection(ctx, installationId, repos); err != nil {
+			return err
+		}
+
+		slog.Debug("GitHub installation_repositories handled", "installation_id", event.Installation.ID, "repos_count", len(repos))
+		return nil
 	}
 
-	if err := s.access.CompleteConnection(ctx, installationId, repos); err != nil {
-		return err
+	if event.Action == "removed" {
+		if len(event.RepositoriesRemoved) <= 0 {
+			slog.Debug("no repositories removed in installation_repositories event")
+			return nil
+		}
+
+		repos := make([]string, 0, len(event.RepositoriesRemoved))
+		for _, repo := range event.RepositoriesRemoved {
+			repos = append(repos, repo.FullName)
+		}
+
+		if err := s.access.ResetInstallation(ctx, installationId, repos); err != nil {
+			return err
+		}
+
+		slog.Debug("GitHub installation_repositories removed handled", "installation_id", event.Installation.ID, "repos_count", len(repos))
+		return nil
 	}
 
-	slog.Debug("GitHub installation_repositories handled", "installation_id", event.Installation.ID, "repos_count", len(repos))
+	slog.Debug("ignoring non-added/removed installation_repositories event", "action", event.Action)
 	return nil
 }
 

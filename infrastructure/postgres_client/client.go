@@ -396,8 +396,8 @@ func (s *PostgresService) UpsertGitHubConnection(ctx context.Context, githubConn
 	return nil
 }
 
-func (s *PostgresService) ResetGitHubConnection(ctx context.Context, installationId string) error {
-	_, err := s.client.Exec(ctx, ResetGitHubConnectionSql, installationId)
+func (s *PostgresService) ResetGitHubConnection(ctx context.Context, installationId string, repos []string) error {
+	_, err := s.client.Exec(ctx, ResetGitHubConnectionSql, installationId, repos)
 
 	if err != nil {
 		slog.Error("failed to reset github connection", "err", err, "installation_id", installationId)
