@@ -816,6 +816,7 @@ func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_Removed() {
 	}
 
 	s.connections.On("ResetGitHubConnection", mock.Anything, "42", mock.Anything).Return(nil)
+	s.secrets.On("Delete", mock.Anything, GitHub_SecretPath, "42").Return(nil)
 
 	err := s.platform.Ingest(context.Background(), event)
 	s.NoError(err)
@@ -834,6 +835,7 @@ func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_Removed_Multip
 	}
 
 	s.connections.On("ResetGitHubConnection", mock.Anything, "42", mock.Anything).Return(nil)
+	s.secrets.On("Delete", mock.Anything, GitHub_SecretPath, "42").Return(nil)
 
 	err := s.platform.Ingest(context.Background(), event)
 	s.NoError(err)
