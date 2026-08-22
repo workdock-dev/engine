@@ -188,6 +188,7 @@ func (s *AIServiceSuite) TestWebhookHandler_PlatformNotFound() {
 	s.eventBus.On("Subscribe", types.PlatformWebhookEvent(otherProvider), mock.AnythingOfType("ports.EventHandler"))
 	s.eventBus.On("Subscribe", types.EventType_GitHubConnected, mock.AnythingOfType("ports.EventHandler"))
 	s.eventBus.On("Subscribe", types.EventType_PullRequestCommented, mock.AnythingOfType("ports.EventHandler"))
+	s.eventBus.On("Subscribe", types.EventType_PullRequestChecksFailed, mock.AnythingOfType("ports.EventHandler"))
 
 	s.newServiceWithRegistry(ports.WorkPlatformRegistry{
 		otherProvider: s.workPlat,
