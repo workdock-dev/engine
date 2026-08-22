@@ -29,9 +29,9 @@ type EventJobStatus string
 type SessionEventTriggerReason string
 
 const (
-	SessionEventTriggerReason_Unknown       SessionEventTriggerReason = "unknown"
-	SessionEventTriggerReason_PRComment     SessionEventTriggerReason = "pr_comment"
-	SessionEventTriggerReason_CheckRun     SessionEventTriggerReason = "check_run"
+	SessionEventTriggerReason_Unknown   SessionEventTriggerReason = "unknown"
+	SessionEventTriggerReason_PRComment SessionEventTriggerReason = "pr_comment"
+	SessionEventTriggerReason_CheckRun  SessionEventTriggerReason = "check_run"
 )
 
 const (
@@ -122,18 +122,18 @@ type AgentOption struct {
 // to trust raw HTTP input.
 type EventJob struct {
 	SessionEventIdentifier string
-	QueuedBy              string // Agent session identifier that triggered this job; used to cancel every job of the session
-	PreviousState         EventJobStatus
-	Status                EventJobStatus
-	Attempts              int
-	WillRetry             bool
-	NextAttemptAt         *time.Time
-	LeaseOwner            *string
-	LeaseExpiresAt        *time.Time
-	LastError             *string
+	QueuedBy               string // Agent session identifier that triggered this job; used to cancel every job of the session
+	PreviousState          EventJobStatus
+	Status                 EventJobStatus
+	Attempts               int
+	WillRetry              bool
+	NextAttemptAt          *time.Time
+	LeaseOwner             *string
+	LeaseExpiresAt         *time.Time
+	LastError              *string
 	CancellationReason     *string
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
 }
 
 func GenerateIdempotencyKey(payload any) (string, error) {

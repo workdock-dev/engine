@@ -235,4 +235,5 @@ var _ ports.ForGitHostingPlatform = (*mockGitHosting)(nil)
 func tracerNoop() trace.Tracer {
 	return otel.Tracer("test.noop")
 }
+
 var _ ports.ForGitHostingPlatform = (*mockGitHosting)(nil)

@@ -57,7 +57,7 @@ func (s *WebhookServiceSuite) TestOn_Success() {
 	s.eventBus.On("Publish", mock.Anything, types.WebhookEvent{
 		Provider: provider,
 		Payload:  payload,
-		Type:      types.WebhookEventType_AIRequest,
+		Type:     types.WebhookEventType_AIRequest,
 	}).Return(nil)
 
 	svc := s.newService(ports.WebhooksRegistry{

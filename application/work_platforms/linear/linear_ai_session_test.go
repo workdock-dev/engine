@@ -74,9 +74,9 @@ func (s *LinearAISessionSuite) basePayload() *AgentSessionEventData {
 			UpdatedAt: "2026-01-01T00:00:00Z",
 			Creator:   User{Name: "Alice"},
 			Issue: Issue{
-				ID:         "issue-1",
-				Title:      "Fix bug",
-				Identifier: "ENG-1",
+				ID:          "issue-1",
+				Title:       "Fix bug",
+				Identifier:  "ENG-1",
 				Description: "Fix the bug",
 			},
 			ExternalUrls: []ExternalURL{},

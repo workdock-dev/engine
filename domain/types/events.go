@@ -16,8 +16,8 @@ package types
 
 const (
 	EventType_GitHubConnected         = "github.connected"
-	EventType_Webhook               = "webhook"
-	EventType_PullRequestCommented  = "pull_request.comment"
+	EventType_Webhook                 = "webhook"
+	EventType_PullRequestCommented    = "pull_request.comment"
 	EventType_PullRequestChecksFailed = "pull_request.checks_failed"
 )
 

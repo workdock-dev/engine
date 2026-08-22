@@ -216,7 +216,7 @@ type IssueStatusChangePayload struct {
 	Action           string `json:"action"`
 	Type             string `json:"type"`
 	OrganizationID   string `json:"organizationId"`
-	WebhookID       string `json:"webhookId"`
+	WebhookID        string `json:"webhookId"`
 	CreatedAt        string `json:"createdAt"`
 	WebhookTimestamp int64  `json:"webhookTimestamp"`
 	Data             Issue  `json:"data"`

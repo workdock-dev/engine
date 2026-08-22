@@ -74,8 +74,8 @@ func (s *TaskSchedulerSuite) TestNewTaskScheduler_ServiceIdUnique() {
 
 func (s *TaskSchedulerSuite) TestRun_ListenError() {
 	q := &mockQueue{
-		listenErr: errors.New("listen failed"),
-		runnable:  make(chan struct{}, 1),
+		listenErr:   errors.New("listen failed"),
+		runnable:    make(chan struct{}, 1),
 		cancellable: make(chan string, 1),
 	}
 	handler := func(ctx context.Context, job *types.EventJob) error { return nil }
@@ -614,11 +614,11 @@ func (s *TaskSchedulerSuite) TestRun_CancellableChannelClosed() {
 // ---------------------------------------------------------------------------
 
 type mockQueue struct {
-	runnable    chan struct{}
-	cancellable chan string
-	claimJob    *types.EventJob
-	claimErr    error
-	completeErr error
+	runnable     chan struct{}
+	cancellable  chan string
+	claimJob     *types.EventJob
+	claimErr     error
+	completeErr  error
 	heartbeatErr error
 
 	mu             sync.Mutex

@@ -19,9 +19,9 @@ import (
 	"errors"
 	"log/slog"
 
+	"github.com/jazielguerrero/workdock/domain/ports"
 	"github.com/jazielguerrero/workdock/domain/repositories"
 	"github.com/jazielguerrero/workdock/domain/types"
-	"github.com/jazielguerrero/workdock/domain/ports"
 )
 
 // GitRepoAccessService owns the git repository access lifecycle: verifying

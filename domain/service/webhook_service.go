@@ -54,7 +54,7 @@ func (s *WebhookService) On(ctx context.Context, name types.PlatformProvider, re
 	s.config.ForEventBus.Publish(context.Background(), types.WebhookEvent{
 		Provider: name,
 		Payload:  event,
-		Type:      eventType,
+		Type:     eventType,
 	})
 
 	slog.Debug("Webhook event accepted", "from", name, "event", event, "type", eventType)

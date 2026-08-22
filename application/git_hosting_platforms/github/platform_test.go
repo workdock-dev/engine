@@ -535,7 +535,7 @@ func (s *GitHubPlatformSuite) TestIngest_PRComment_BotSender() {
 		Sender:    &User{Login: "workdock-bot"},
 		PullRequest: &PullRequest{
 			Head: Head{
-				Ref: "feature",
+				Ref:  "feature",
 				Repo: Repo{FullName: "org/repo"},
 			},
 		},
@@ -580,7 +580,7 @@ func (s *GitHubPlatformSuite) TestIngest_PRComment_NilInstallation() {
 		Sender:    &User{Login: "someone"},
 		PullRequest: &PullRequest{
 			Head: Head{
-				Ref: "feature",
+				Ref:  "feature",
 				Repo: Repo{FullName: "org/repo"},
 			},
 		},
@@ -600,7 +600,7 @@ func (s *GitHubPlatformSuite) TestIngest_PRComment_Valid() {
 		Sender:     &User{Login: "someone"},
 		PullRequest: &PullRequest{
 			Head: Head{
-				Ref: "my-branch",
+				Ref:  "my-branch",
 				Repo: Repo{FullName: "org/my-repo"},
 			},
 		},
@@ -623,7 +623,7 @@ func (s *GitHubPlatformSuite) TestIngest_PRComment_NilSender() {
 		Sender:    nil,
 		PullRequest: &PullRequest{
 			Head: Head{
-				Ref: "feature",
+				Ref:  "feature",
 				Repo: Repo{FullName: "org/repo"},
 			},
 		},
@@ -710,9 +710,9 @@ func (s *GitHubPlatformSuite) TestRequestConnection() {
 
 func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_NilInstallation() {
 	event := &WebhookEvent{
-		EventType:          "installation_repositories",
-		Action:             "added",
-		Installation:       nil,
+		EventType:    "installation_repositories",
+		Action:       "added",
+		Installation: nil,
 		RepositoriesAdded: []Repository{
 			{ID: 1, FullName: "org/repo"},
 		},
@@ -738,9 +738,9 @@ func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_NonAddedAction
 
 func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_NoReposAdded() {
 	event := &WebhookEvent{
-		EventType:          "installation_repositories",
-		Action:             "added",
-		Installation:       &Installation{ID: 42},
+		EventType:         "installation_repositories",
+		Action:            "added",
+		Installation:      &Installation{ID: 42},
 		RepositoriesAdded: []Repository{},
 	}
 	err := s.platform.Ingest(context.Background(), event)

@@ -48,8 +48,8 @@ func (s *OutputSuite) newOutput(stdout, stderr <-chan string, opts ...func(*Open
 		"session-1",
 		stdout,
 		stderr,
-		0,  // livenessTimeout disabled
-		0,  // maxMisses disabled
+		0,   // livenessTimeout disabled
+		0,   // maxMisses disabled
 		nil, // onUnhealthy
 	)
 	s.Require().NoError(err)
@@ -302,8 +302,8 @@ func (s *OutputSuite) TestParse_StepFinishWithCache() {
 				Write int `json:"write"`
 			} `json:"cache"`
 		}{
-			Total: 200,
-			Input: 100,
+			Total:  200,
+			Input:  100,
 			Output: 100,
 			Cache: struct {
 				Read  int `json:"read"`

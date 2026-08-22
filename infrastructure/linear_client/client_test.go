@@ -290,8 +290,8 @@ func (s *LinearServiceSuite) TestRefreshToken_Success() {
 	s.NoError(err)
 	s.Equal("new-at", result.AccessToken)
 	s.Equal("new-refresh", result.RefreshToken)
-	s.False(result.ExpiresAt.Before(before.Add(7199*time.Second)))
-	s.False(result.ExpiresAt.After(after.Add(7201*time.Second)))
+	s.False(result.ExpiresAt.Before(before.Add(7199 * time.Second)))
+	s.False(result.ExpiresAt.After(after.Add(7201 * time.Second)))
 }
 
 // --- getWorkspaceInfo() ---

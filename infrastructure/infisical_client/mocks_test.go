@@ -31,8 +31,8 @@ func (m *mockInfisicalClient) Folders() sdk.FoldersInterface         { panic("un
 func (m *mockInfisicalClient) DynamicSecrets() sdk.DynamicSecretsInterface {
 	panic("unexpected call")
 }
-func (m *mockInfisicalClient) Kms() sdk.KmsInterface  { panic("unexpected call") }
-func (m *mockInfisicalClient) Ssh() sdk.SshInterface  { panic("unexpected call") }
+func (m *mockInfisicalClient) Kms() sdk.KmsInterface { panic("unexpected call") }
+func (m *mockInfisicalClient) Ssh() sdk.SshInterface { panic("unexpected call") }
 
 func (m *mockInfisicalClient) Secrets() sdk.SecretsInterface {
 	if m.secretsFn != nil {
@@ -99,11 +99,11 @@ type mockAuth struct {
 	universalAuthLoginFn func(clientID string, clientSecret string) (sdk.MachineIdentityCredential, error)
 }
 
-func (m *mockAuth) SetAccessToken(accessToken string)                       {}
-func (m *mockAuth) GetAccessToken() string                                  { return "" }
-func (m *mockAuth) GetOrganizationSlug() string                             { return "" }
-func (m *mockAuth) WithOrganizationSlug(slug string) sdk.AuthInterface      { return m }
-func (m *mockAuth) WithAzureClientID(clientID string) sdk.AuthInterface     { return m }
+func (m *mockAuth) SetAccessToken(accessToken string)                   {}
+func (m *mockAuth) GetAccessToken() string                              { return "" }
+func (m *mockAuth) GetOrganizationSlug() string                         { return "" }
+func (m *mockAuth) WithOrganizationSlug(slug string) sdk.AuthInterface  { return m }
+func (m *mockAuth) WithAzureClientID(clientID string) sdk.AuthInterface { return m }
 func (m *mockAuth) JwtAuthLogin(string, string) (sdk.MachineIdentityCredential, error) {
 	panic("unexpected call")
 }

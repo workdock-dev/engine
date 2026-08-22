@@ -340,7 +340,7 @@ func (s *LinearPlatformSuite) TestProcess_NilAgentSession() {
 func (s *LinearPlatformSuite) TestProcess_TokenError() {
 	linearEvent := &AgentSessionEventData{
 		OrganizationID: "org-1",
-		AgentSession: &AgentSession{ID: "session-1"},
+		AgentSession:   &AgentSession{ID: "session-1"},
 	}
 	payload, _ := json.Marshal(linearEvent)
 

@@ -70,10 +70,10 @@ func (m *mockPool) Close() {
 // --- dbConn mock ---
 
 type mockConn struct {
-	execFn                  func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
-	waitForNotificationFn   func(ctx context.Context) (*pgconn.Notification, error)
-	closeFn                 func(ctx context.Context) error
-	closed                  bool
+	execFn                func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	waitForNotificationFn func(ctx context.Context) (*pgconn.Notification, error)
+	closeFn               func(ctx context.Context) error
+	closed                bool
 }
 
 func (m *mockConn) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {

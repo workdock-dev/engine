@@ -560,7 +560,7 @@ func (s *RateLimitSuite) TestWaitForRateLimit_WithRetryAfterHeader() {
 
 func (s *RateLimitSuite) TestRateLimitTransport_RoundTrip_ObservesHeaders() {
 	base := &mockTransport{
-	 response: &http.Response{
+		response: &http.Response{
 			StatusCode: http.StatusOK,
 			Header:     http.Header{},
 		},
