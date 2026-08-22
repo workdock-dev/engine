@@ -304,8 +304,6 @@ func (s *GitHubAccessSuite) TestResetInstallation_DeleteError() {
 // ---------------------------------------------------------------------------
 
 func (s *GitHubAccessSuite) TestCompleteConnection() {
-	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo1").Return(nil, nil)
-	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo2").Return(nil, nil)
 	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(nil)
 	s.events.On("Publish", mock.Anything, mock.Anything).Return(nil)
 
@@ -316,7 +314,6 @@ func (s *GitHubAccessSuite) TestCompleteConnection() {
 }
 
 func (s *GitHubAccessSuite) TestCompleteConnection_UpsertError() {
-	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo1").Return(nil, nil)
 	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(errors.New("upsert failed"))
 
 	err := s.access.CompleteConnection(context.Background(), "42", []string{"org/repo1"})
@@ -327,13 +324,6 @@ func (s *GitHubAccessSuite) TestCompleteConnection_UpsertError() {
 
 func (s *GitHubAccessSuite) TestCompleteConnection_PublishesCorrectEvent() {
 	var publishedEvent types.GitHubConnectedEvent
-	sessionEventId := "evt-1"
-	existingConn := &types.GitHubConnection{
-		SessionEventIdentifier: &sessionEventId,
-		RepoFullName:           "org/repo",
-		Connected:              false,
-	}
-	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(existingConn, nil)
 	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(nil)
 	s.events.On("Publish", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 		publishedEvent = args.Get(1).(types.GitHubConnectedEvent)
@@ -345,42 +335,23 @@ func (s *GitHubAccessSuite) TestCompleteConnection_PublishesCorrectEvent() {
 	s.Equal("org/repo", publishedEvent.Connection.RepoFullName)
 	s.True(publishedEvent.Connection.Connected)
 	s.Equal(&installId, publishedEvent.Connection.InstallationId)
-	s.NotNil(publishedEvent.Connection.SessionEventIdentifier)
-	s.Equal("evt-1", *publishedEvent.Connection.SessionEventIdentifier)
+	s.Nil(publishedEvent.Connection.SessionEventIdentifier)
 }
 
-func (s *GitHubAccessSuite) TestCompleteConnection_MixedRepos_CopiesSessionEventIdentifier() {
-	sessionEventId := "evt-1"
-	existingConn := &types.GitHubConnection{
-		SessionEventIdentifier: &sessionEventId,
-		RepoFullName:           "org/requested-repo",
-		Connected:              false,
-	}
+func (s *GitHubAccessSuite) TestCompleteConnection_MultipleRepos() {
 	var publishedEvents []types.GitHubConnectedEvent
 
-	s.connections.On("GetGitHubConnection", mock.Anything, "org/requested-repo").Return(existingConn, nil)
-	s.connections.On("GetGitHubConnection", mock.Anything, "org/additional-repo").Return(nil, nil)
 	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(nil)
 	s.events.On("Publish", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 		publishedEvents = append(publishedEvents, args.Get(1).(types.GitHubConnectedEvent))
 	}).Return(nil)
 
-	err := s.access.CompleteConnection(context.Background(), "42", []string{"org/requested-repo", "org/additional-repo"})
+	err := s.access.CompleteConnection(context.Background(), "42", []string{"org/repo1", "org/repo2"})
 	s.NoError(err)
 	s.connections.AssertNumberOfCalls(s.T(), "UpsertGitHubConnection", 2)
 	s.Len(publishedEvents, 2)
-	s.Equal("org/requested-repo", publishedEvents[0].Connection.RepoFullName)
-	s.NotNil(publishedEvents[0].Connection.SessionEventIdentifier)
-	s.Equal("evt-1", *publishedEvents[0].Connection.SessionEventIdentifier)
-	s.Equal("org/additional-repo", publishedEvents[1].Connection.RepoFullName)
-	s.NotNil(publishedEvents[1].Connection.SessionEventIdentifier)
-	s.Equal("evt-1", *publishedEvents[1].Connection.SessionEventIdentifier)
-}
-
-func (s *GitHubAccessSuite) TestCompleteConnection_GetConnectionError() {
-	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(nil, errors.New("db error"))
-
-	err := s.access.CompleteConnection(context.Background(), "42", []string{"org/repo"})
-	s.Error(err)
-	s.Contains(err.Error(), "db error")
+	s.Equal("org/repo1", publishedEvents[0].Connection.RepoFullName)
+	s.Nil(publishedEvents[0].Connection.SessionEventIdentifier)
+	s.Equal("org/repo2", publishedEvents[1].Connection.RepoFullName)
+	s.Nil(publishedEvents[1].Connection.SessionEventIdentifier)
 }

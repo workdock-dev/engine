@@ -765,15 +765,13 @@ func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_Valid() {
 		},
 	}
 
-	s.connections.On("GetGitHubConnectionByInstallationId", mock.Anything, "42").Return(nil, nil)
-	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo-new").Return(nil, nil)
 	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(nil)
 	s.events.On("Publish", mock.Anything, mock.Anything).Return(nil)
 
 	err := s.platform.Ingest(context.Background(), event)
 	s.NoError(err)
 	s.connections.AssertCalled(s.T(), "UpsertGitHubConnection", mock.Anything, mock.MatchedBy(func(c *types.GitHubConnection) bool {
-		return c.RepoFullName == "org/repo-new" && c.Connected == true && *c.InstallationId == "42"
+		return c.RepoFullName == "org/repo-new" && c.Connected == true && *c.InstallationId == "42" && c.SessionEventIdentifier == nil
 	}))
 }
 
@@ -787,8 +785,6 @@ func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_CompleteConnec
 		},
 	}
 
-	s.connections.On("GetGitHubConnectionByInstallationId", mock.Anything, "42").Return(nil, nil)
-	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo-new").Return(nil, nil)
 	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(errors.New("connection failed"))
 
 	err := s.platform.Ingest(context.Background(), event)
@@ -807,9 +803,6 @@ func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_MultipleRepos(
 		},
 	}
 
-	s.connections.On("GetGitHubConnectionByInstallationId", mock.Anything, "42").Return(nil, nil)
-	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo-new-1").Return(nil, nil)
-	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo-new-2").Return(nil, nil)
 	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(nil)
 	s.events.On("Publish", mock.Anything, mock.Anything).Return(nil)
 
@@ -817,51 +810,6 @@ func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_MultipleRepos(
 	s.NoError(err)
 	s.connections.AssertNumberOfCalls(s.T(), "UpsertGitHubConnection", 2)
 	s.events.AssertNumberOfCalls(s.T(), "Publish", 2)
-}
-
-func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_WithExistingConnection() {
-	event := &WebhookEvent{
-		EventType:    "installation_repositories",
-		Action:       "added",
-		Installation: &Installation{ID: 42},
-		RepositoriesAdded: []Repository{
-			{ID: 1, FullName: "org/repo-new"},
-		},
-	}
-
-	sessionEventId := "existing-evt-id"
-	existingConn := &types.GitHubConnection{
-		SessionEventIdentifier: &sessionEventId,
-		RepoFullName:          "org/existing-repo",
-		Connected:             true,
-		InstallationId:        strPtr("42"),
-	}
-	s.connections.On("GetGitHubConnectionByInstallationId", mock.Anything, "42").Return(existingConn, nil)
-	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(nil)
-	s.events.On("Publish", mock.Anything, mock.Anything).Return(nil)
-
-	err := s.platform.Ingest(context.Background(), event)
-	s.NoError(err)
-	s.connections.AssertCalled(s.T(), "UpsertGitHubConnection", mock.Anything, mock.MatchedBy(func(c *types.GitHubConnection) bool {
-		return c.RepoFullName == "org/repo-new" && c.Connected == true && *c.InstallationId == "42" && c.SessionEventIdentifier != nil && *c.SessionEventIdentifier == "existing-evt-id"
-	}))
-}
-
-func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_GetByInstallationIdError() {
-	event := &WebhookEvent{
-		EventType:    "installation_repositories",
-		Action:       "added",
-		Installation: &Installation{ID: 42},
-		RepositoriesAdded: []Repository{
-			{ID: 1, FullName: "org/repo-new"},
-		},
-	}
-
-	s.connections.On("GetGitHubConnectionByInstallationId", mock.Anything, "42").Return(nil, errors.New("db error"))
-
-	err := s.platform.Ingest(context.Background(), event)
-	s.Error(err)
-	s.Contains(err.Error(), "db error")
 }
 
 // ---------------------------------------------------------------------------

@@ -183,30 +183,13 @@ func (s *githubPlatform) handleInstallationRepositories(ctx context.Context, eve
 
 	installationId := strconv.Itoa(event.Installation.ID)
 
-	existingConn, err := s.config.GitHubConnections.GetGitHubConnectionByInstallationId(ctx, installationId)
-	if err != nil {
-		slog.Error("failed to get existing github connection by installation id", "installation_id", installationId, "err", err)
-		return err
-	}
-
-	var sessionEventIdentifier string
-	if existingConn != nil && existingConn.SessionEventIdentifier != nil {
-		sessionEventIdentifier = *existingConn.SessionEventIdentifier
-	}
-
 	repos := make([]string, 0, len(event.RepositoriesAdded))
 	for _, repo := range event.RepositoriesAdded {
 		repos = append(repos, repo.FullName)
 	}
 
-	var connErr error
-	if sessionEventIdentifier != "" {
-		connErr = s.access.CompleteConnection(ctx, installationId, repos, sessionEventIdentifier)
-	} else {
-		connErr = s.access.CompleteConnection(ctx, installationId, repos)
-	}
-	if connErr != nil {
-		return connErr
+	if err := s.access.CompleteConnection(ctx, installationId, repos); err != nil {
+		return err
 	}
 
 	slog.Debug("GitHub installation_repositories handled", "installation_id", event.Installation.ID, "repos_count", len(repos))
