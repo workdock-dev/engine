@@ -20,9 +20,9 @@ CREATE INDEX idx_github_connections_installation_id ON github_connections (insta
 
 ---- create above / drop below ----
 
--- Write your migrate down statements here. If this migration is irreversible
--- Then delete the separator line above.
-
 DROP INDEX idx_github_connections_installation_id;
 
 CREATE UNIQUE INDEX idx_github_connections_installation_id ON github_connections (installation_id) WHERE installation_id IS NOT NULL;
+
+-- Write your migrate down statements here. If this migration is irreversible
+-- Then delete the separator line above.
