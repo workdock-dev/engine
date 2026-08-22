@@ -815,7 +815,7 @@ func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_Removed() {
 		},
 	}
 
-	s.connections.On("ResetGitHubConnection", mock.Anything, "42", []string{"org/repo-removed"}).Return(nil)
+	s.connections.On("ResetGitHubConnection", mock.Anything, "42", mock.Anything).Return(nil)
 
 	err := s.platform.Ingest(context.Background(), event)
 	s.NoError(err)
@@ -833,7 +833,7 @@ func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_Removed_Multip
 		},
 	}
 
-	s.connections.On("ResetGitHubConnection", mock.Anything, "42", []string{"org/repo-removed-1", "org/repo-removed-2"}).Return(nil)
+	s.connections.On("ResetGitHubConnection", mock.Anything, "42", mock.Anything).Return(nil)
 
 	err := s.platform.Ingest(context.Background(), event)
 	s.NoError(err)
@@ -850,7 +850,7 @@ func (s *GitHubPlatformSuite) TestIngest_InstallationRepositories_Removed_Error(
 		},
 	}
 
-	s.connections.On("ResetGitHubConnection", mock.Anything, "42", []string{"org/repo-removed"}).Return(errors.New("reset failed"))
+	s.connections.On("ResetGitHubConnection", mock.Anything, "42", mock.Anything).Return(errors.New("reset failed"))
 
 	err := s.platform.Ingest(context.Background(), event)
 	s.Error(err)

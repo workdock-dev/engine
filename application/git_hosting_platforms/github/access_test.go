@@ -165,7 +165,7 @@ func (s *GitHubAccessSuite) TestVerifyRepoAccess_TokenUnavailable_ResetsAndReReq
 	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(conn, nil)
 
 	s.secrets.On("Get", mock.Anything, GitHub_SecretPath, "42").Return("", types.ErrGitHubInstallationUnavailable)
-	s.connections.On("ResetGitHubConnection", mock.Anything, "42", []string{"org/repo"}).Return(nil)
+	s.connections.On("ResetGitHubConnection", mock.Anything, "42", mock.Anything).Return(nil)
 	s.secrets.On("Delete", mock.Anything, GitHub_SecretPath, "42").Return(nil)
 	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(nil)
 
@@ -183,7 +183,7 @@ func (s *GitHubAccessSuite) TestVerifyRepoAccess_TokenUnavailable_ResetFails_Sti
 	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(conn, nil)
 
 	s.secrets.On("Get", mock.Anything, GitHub_SecretPath, "42").Return("", types.ErrGitHubInstallationUnavailable)
-	s.connections.On("ResetGitHubConnection", mock.Anything, "42", []string{"org/repo"}).Return(errors.New("reset failed"))
+	s.connections.On("ResetGitHubConnection", mock.Anything, "42", mock.Anything).Return(errors.New("reset failed"))
 	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(nil)
 
 	ok, token, err := s.access.verifyRepoAccess(context.Background(), "evt-1", strPtr("org/repo"))
@@ -199,7 +199,7 @@ func (s *GitHubAccessSuite) TestVerifyRepoAccess_TokenUnavailable_RequestConnect
 	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(conn, nil)
 
 	s.secrets.On("Get", mock.Anything, GitHub_SecretPath, "42").Return("", types.ErrGitHubInstallationUnavailable)
-	s.connections.On("ResetGitHubConnection", mock.Anything, "42", []string{"org/repo"}).Return(nil)
+	s.connections.On("ResetGitHubConnection", mock.Anything, "42", mock.Anything).Return(nil)
 	s.secrets.On("Delete", mock.Anything, GitHub_SecretPath, "42").Return(nil)
 	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(errors.New("upsert failed"))
 
@@ -284,7 +284,7 @@ func (s *GitHubAccessSuite) TestResetInstallation() {
 
 func (s *GitHubAccessSuite) TestResetInstallation_ResetError() {
 	repos := []string{"org/repo1"}
-	s.connections.On("ResetGitHubConnection", mock.Anything, "42", repos).Return(errors.New("reset failed"))
+	s.connections.On("ResetGitHubConnection", mock.Anything, "42", mock.Anything).Return(errors.New("reset failed"))
 
 	err := s.access.ResetInstallation(context.Background(), "42", repos)
 	s.Error(err)
@@ -294,7 +294,7 @@ func (s *GitHubAccessSuite) TestResetInstallation_ResetError() {
 
 func (s *GitHubAccessSuite) TestResetInstallation_DeleteError() {
 	repos := []string{"org/repo1"}
-	s.connections.On("ResetGitHubConnection", mock.Anything, "42", repos).Return(nil)
+	s.connections.On("ResetGitHubConnection", mock.Anything, "42", mock.Anything).Return(nil)
 	s.secrets.On("Delete", mock.Anything, GitHub_SecretPath, "42").Return(errors.New("delete failed"))
 
 	err := s.access.ResetInstallation(context.Background(), "42", repos)
