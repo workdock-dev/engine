@@ -75,6 +75,7 @@ func (s *AIServiceSuite) expectSubscriptions() {
 	s.eventBus.On("Subscribe", types.PlatformWebhookEvent(s.provider), mock.AnythingOfType("ports.EventHandler"))
 	s.eventBus.On("Subscribe", types.EventType_GitHubConnected, mock.AnythingOfType("ports.EventHandler"))
 	s.eventBus.On("Subscribe", types.EventType_PullRequestCommented, mock.AnythingOfType("ports.EventHandler"))
+	s.eventBus.On("Subscribe", types.EventType_PullRequestChecksFailed, mock.AnythingOfType("ports.EventHandler"))
 }
 
 func (s *AIServiceSuite) newService() *AIService {
