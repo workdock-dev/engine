@@ -21,7 +21,6 @@ import (
 	"log/slog"
 
 	"github.com/workdock-dev/engine/application"
-	"github.com/workdock-dev/engine/domain/factories"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/repositories"
 	domain_service "github.com/workdock-dev/engine/domain/service"
