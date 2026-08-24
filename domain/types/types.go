@@ -117,6 +117,26 @@ type AgentOption struct {
 	Description string `json:"description"`
 }
 
+type WorkItem struct {
+	Title       string
+	Identifier  string
+	Description string
+}
+
+type AgentActivityContent struct {
+	Type string
+	Body string
+}
+
+const (
+	GitHubUrl = "https://github.com/"
+)
+
+type ExternalURL struct {
+	Label string
+	URL   string
+}
+
 // EventJob is the durable unit of work. It references a persisted SessionEvent
 // whose payload contains only validated webhook data, so processing never needs
 // to trust raw HTTP input.

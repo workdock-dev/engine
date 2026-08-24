@@ -31,7 +31,9 @@ import (
 	"github.com/workdock-dev/engine/application/git_hosting_platforms/github"
 	"github.com/workdock-dev/engine/application/harnesses/opencode"
 	"github.com/workdock-dev/engine/application/work_platforms/linear"
+	"github.com/workdock-dev/engine/domain/factories"
 	"github.com/workdock-dev/engine/domain/ports"
+	domain_service "github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/types"
 	"github.com/workdock-dev/engine/infrastructure/daytona_client"
 	"github.com/workdock-dev/engine/infrastructure/github_client"
@@ -167,6 +169,13 @@ func main() {
 
 	eventBus := async.NewInMemoryEventBus()
 
+	// Domain services and factories
+	sessionConfigService := &domain_service.SessionConfigService{}
+	gitEventFilterService := &domain_service.GitEventFilterService{}
+	sessionResultService := &domain_service.SessionResultService{}
+	promptFactory := &factories.PromptFactory{}
+	agentConfigFactory := &factories.AgentConfigFactory{}
+
 	// Registries definition
 	harnessRegistry := make(ports.HarnessPlatformRegistry)
 	workPlatformRegistry := make(ports.WorkPlatformRegistry)
@@ -191,36 +200,41 @@ func main() {
 		}
 
 		return opencode.New(opencode.Config{
-			ConfigExternal: cfg.Opencode,
-			Sandbox:        sandbox,
-			Parts:          consturctor.Parts,
-			Session:        consturctor.Session,
-			SessionEvent:   consturctor.SessionEvent,
-			Prompt:         consturctor.Prompt,
-			Secrets:        consturctor.Secrets,
+			ConfigExternal:      cfg.Opencode,
+			Sandbox:             sandbox,
+			Parts:               consturctor.Parts,
+			Session:             consturctor.Session,
+			SessionEvent:        consturctor.SessionEvent,
+			Prompt:              consturctor.Prompt,
+			Secrets:             consturctor.Secrets,
+			AgentConfigFactory:  agentConfigFactory,
+			SessionResultService: sessionResultService,
 		}, serviceName)
 	}
 	harnessRegistry[types.HarnessProvider_OpenCode] = opencodeHarness
 
 	githubPlatform := github.New(github.GitHubPlatformConfig{
-		Client:            githubClient,
-		ForSecrets:        forSecrets,
-		ForEvents:         eventBus,
-		GitHubConnections: postgresClient,
-		BotLoginName:      cfg.Github.BotLoginId,
+		Client:              githubClient,
+		ForSecrets:          forSecrets,
+		ForEvents:           eventBus,
+		GitHubConnections:   postgresClient,
+		BotLoginName:        cfg.Github.BotLoginId,
+		GitEventFilterService: gitEventFilterService,
 	})
 	gitHostingPlatformRegistry[types.PlatformProvider_GitHub] = githubPlatform
 	webhookRegistry[types.PlatformProvider_GitHub] = gitHostingPlatformRegistry[types.PlatformProvider_GitHub]
 
 	linearPlatform := linear.New(linear.Config{
-		HarnessRegistry:     harnessRegistry,
-		GitHostingRegistry:  gitHostingPlatformRegistry,
-		Client:              linearClient,
-		ForSecrets:          forSecrets,
-		ForEvent:            eventBus,
-		Sessions:            postgresClient,
-		Organizations:       postgresClient,
-		GitHubAppInstallURL: cfg.Github.AppInstallURL,
+		HarnessRegistry:      harnessRegistry,
+		GitHostingRegistry:   gitHostingPlatformRegistry,
+		Client:               linearClient,
+		ForSecrets:           forSecrets,
+		ForEvent:             eventBus,
+		Sessions:             postgresClient,
+		Organizations:        postgresClient,
+		GitHubAppInstallURL:  cfg.Github.AppInstallURL,
+		SessionConfigService: sessionConfigService,
+		PromptFactory:        promptFactory,
 	})
 	workPlatformRegistry[types.PlatformProvider_Linear] = linearPlatform
 	webhookRegistry[types.PlatformProvider_Linear] = workPlatformRegistry[types.PlatformProvider_Linear]

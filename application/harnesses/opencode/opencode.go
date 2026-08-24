@@ -25,7 +25,9 @@ import (
 	"time"
 
 	"github.com/workdock-dev/engine/application/interfaces"
+	"github.com/workdock-dev/engine/domain/factories"
 	"github.com/workdock-dev/engine/domain/ports"
+	domain_service "github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/telemetry"
 	"github.com/workdock-dev/engine/domain/types"
 	"go.opentelemetry.io/otel"
@@ -62,11 +64,6 @@ fi`
 	MaxInstallRetries = 3
 )
 
-// SecretSpec describes a dynamic secret configured per deployment: its
-// plaintext value and the host allowlist Daytona may substitute it into.
-// The fields must be exported so yaml unmarshalling can populate them;
-// unexported fields are silently skipped, which used to create secrets
-// with an empty value and no host allowlist.
 type SecretSpec struct {
 	Value string   `yaml:"value"`
 	Hosts []string `yaml:"hosts"`
@@ -84,12 +81,14 @@ type ConfigExternal struct {
 
 type Config struct {
 	ConfigExternal
-	Parts        ports.ForHarnessParts
-	Sandbox      interfaces.Sandbox
-	Session      *types.Session
-	SessionEvent *types.SessionEvent
-	Prompt       string
-	Secrets      map[string]string
+	Parts               ports.ForHarnessParts
+	Sandbox             interfaces.Sandbox
+	Session             *types.Session
+	SessionEvent        *types.SessionEvent
+	Prompt              string
+	Secrets             map[string]string
+	AgentConfigFactory  *factories.AgentConfigFactory
+	SessionResultService *domain_service.SessionResultService
 }
 
 // OpenCode implements ports.ForSandboxing on top of the daytona
@@ -449,48 +448,17 @@ func (h *OpenCode) uploadOpenCodeConfig(ctx context.Context) error {
 		}
 	}
 
-	permissionStr, err := json.Marshal(permission)
-
+	agentConfig, err := h.config.AgentConfigFactory.BuildOpenCodeConfig(permission, h.config.ConfigExternal.Provider)
 	if err != nil {
-		slog.Error("failed to marshal opencode permissions", "err", err, "event_identifier", h.config.SessionEvent.Identifier)
+		slog.Error("failed to build opencode config", "err", err, "event_identifier", h.config.SessionEvent.Identifier)
 		return err
 	}
 
-	providerStr := "{}"
-
-	if h.config.ConfigExternal.Provider != nil {
-		d, err := json.Marshal(h.config.ConfigExternal.Provider)
-
-		if err != nil {
-			slog.Error("failed to marshal opencode providers", "err", err, "event_identifier", h.config.SessionEvent.Identifier)
-			return err
-		}
-
-		providerStr = string(d)
+	openCodeConfig, err := h.config.AgentConfigFactory.MarshalOpenCodeConfig(agentConfig)
+	if err != nil {
+		slog.Error("failed to marshal opencode config", "err", err, "event_identifier", h.config.SessionEvent.Identifier)
+		return err
 	}
-
-	mcp := fmt.Sprintf(`"linear": {
-      "type": "remote",
-      "url": "https://mcp.linear.app/mcp",
-      "enabled": true,
-      "oauth": false,
-      "headers": {
-        "Authorization": "Bearer {env:%s}"
-      }
-    }`, LINEAR_ACCESS_TOKEN_ENV_VAR)
-
-	openCodeConfig := fmt.Appendf(nil, `
-{
-  "$schema": "https://opencode.ai/config.json",
-  "share": "disabled",
-  "autoupdate": false,
-  "permission": %s,
-  "provider": %s,
-  "mcp": {
-    %s
-  }
-}		
-	`, string(permissionStr), providerStr, mcp)
 
 	if err := h.config.Sandbox.UploadFile(ctx, openCodeConfig, "/home/daytona/.config/opencode/opencode.json"); err != nil {
 		return err
@@ -517,11 +485,5 @@ func (h *OpenCode) getPRMetadata(ctx context.Context) *types.PullRequest {
 	}
 
 	slog.Debug("Session PR Metadata", "event_identifier", h.config.SessionEvent.Identifier, "details", result)
-	var pr types.PullRequest
-
-	if err := json.Unmarshal([]byte(result), &pr); err != nil {
-		slog.Error("failed to unmarshal pull request metadata", "event_identifier", h.config.SessionEvent.Identifier, "err", err)
-	}
-
-	return &pr
+	return h.config.SessionResultService.ParsePullRequestMetadata(result)
 }

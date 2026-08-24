@@ -24,15 +24,17 @@ import (
 
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/repositories"
+	domain_service "github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/types"
 )
 
 type GitHubPlatformConfig struct {
-	ForSecrets        ports.ForSecrets
-	ForEvents         ports.ForEventBus
-	GitHubConnections repositories.GitHubConnectionRepository
-	Client            ClientInterface
-	BotLoginName      string
+	ForSecrets            ports.ForSecrets
+	ForEvents             ports.ForEventBus
+	GitHubConnections     repositories.GitHubConnectionRepository
+	Client                ClientInterface
+	BotLoginName          string
+	GitEventFilterService *domain_service.GitEventFilterService
 }
 
 type githubPlatform struct {
@@ -228,14 +230,13 @@ func (s *githubPlatform) handleIssues(event *WebhookEvent) error {
 }
 
 func (s *githubPlatform) handlePullRequestComment(event *WebhookEvent) error {
-	// The bot's same message can trigger github's webhook event
-	if event.Sender != nil && event.Sender.Login == s.config.BotLoginName {
-		slog.Debug("pull request comment event received, ignoring", "action", event.Action, "sender", s.config.BotLoginName)
-		return nil
+	senderLogin := ""
+	if event.Sender != nil {
+		senderLogin = event.Sender.Login
 	}
 
-	if event.Action == "deleted" {
-		slog.Debug("pull request comment event received, ignoring", "action", event.Action)
+	if !s.config.GitEventFilterService.ShouldTriggerCommentEvent(senderLogin, s.config.BotLoginName, event.Action) {
+		slog.Debug("pull request comment event received, ignoring", "action", event.Action, "sender", senderLogin)
 		return nil
 	}
 
@@ -244,8 +245,6 @@ func (s *githubPlatform) handlePullRequestComment(event *WebhookEvent) error {
 		return nil
 	}
 
-	// The GitHub App installation. Webhook payloads contain the installation property
-	// when the event is configured for and sent to a GitHub App.
 	if event.Installation == nil {
 		slog.Warn("pull request comment event without installation data", "action", event.Action)
 		return nil
@@ -265,29 +264,23 @@ func (s *githubPlatform) handlePullRequestComment(event *WebhookEvent) error {
 }
 
 func (s *githubPlatform) handleCheckRun(event *WebhookEvent) error {
-	if event.Sender != nil && event.Sender.Login == s.config.BotLoginName {
-		slog.Debug("check_run event received, ignoring", "action", event.Action, "sender", s.config.BotLoginName)
-		return nil
+	senderLogin := ""
+	if event.Sender != nil {
+		senderLogin = event.Sender.Login
 	}
 
-	if event.Action != "completed" {
-		slog.Debug("check_run event not completed, ignoring", "action", event.Action)
+	conclusion := ""
+	if event.CheckRun != nil && event.CheckRun.Conclusion != nil {
+		conclusion = *event.CheckRun.Conclusion
+	}
+
+	if !s.config.GitEventFilterService.ShouldTriggerCheckRunEvent(senderLogin, s.config.BotLoginName, event.Action, conclusion) {
+		slog.Debug("check_run event received, ignoring", "action", event.Action)
 		return nil
 	}
 
 	if event.CheckRun == nil {
 		slog.Warn("check_run event without check_run data", "action", event.Action)
-		return nil
-	}
-
-	if event.CheckRun.Conclusion == nil {
-		slog.Debug("check_run event without conclusion, ignoring", "action", event.Action)
-		return nil
-	}
-
-	conclusion := *event.CheckRun.Conclusion
-	if conclusion != "failure" && conclusion != "timed_out" {
-		slog.Debug("check_run event not failed, ignoring", "conclusion", conclusion)
 		return nil
 	}
 
