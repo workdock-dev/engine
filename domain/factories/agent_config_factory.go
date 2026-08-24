@@ -108,7 +108,6 @@ func mustMarshalJSON(v any) string {
 }
 
 func formatLinearMCP(mcp map[string]any) string {
-	headers := mcp["headers"].(map[string]string)
 	return fmt.Sprintf(`"linear": {
       "type": "remote",
       "url": "https://mcp.linear.app/mcp",
