@@ -23,7 +23,7 @@ import (
 	"github.com/workdock-dev/engine/domain/factories"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/repositories"
-	"github.com/workdock-dev/engine/domain/service"
+	domain_service "github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/telemetry"
 	"github.com/workdock-dev/engine/domain/types"
 	"go.opentelemetry.io/otel"
@@ -256,9 +256,9 @@ func (s *linearAISession) setAgentSessionExternalUrls(ctx context.Context) error
 		return err
 	}
 
-	domainLabels := make([]service.Label, len(labels))
+	domainLabels := make([]domain_service.Label, len(labels))
 	for i, l := range labels {
-		domainLabels[i] = service.Label{Name: l.Name}
+		domainLabels[i] = domain_service.Label{Name: l.Name}
 	}
 
 	existingURLs := make([]types.ExternalURL, len(s.config.Payload.AgentSession.ExternalUrls))
@@ -266,8 +266,8 @@ func (s *linearAISession) setAgentSessionExternalUrls(ctx context.Context) error
 		existingURLs[i] = types.ExternalURL{Label: u.Label, URL: u.URL}
 	}
 
-	sessionConfigService := service.NewSessionConfigService()
-	result := sessionConfigService.ConfigureSessionRepo(service.ConfigureSessionRepoInput{
+	sessionConfigService := domain_service.NewSessionConfigService()
+	result := sessionConfigService.ConfigureSessionRepo(domain_service.ConfigureSessionRepoInput{
 		Session:      s.config.Session,
 		Labels:       domainLabels,
 		ExistingURLs: existingURLs,

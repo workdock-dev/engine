@@ -24,7 +24,7 @@ import (
 
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/repositories"
-	"github.com/workdock-dev/engine/domain/service"
+	domain_service "github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/types"
 )
 
@@ -232,8 +232,8 @@ func (s *githubPlatform) handlePullRequestComment(event *WebhookEvent) error {
 		senderLogin = event.Sender.Login
 	}
 
-	eventFilterService := service.NewEventFilterService()
-	if !eventFilterService.ShouldTriggerSessionReRunForComment(service.PullRequestCommentFilterInput{
+	eventFilterService := domain_service.NewEventFilterService()
+	if !eventFilterService.ShouldTriggerSessionReRunForComment(domain_service.PullRequestCommentFilterInput{
 		BotLoginName: s.config.BotLoginName,
 		SenderLogin:  senderLogin,
 		Action:       event.Action,
@@ -276,8 +276,8 @@ func (s *githubPlatform) handleCheckRun(event *WebhookEvent) error {
 		conclusion = *event.CheckRun.Conclusion
 	}
 
-	eventFilterService := service.NewEventFilterService()
-	if !eventFilterService.ShouldTriggerSessionReRunForCheckRun(service.CheckRunFilterInput{
+	eventFilterService := domain_service.NewEventFilterService()
+	if !eventFilterService.ShouldTriggerSessionReRunForCheckRun(domain_service.CheckRunFilterInput{
 		BotLoginName: s.config.BotLoginName,
 		SenderLogin:  senderLogin,
 		Action:       event.Action,
