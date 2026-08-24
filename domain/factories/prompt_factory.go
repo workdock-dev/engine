@@ -25,6 +25,18 @@ import (
 
 type PromptFactory struct{}
 
+type WorkItemPromptInput struct {
+	Title         string
+	Identifier    string
+	Repository    *string
+	Description   string
+	PromptContext string
+	AgentActivity *types.AgentActivityContent
+	GitRef        *string
+	Seed          *string
+	TriggerReason types.SessionEventTriggerReason
+}
+
 func (f *PromptFactory) BuildWorkItemPrompt(ctx context.Context, input WorkItemPromptInput) (string, error) {
 	repo := ""
 	if input.Repository != nil {

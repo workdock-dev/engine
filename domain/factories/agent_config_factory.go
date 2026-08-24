@@ -19,8 +19,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-
-	"github.com/workdock-dev/engine/domain/types"
 )
 
 type AgentConfigFactory struct{}
