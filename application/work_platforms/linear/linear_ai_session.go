@@ -266,6 +266,8 @@ func (s *linearAISession) setAgentSessionExternalUrls(ctx context.Context) error
 		existingURLs[i] = types.ExternalURL{Label: u.Label, URL: u.URL}
 	}
 
+	originalRepoFullName := s.config.Session.RepoFullName
+
 	sessionConfigService := domain_service.NewSessionConfigService()
 	result := sessionConfigService.ConfigureSessionRepo(domain_service.ConfigureSessionRepoInput{
 		Session:      s.config.Session,
@@ -273,7 +275,7 @@ func (s *linearAISession) setAgentSessionExternalUrls(ctx context.Context) error
 		ExistingURLs: existingURLs,
 	})
 
-	if result.RepoFound && result.UpdatedSession.RepoFullName != s.config.Session.RepoFullName {
+	if result.RepoFound && (originalRepoFullName == nil || *result.UpdatedSession.RepoFullName != *originalRepoFullName) {
 		if err := telemetry.SpanErr(ctx, s.tracer, "linear.set_external_urls.upsert_session", func(ctx context.Context) error {
 			return s.config.Sessions.UpsertAgentSession(ctx, result.UpdatedSession)
 		}); err != nil {
