@@ -106,3 +106,19 @@ func (app *App) GetWorkPlatform(name types.PlatformProvider) (ports.ForWorkPlatf
 
 	return registry, nil
 }
+
+func (app *App) GetEventFilterService() *domain_service.EventFilterService {
+	return domain_service.NewEventFilterService()
+}
+
+func (app *App) GetAgentConfigFactory() *domain_service.AgentConfigFactory {
+	return domain_service.NewAgentConfigFactory()
+}
+
+func (app *App) GetPromptFactory() *domain_service.PromptFactory {
+	return domain_service.NewPromptFactory()
+}
+
+func (app *App) GetSessionConfigService() *domain_service.SessionConfigService {
+	return domain_service.NewSessionConfigService()
+}

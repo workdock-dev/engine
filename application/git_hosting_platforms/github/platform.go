@@ -22,6 +22,7 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/repositories"
 	domain_service "github.com/workdock-dev/engine/domain/service"
@@ -38,6 +39,7 @@ type GitHubPlatformConfig struct {
 
 type githubPlatform struct {
 	config GitHubPlatformConfig
+	app    *application.App
 	access *githubAccess
 }
 
@@ -51,6 +53,10 @@ func New(config GitHubPlatformConfig) ports.ForGitHostingPlatform {
 			GitHubConnections: config.GitHubConnections,
 		}),
 	}
+}
+
+func (s *githubPlatform) SetApp(app *application.App) {
+	s.app = app
 }
 
 func (s *githubPlatform) Ingest(ctx context.Context, event any) error {
@@ -232,7 +238,7 @@ func (s *githubPlatform) handlePullRequestComment(event *WebhookEvent) error {
 		senderLogin = event.Sender.Login
 	}
 
-	eventFilterService := domain_service.NewEventFilterService()
+	eventFilterService := s.app.GetEventFilterService()
 	if !eventFilterService.ShouldTriggerSessionReRunForComment(domain_service.PullRequestCommentFilterInput{
 		BotLoginName: s.config.BotLoginName,
 		SenderLogin:  senderLogin,
@@ -276,7 +282,7 @@ func (s *githubPlatform) handleCheckRun(event *WebhookEvent) error {
 		conclusion = *event.CheckRun.Conclusion
 	}
 
-	eventFilterService := domain_service.NewEventFilterService()
+	eventFilterService := s.app.GetEventFilterService()
 	if !eventFilterService.ShouldTriggerSessionReRunForCheckRun(domain_service.CheckRunFilterInput{
 		BotLoginName: s.config.BotLoginName,
 		SenderLogin:  senderLogin,
