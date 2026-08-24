@@ -37,6 +37,7 @@ type Config struct {
 	Organizations       repositories.OrganizationRepository
 	Client              LinearClientInterface
 	GitHubAppInstallURL string
+	App                *application.App
 }
 
 // linearPlatform adapts AIService to the Linear provider. It normalizes Linear
@@ -49,6 +50,7 @@ type linearPlatform struct {
 func New(config Config) ports.ForWorkPlatform {
 	p := &linearPlatform{
 		config: config,
+		app:    config.App,
 	}
 
 	// Subscribe to Linear webhook events to archive sandboxes when an issue
