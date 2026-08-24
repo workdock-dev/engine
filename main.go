@@ -190,7 +190,7 @@ func main() {
 			return nil, err
 		}
 
-		return opencode.New(opencode.Config{
+		oc, err := opencode.New(opencode.Config{
 			ConfigExternal: cfg.Opencode,
 			Sandbox:        sandbox,
 			Parts:          consturctor.Parts,
@@ -198,8 +198,14 @@ func main() {
 			SessionEvent:   consturctor.SessionEvent,
 			Prompt:         consturctor.Prompt,
 			Secrets:        consturctor.Secrets,
-			App:            app,
 		}, serviceName)
+		if err != nil {
+			return nil, err
+		}
+
+		oc.SetApp(app)
+
+		return oc, nil
 	}
 	harnessRegistry[types.HarnessProvider_OpenCode] = opencodeHarness
 
@@ -210,6 +216,7 @@ func main() {
 		GitHubConnections: postgresClient,
 		BotLoginName:      cfg.Github.BotLoginId,
 	})
+	githubPlatform.SetApp(app)
 	gitHostingPlatformRegistry[types.PlatformProvider_GitHub] = githubPlatform
 	webhookRegistry[types.PlatformProvider_GitHub] = gitHostingPlatformRegistry[types.PlatformProvider_GitHub]
 
@@ -222,7 +229,6 @@ func main() {
 		Sessions:            postgresClient,
 		Organizations:       postgresClient,
 		GitHubAppInstallURL: cfg.Github.AppInstallURL,
-		App:                app,
 	})
 	workPlatformRegistry[types.PlatformProvider_Linear] = linearPlatform
 	webhookRegistry[types.PlatformProvider_Linear] = workPlatformRegistry[types.PlatformProvider_Linear]
@@ -245,8 +251,6 @@ func main() {
 	if err != nil {
 		os.Exit(1)
 	}
-
-	githubPlatform.SetApp(app)
 
 	server, err := api.NewHTTPServer(cfg.ServerAddress, *app)
 

@@ -92,7 +92,6 @@ type Config struct {
 	SessionEvent *types.SessionEvent
 	Prompt       string
 	Secrets      map[string]string
-	App          *application.App
 }
 
 // OpenCode implements ports.ForSandboxing on top of the daytona
@@ -102,6 +101,7 @@ type Config struct {
 type OpenCode struct {
 	serviceName       string
 	config            Config
+	app               *application.App
 	linearAccessToken string
 	githubAccessToken string
 	secretIds         []string
@@ -130,6 +130,10 @@ func New(config Config, serviceName string) (*OpenCode, error) {
 	h.githubAccessToken = config.Secrets["githubAccessToken"]
 
 	return h, nil
+}
+
+func (h *OpenCode) SetApp(app *application.App) {
+	h.app = app
 }
 
 func (h *OpenCode) create(ctx context.Context) error {

@@ -37,13 +37,13 @@ type Config struct {
 	Organizations       repositories.OrganizationRepository
 	Client              LinearClientInterface
 	GitHubAppInstallURL string
-	App                *application.App
 }
 
 // linearPlatform adapts AIService to the Linear provider. It normalizes Linear
 // webhook events and executes or stops sessions on the linearAISession worker.
 type linearPlatform struct {
-	config Config
+	config            Config
+	app               *application.App
 }
 
 func New(config Config) ports.ForWorkPlatform {
@@ -51,13 +51,21 @@ func New(config Config) ports.ForWorkPlatform {
 		config: config,
 	}
 
-	// Subscribe to Linear webhook events to archive sandboxes when an issue
-	// transitions to a "done" status.
-	if config.ForEvent != nil {
+	return p
+}
+
+func (p *linearPlatform) SetApp(app *application.App) {
+	p.app = app
+}
+
+// Subscribe to Linear webhook events to archive sandboxes when an issue
+// transitions to a "done" status.
+func (p *linearPlatform) subscribe() {
+	if p.config.ForEvent != nil {
 		eventType := types.PlatformWebhookEvent(types.PlatformProvider_Linear)
 		slog.Debug("linearPlatform subscribed for event", "event_type", eventType)
 
-		config.ForEvent.Subscribe(
+		p.config.ForEvent.Subscribe(
 			eventType,
 			func(ctx context.Context, event ports.DomainEvent) error {
 				e, ok := event.(types.WebhookEvent)
@@ -84,6 +92,7 @@ func New(config Config) ports.ForWorkPlatform {
 			},
 		)
 	}
+}
 
 	return p
 }
