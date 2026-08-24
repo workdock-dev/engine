@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/workdock-dev/engine/application/interfaces"
+	"github.com/workdock-dev/engine/domain/factories"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/telemetry"
 	"github.com/workdock-dev/engine/domain/types"
@@ -441,56 +442,24 @@ func (h *OpenCode) setupGitHubCredentials(ctx context.Context) error {
 }
 
 func (h *OpenCode) uploadOpenCodeConfig(ctx context.Context) error {
-	permission := h.config.Permission
+	agentConfigFactory := factories.NewAgentConfigFactory()
 
-	if permission == nil {
-		permission = map[string]any{
-			"*": "allow",
-		}
-	}
-
-	permissionStr, err := json.Marshal(permission)
+	agentConfig, err := agentConfigFactory.BuildOpenCodeConfig(factories.OpenCodeConfigInput{
+		Permission: h.config.Permission,
+		Provider:   h.config.ConfigExternal.Provider,
+	})
 
 	if err != nil {
-		slog.Error("failed to marshal opencode permissions", "err", err, "event_identifier", h.config.SessionEvent.Identifier)
+		slog.Error("failed to build opencode agent config", "err", err, "event_identifier", h.config.SessionEvent.Identifier)
 		return err
 	}
 
-	providerStr := "{}"
+	openCodeConfig, err := agentConfigFactory.SerializeConfig(agentConfig)
 
-	if h.config.ConfigExternal.Provider != nil {
-		d, err := json.Marshal(h.config.ConfigExternal.Provider)
-
-		if err != nil {
-			slog.Error("failed to marshal opencode providers", "err", err, "event_identifier", h.config.SessionEvent.Identifier)
-			return err
-		}
-
-		providerStr = string(d)
+	if err != nil {
+		slog.Error("failed to serialize opencode config", "err", err, "event_identifier", h.config.SessionEvent.Identifier)
+		return err
 	}
-
-	mcp := fmt.Sprintf(`"linear": {
-      "type": "remote",
-      "url": "https://mcp.linear.app/mcp",
-      "enabled": true,
-      "oauth": false,
-      "headers": {
-        "Authorization": "Bearer {env:%s}"
-      }
-    }`, LINEAR_ACCESS_TOKEN_ENV_VAR)
-
-	openCodeConfig := fmt.Appendf(nil, `
-{
-  "$schema": "https://opencode.ai/config.json",
-  "share": "disabled",
-  "autoupdate": false,
-  "permission": %s,
-  "provider": %s,
-  "mcp": {
-    %s
-  }
-}		
-	`, string(permissionStr), providerStr, mcp)
 
 	if err := h.config.Sandbox.UploadFile(ctx, openCodeConfig, "/home/daytona/.config/opencode/opencode.json"); err != nil {
 		return err

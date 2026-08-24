@@ -19,11 +19,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"slices"
-	"strings"
 
+	"github.com/workdock-dev/engine/domain/factories"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/repositories"
+	"github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/telemetry"
 	"github.com/workdock-dev/engine/domain/types"
 	"go.opentelemetry.io/otel"
@@ -33,84 +33,6 @@ import (
 
 const (
 	GitHubUrl = "https://github.com/"
-)
-
-const (
-	PromptTemplate_WorkItem = `
-Your objective is to complete the requested work.
-You are working on the following work item.
-
-# Work Item
-**Title:** %s
-**Identifier:** %s
-**Repository:** %s
-
-## Requirements
-%s
-
-## Additional Context
-%s
-
-### Workflow rules
-When determining what work to perform, use the following order of precedence:
-
-1. The **Latest User Comment** (if present).
-2. The **Requirements**.
-3. The **Additional Context**.
-
-### Instructions
-- Treat higher-priority information as authoritative when conflicts exist.
-- Use lower-priority information only when it does not contradict higher-priority information.
-- If the latest user comment changes or supersedes previous requirements, follow the latest user comment.
-- If information is ambiguous or incomplete, identify the ambiguity instead of making assumptions.
-- Preserve existing behavior unless a higher-priority source explicitly requests a change.
-- Limit your work to what is necessary to satisfy the current request.
-- Set the ticket status to "In Progress" before starting work on it. Keep it "In Progress" while you are actively working on the task. Once you have completed the implementation and the changes are ready for review, move the ticket to "In Review".
-
-## Pull Request Rules
-
-* **Never close a pull request unless the user explicitly requests that it be closed.**
-* If review comments are added to a pull request, **address all applicable review comments within the same request** unless the user explicitly instructs otherwise.
-* Do not assume that addressing review comments means the pull request should be closed, merged, or otherwise finalized.
-* Preserve the pull request's open state unless the user explicitly asks you to change it.
-`
-
-	PromptTemplate_GitHubOperations = `
-
-### GitHub Operations
-- Use the git CLI for clone, fetch, pull, push, and branch management over HTTPS.
-- Use the gh CLI for GitHub API operations such as creating PRs, issues, and releases (e.g. gh pr create, gh repo view).
-- GitHub credentials are already configured for you, no manual authentication is required.
-
-### GitHub Credentials Notes
-- Your credential is a GitHub App installation token (ghs_...), scoped to the app's installed repositories and valid for about an hour. A fresh token is provided at the start of each session, so you never need to obtain one yourself.
-- It is NOT a user token. Identity-scoped calls - GET /user, gh api user, gh auth status - will always return 401 Bad credentials. That is expected and does NOT mean the credentials are broken. Do not abandon your task because of such an error.
-- To confirm the credentials work, use repository-scoped calls instead, e.g. git ls-remote https://github.com/OWNER/REPO, gh api /installation/repositories, or gh api repos/OWNER/REPO.
-- Git over HTTPS authentication is already configured for you, no action needed. Treat the token as opaque; do not decode or inspect its contents.
-- If a repository-scoped operation returns 401 or 403 mid-session, the token may have expired - report this instead of stopping.
-`
-
-	PromptTemplate_LatestUserComment = `
-
-### Latest User Comment (Highest Priority)
-
-The following message is the most recent instruction from the user.
-
-It may clarify, refine, override, or replace previous requirements. When it conflicts with earlier information, follow this message.
-
-%s
-`
-
-	PromptTemplate_PullRequestChecksFailed = `
-
-### Latest User Comment (Highest Priority)
-
-The following message is the most recent instruction from the user.
-
-It may clarify, refine, override, or replace previous requirements. When it conflicts with earlier information, follow this message.
-
-%s
-`
 )
 
 type linearAISessionConfig struct {
@@ -305,32 +227,22 @@ func (s *linearAISession) Process(ctx context.Context) error {
 }
 
 func (s *linearAISession) createPrompt() string {
-	repo := ""
+	promptFactory := factories.NewPromptFactory()
 
-	if s.config.Session.RepoFullName != nil {
-		repo = *s.config.Session.RepoFullName
+	var latestComment *string
+	if s.config.Payload.AgentActivity != nil {
+		latestComment = &s.config.Payload.AgentActivity.Content.Body
 	}
 
-	prompt := strings.TrimSpace(fmt.Sprintf(PromptTemplate_WorkItem,
+	prompt := promptFactory.BuildWorkItemPrompt(
+		s.config.Session,
+		s.config.SessionEvent,
 		s.config.Payload.AgentSession.Issue.Title,
 		s.config.Payload.AgentSession.Issue.Identifier,
-		repo,
 		s.config.Payload.AgentSession.Issue.Description,
 		s.config.Payload.PromptContext,
-	))
-
-	// Hope this logic doesn't cause odd behavior, if this
-	// condition is true, it means the event did not came from
-	// linear, but from a pr comment event
-	if s.config.SessionEvent.GitRef != nil && s.config.SessionEvent.Seed != nil {
-		if s.config.SessionEvent.Reason == types.SessionEventTriggerReason_CheckRun {
-			prompt += fmt.Sprintf(PromptTemplate_PullRequestChecksFailed, "The pull request checks have failed. Review the check failures, fix the issues, and ensure all checks pass before the pull request can be merged.")
-		} else {
-			prompt += fmt.Sprintf(PromptTemplate_LatestUserComment, "There are review comments on the pull request. Retrieve all review comments and address each one that is applicable to the current implementation. Make the necessary code changes, verify the changes, and ensure the pull request is ready for review again.")
-		}
-	} else if s.config.Payload.AgentActivity != nil {
-		prompt += fmt.Sprintf(PromptTemplate_LatestUserComment, s.config.Payload.AgentActivity.Content.Body)
-	}
+		latestComment,
+	)
 
 	slog.Debug("Prompt prepared", "event_identifier", s.config.SessionEvent.Identifier)
 	return prompt
@@ -344,62 +256,64 @@ func (s *linearAISession) setAgentSessionExternalUrls(ctx context.Context) error
 		return err
 	}
 
-	for _, label := range labels {
-		if after, ok := strings.CutPrefix(label.Name, "repo="); ok {
-			found := false
-			repoFullName := after
-			externalURLs := s.config.Payload.AgentSession.ExternalUrls
-			updated := make([]ExternalURL, 0, len(externalURLs)+1)
+	domainLabels := make([]service.Label, len(labels))
+	for i, l := range labels {
+		domainLabels[i] = service.Label{Name: l.Name}
+	}
 
-			// Update the storage if needed
-			if s.config.Session.RepoFullName == nil || *s.config.Session.RepoFullName != repoFullName {
-				s.config.Session.RepoFullName = new(repoFullName)
+	existingURLs := make([]types.ExternalURL, len(s.config.Payload.AgentSession.ExternalUrls))
+	for i, u := range s.config.Payload.AgentSession.ExternalUrls {
+		existingURLs[i] = types.ExternalURL{Label: u.Label, URL: u.URL}
+	}
 
-				if err := telemetry.SpanErr(ctx, s.tracer, "linear.set_external_urls.upsert_session", func(ctx context.Context) error {
-					return s.config.Sessions.UpsertAgentSession(ctx, s.config.Session)
-				}); err != nil {
-					return err
-				}
-				slog.Debug("Configured session repo", "event_identifier", s.config.SessionEvent.Identifier)
-			}
+	sessionConfigService := service.NewSessionConfigService()
+	result := sessionConfigService.ConfigureSessionRepo(service.ConfigureSessionRepoInput{
+		Session:      s.config.Session,
+		Labels:       domainLabels,
+		ExistingURLs: existingURLs,
+	})
 
-			// If linear it's already updated, skip the linear update
-			if slices.ContainsFunc(externalURLs, func(e ExternalURL) bool {
-				return e.URL == GitHubUrl+repoFullName
-			}) {
-				continue
-			}
-
-			for _, ext := range externalURLs {
-				if ext.Label == "repo" {
-					ext.URL = GitHubUrl + repoFullName
-					found = true
-				}
-
-				updated = append(updated, ext)
-			}
-
-			if !found {
-				updated = append(updated, ExternalURL{
-					Label: "repo",
-					URL:   GitHubUrl + repoFullName,
-				})
-			}
-
-			if _, err := telemetry.Span(ctx, s.tracer, "linear.set_external_urls.request", func(ctx context.Context) (any, error) {
-				return s.config.Client.SetExternalURLs(ctx, s.accessToken, SetExternalURLsInput{
-					SessionID:    s.config.Session.Identifier,
-					ExternalURLs: updated,
-				})
-			}); err != nil {
-				return err
-			}
-
-			slog.Debug("Configured session external url repo", "event_identifier", s.config.SessionEvent.Identifier)
+	if result.RepoFound && result.UpdatedSession.RepoFullName != s.config.Session.RepoFullName {
+		if err := telemetry.SpanErr(ctx, s.tracer, "linear.set_external_urls.upsert_session", func(ctx context.Context) error {
+			return s.config.Sessions.UpsertAgentSession(ctx, result.UpdatedSession)
+		}); err != nil {
+			return err
 		}
+		s.config.Session = result.UpdatedSession
+		slog.Debug("Configured session repo", "event_identifier", s.config.SessionEvent.Identifier)
+	}
+
+	if len(result.UpdatedURLs) > len(existingURLs) || hasURLChanged(existingURLs, result.UpdatedURLs) {
+		updatedExtURLs := make([]ExternalURL, len(result.UpdatedURLs))
+		for i, u := range result.UpdatedURLs {
+			updatedExtURLs[i] = ExternalURL{Label: u.Label, URL: u.URL}
+		}
+
+		if _, err := telemetry.Span(ctx, s.tracer, "linear.set_external_urls.request", func(ctx context.Context) (any, error) {
+			return s.config.Client.SetExternalURLs(ctx, s.accessToken, SetExternalURLsInput{
+				SessionID:    s.config.Session.Identifier,
+				ExternalURLs: updatedExtURLs,
+			})
+		}); err != nil {
+			return err
+		}
+
+		slog.Debug("Configured session external url repo", "event_identifier", s.config.SessionEvent.Identifier)
 	}
 
 	return nil
+}
+
+func hasURLChanged(oldURLs, newURLs []types.ExternalURL) bool {
+	if len(newURLs) != len(oldURLs) {
+		return true
+	}
+	for i := range oldURLs {
+		if oldURLs[i].URL != newURLs[i].URL {
+			return true
+		}
+	}
+	return false
 }
 
 // notifyGitHubConnectionRequired notifies the user to authorize GitHub.

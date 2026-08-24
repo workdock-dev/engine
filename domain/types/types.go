@@ -100,6 +100,11 @@ type PullRequest struct {
 	URL         string `json:"url"`
 }
 
+type ExternalURL struct {
+	Label string `json:"label"`
+	URL   string `json:"url"`
+}
+
 type AgentAction struct {
 	Name   string
 	Input  string
