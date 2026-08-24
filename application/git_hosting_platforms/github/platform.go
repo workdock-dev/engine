@@ -254,6 +254,7 @@ func (s *githubPlatform) handlePullRequestComment(event *WebhookEvent) error {
 		return nil
 	}
 
+	// The GitHub App installation. Webhook payloads contain the installation property
 	installationId := strconv.Itoa(event.Installation.ID)
 	slog.Debug("github pull_request event", "action", event.Action, "delivery_id", event.DeliveryID)
 
