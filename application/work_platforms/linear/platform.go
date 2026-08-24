@@ -51,21 +51,13 @@ func New(config Config) ports.ForWorkPlatform {
 		config: config,
 	}
 
-	return p
-}
-
-func (p *linearPlatform) SetApp(app *application.App) {
-	p.app = app
-}
-
-// Subscribe to Linear webhook events to archive sandboxes when an issue
-// transitions to a "done" status.
-func (p *linearPlatform) subscribe() {
-	if p.config.ForEvent != nil {
+	// Subscribe to Linear webhook events to archive sandboxes when an issue
+	// transitions to a "done" status.
+	if config.ForEvent != nil {
 		eventType := types.PlatformWebhookEvent(types.PlatformProvider_Linear)
 		slog.Debug("linearPlatform subscribed for event", "event_type", eventType)
 
-		p.config.ForEvent.Subscribe(
+		config.ForEvent.Subscribe(
 			eventType,
 			func(ctx context.Context, event ports.DomainEvent) error {
 				e, ok := event.(types.WebhookEvent)
@@ -92,6 +84,8 @@ func (p *linearPlatform) subscribe() {
 			},
 		)
 	}
+
+	return p
 }
 
 // BeginOAuth initiates the OAuth flow and returns the redirect URL

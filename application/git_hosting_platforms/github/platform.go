@@ -35,6 +35,7 @@ type GitHubPlatformConfig struct {
 	GitHubConnections repositories.GitHubConnectionRepository
 	Client            ClientInterface
 	BotLoginName      string
+	App              *application.App
 }
 
 type githubPlatform struct {
@@ -46,6 +47,7 @@ type githubPlatform struct {
 func New(config GitHubPlatformConfig) ports.ForGitHostingPlatform {
 	return &githubPlatform{
 		config: config,
+		app:    config.App,
 		access: newGitHubAccess(githubAccessConfig{
 			Client:            config.Client,
 			ForSecrets:        config.ForSecrets,
@@ -53,10 +55,6 @@ func New(config GitHubPlatformConfig) ports.ForGitHostingPlatform {
 			GitHubConnections: config.GitHubConnections,
 		}),
 	}
-}
-
-func (s *githubPlatform) SetApp(app *application.App) {
-	s.app = app
 }
 
 func (s *githubPlatform) Ingest(ctx context.Context, event any) error {

@@ -173,6 +173,26 @@ func main() {
 	gitHostingPlatformRegistry := make(ports.GitHostingPlatformRegistry)
 	webhookRegistry := make(ports.WebhooksRegistry)
 
+	// Create app first so we can pass it to platforms
+	app, err := application.New(application.Config{
+		WorkPlatformRegistry:       nil,
+		GitHostingPlatformRegistry: nil,
+		WebhooksRegistry:           nil,
+		Organizations:              postgresClient,
+		Sessions:                   postgresClient,
+		ForSecrets:                 forSecrets,
+		ForQueue:                   postgresEventQueue,
+		EventBus:                   eventBus,
+		TaskSchedulerConfig: async.TaskSchedulerConfig{
+			Workers:       cfg.Workers,
+			LeaseDuration: time.Duration(cfg.WorkerLeaseSeconds) * time.Second,
+		},
+	})
+
+	if err != nil {
+		os.Exit(1)
+	}
+
 	// Registries configuration
 	opencodeHarness := func(consturctor ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 		sessionEventId := "not-set"
@@ -198,12 +218,11 @@ func main() {
 			SessionEvent:   consturctor.SessionEvent,
 			Prompt:         consturctor.Prompt,
 			Secrets:        consturctor.Secrets,
+			App:            app,
 		}, serviceName)
 		if err != nil {
 			return nil, err
 		}
-
-		oc.SetApp(app)
 
 		return oc, nil
 	}
@@ -215,8 +234,8 @@ func main() {
 		ForEvents:         eventBus,
 		GitHubConnections: postgresClient,
 		BotLoginName:      cfg.Github.BotLoginId,
+		App:              app,
 	})
-	githubPlatform.SetApp(app)
 	gitHostingPlatformRegistry[types.PlatformProvider_GitHub] = githubPlatform
 	webhookRegistry[types.PlatformProvider_GitHub] = gitHostingPlatformRegistry[types.PlatformProvider_GitHub]
 
@@ -229,28 +248,13 @@ func main() {
 		Sessions:            postgresClient,
 		Organizations:       postgresClient,
 		GitHubAppInstallURL: cfg.Github.AppInstallURL,
+		App:                app,
 	})
 	workPlatformRegistry[types.PlatformProvider_Linear] = linearPlatform
 	webhookRegistry[types.PlatformProvider_Linear] = workPlatformRegistry[types.PlatformProvider_Linear]
 
-	app, err := application.New(application.Config{
-		WorkPlatformRegistry:       workPlatformRegistry,
-		GitHostingPlatformRegistry: gitHostingPlatformRegistry,
-		WebhooksRegistry:           webhookRegistry,
-		Organizations:              postgresClient,
-		Sessions:                   postgresClient,
-		ForSecrets:                 forSecrets,
-		ForQueue:                   postgresEventQueue,
-		EventBus:                   eventBus,
-		TaskSchedulerConfig: async.TaskSchedulerConfig{
-			Workers:       cfg.Workers,
-			LeaseDuration: time.Duration(cfg.WorkerLeaseSeconds) * time.Second,
-		},
-	})
-
-	if err != nil {
-		os.Exit(1)
-	}
+	// Update app with complete registries
+	app.UpdateRegistries(workPlatformRegistry, gitHostingPlatformRegistry, webhookRegistry)
 
 	server, err := api.NewHTTPServer(cfg.ServerAddress, *app)
 

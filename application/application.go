@@ -123,3 +123,13 @@ func (app *App) GetPromptFactory() *factories.PromptFactory {
 func (app *App) GetSessionConfigService() *domain_service.SessionConfigService {
 	return domain_service.NewSessionConfigService()
 }
+
+func (app *App) UpdateRegistries(
+	workPlatformRegistry ports.WorkPlatformRegistry,
+	gitHostingPlatformRegistry ports.GitHostingPlatformRegistry,
+	webhookRegistry ports.WebhooksRegistry,
+) {
+	app.config.WorkPlatformRegistry = workPlatformRegistry
+	app.config.GitHostingPlatformRegistry = gitHostingPlatformRegistry
+	app.config.WebhooksRegistry = webhookRegistry
+}
