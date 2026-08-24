@@ -234,6 +234,16 @@ func (s *githubPlatform) handlePullRequestComment(event *WebhookEvent) error {
 		senderLogin = event.Sender.Login
 	}
 
+	eventFilterService := s.config.App.GetEventFilterService()
+	if !eventFilterService.ShouldTriggerSessionReRunForComment(domain_service.PullRequestCommentFilterInput{
+		BotLoginName: s.config.BotLoginName,
+		SenderLogin:  senderLogin,
+		Action:       event.Action,
+	}) {
+		slog.Debug("pull request comment event received, ignoring", "action", event.Action, "sender", senderLogin)
+		return nil
+	}
+
 	if event.PullRequest == nil {
 		slog.Warn("pull request comment event without pull request data", "action", event.Action)
 		return nil
@@ -246,16 +256,6 @@ func (s *githubPlatform) handlePullRequestComment(event *WebhookEvent) error {
 
 	installationId := strconv.Itoa(event.Installation.ID)
 	slog.Debug("github pull_request event", "action", event.Action, "delivery_id", event.DeliveryID)
-
-	eventFilterService := s.config.App.GetEventFilterService()
-	if !eventFilterService.ShouldTriggerSessionReRunForComment(domain_service.PullRequestCommentFilterInput{
-		BotLoginName: s.config.BotLoginName,
-		SenderLogin:  senderLogin,
-		Action:       event.Action,
-	}) {
-		slog.Debug("pull request comment event received, ignoring", "action", event.Action, "sender", senderLogin)
-		return nil
-	}
 
 	s.config.ForEvents.Publish(context.Background(), types.PullRequestCommentedEvent{
 		Provider:       types.PlatformProvider_GitHub,
