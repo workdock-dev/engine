@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/factories"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/repositories"
@@ -46,10 +47,12 @@ type linearAISessionConfig struct {
 	Session             *types.Session
 	Payload             *AgentSessionEventData
 	GitHubAppInstallURL string
+	App                *application.App
 }
 
 type linearAISession struct {
 	config            linearAISessionConfig
+	app               *application.App
 	accessToken       string
 	githubAccessToken string
 	tracer            trace.Tracer
@@ -68,6 +71,7 @@ func newLinearAISession(ctx context.Context, config linearAISessionConfig) (*lin
 
 	return &linearAISession{
 		config:      config,
+		app:         config.App,
 		accessToken: accessToken,
 		tracer:      otel.Tracer("workdock.linear"),
 	}, nil
@@ -86,6 +90,7 @@ func newLinearAISessionForCancellation(ctx context.Context, config linearAISessi
 
 	return &linearAISession{
 		config:      config,
+		app:         config.App,
 		accessToken: accessToken,
 	}, nil
 }
@@ -227,7 +232,7 @@ func (s *linearAISession) Process(ctx context.Context) error {
 }
 
 func (s *linearAISession) createPrompt() string {
-	promptFactory := factories.NewPromptFactory()
+	promptFactory := s.app.GetPromptFactory()
 
 	var latestComment *string
 	if s.config.Payload.AgentActivity != nil {
@@ -268,7 +273,7 @@ func (s *linearAISession) setAgentSessionExternalUrls(ctx context.Context) error
 
 	originalRepoFullName := s.config.Session.RepoFullName
 
-	sessionConfigService := domain_service.NewSessionConfigService()
+	sessionConfigService := s.app.GetSessionConfigService()
 	result := sessionConfigService.ConfigureSessionRepo(domain_service.ConfigureSessionRepoInput{
 		Session:      s.config.Session,
 		Labels:       domainLabels,

@@ -198,6 +198,7 @@ func main() {
 			SessionEvent:   consturctor.SessionEvent,
 			Prompt:         consturctor.Prompt,
 			Secrets:        consturctor.Secrets,
+			App:            app,
 		}, serviceName)
 	}
 	harnessRegistry[types.HarnessProvider_OpenCode] = opencodeHarness
@@ -221,6 +222,7 @@ func main() {
 		Sessions:            postgresClient,
 		Organizations:       postgresClient,
 		GitHubAppInstallURL: cfg.Github.AppInstallURL,
+		App:                app,
 	})
 	workPlatformRegistry[types.PlatformProvider_Linear] = linearPlatform
 	webhookRegistry[types.PlatformProvider_Linear] = workPlatformRegistry[types.PlatformProvider_Linear]
@@ -243,6 +245,8 @@ func main() {
 	if err != nil {
 		os.Exit(1)
 	}
+
+	githubPlatform.SetApp(app)
 
 	server, err := api.NewHTTPServer(cfg.ServerAddress, *app)
 

@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/application/interfaces"
 	"github.com/workdock-dev/engine/domain/factories"
 	"github.com/workdock-dev/engine/domain/ports"
@@ -91,6 +92,7 @@ type Config struct {
 	SessionEvent *types.SessionEvent
 	Prompt       string
 	Secrets      map[string]string
+	App          *application.App
 }
 
 // OpenCode implements ports.ForSandboxing on top of the daytona
@@ -442,7 +444,7 @@ func (h *OpenCode) setupGitHubCredentials(ctx context.Context) error {
 }
 
 func (h *OpenCode) uploadOpenCodeConfig(ctx context.Context) error {
-	agentConfigFactory := factories.NewAgentConfigFactory()
+	agentConfigFactory := h.config.App.GetAgentConfigFactory()
 
 	agentConfig, err := agentConfigFactory.BuildOpenCodeConfig(factories.OpenCodeConfigInput{
 		Permission: h.config.Permission,

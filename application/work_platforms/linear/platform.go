@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/repositories"
 	"github.com/workdock-dev/engine/domain/types"
@@ -36,6 +37,7 @@ type Config struct {
 	Organizations       repositories.OrganizationRepository
 	Client              LinearClientInterface
 	GitHubAppInstallURL string
+	App                *application.App
 }
 
 // linearPlatform adapts AIService to the Linear provider. It normalizes Linear
