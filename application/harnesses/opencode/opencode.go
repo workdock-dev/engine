@@ -448,7 +448,7 @@ func (h *OpenCode) setupGitHubCredentials(ctx context.Context) error {
 }
 
 func (h *OpenCode) uploadOpenCodeConfig(ctx context.Context) error {
-	agentConfigFactory := h.config.App.GetAgentConfigFactory()
+	agentConfigFactory := h.app.GetAgentConfigFactory()
 
 	agentConfig, err := agentConfigFactory.BuildOpenCodeConfig(factories.OpenCodeConfigInput{
 		Permission: h.config.Permission,

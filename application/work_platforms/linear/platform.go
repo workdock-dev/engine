@@ -94,9 +94,6 @@ func (p *linearPlatform) subscribe() {
 	}
 }
 
-	return p
-}
-
 // BeginOAuth initiates the OAuth flow and returns the redirect URL
 // for Linear's authorization page.
 func (p *linearPlatform) BeginOAuth(ctx context.Context) string {
