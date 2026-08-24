@@ -234,7 +234,7 @@ func (s *githubPlatform) handlePullRequestComment(event *WebhookEvent) error {
 		senderLogin = event.Sender.Login
 	}
 
-	eventFilterService := 	s.config.App.GetEventFilterService()
+	eventFilterService := s.config.App.GetEventFilterService()
 	if !eventFilterService.ShouldTriggerSessionReRunForComment(domain_service.PullRequestCommentFilterInput{
 		BotLoginName: s.config.BotLoginName,
 		SenderLogin:  senderLogin,
@@ -273,12 +273,17 @@ func (s *githubPlatform) handleCheckRun(event *WebhookEvent) error {
 		senderLogin = event.Sender.Login
 	}
 
+	if event.CheckRun == nil {
+		slog.Warn("check_run event without check_run data", "action", event.Action)
+		return nil
+	}
+
 	conclusion := ""
 	if event.CheckRun != nil && event.CheckRun.Conclusion != nil {
 		conclusion = *event.CheckRun.Conclusion
 	}
 
-	eventFilterService := 	s.config.App.GetEventFilterService()
+	eventFilterService := s.config.App.GetEventFilterService()
 	if !eventFilterService.ShouldTriggerSessionReRunForCheckRun(domain_service.CheckRunFilterInput{
 		BotLoginName: s.config.BotLoginName,
 		SenderLogin:  senderLogin,
@@ -286,11 +291,6 @@ func (s *githubPlatform) handleCheckRun(event *WebhookEvent) error {
 		Conclusion:   conclusion,
 	}) {
 		slog.Debug("check_run event received, ignoring", "action", event.Action, "sender", senderLogin)
-		return nil
-	}
-
-	if event.CheckRun == nil {
-		slog.Warn("check_run event without check_run data", "action", event.Action)
 		return nil
 	}
 
