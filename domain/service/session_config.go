@@ -15,7 +15,6 @@
 package service
 
 import (
-	"slices"
 	"strings"
 
 	"github.com/workdock-dev/engine/domain/types"
@@ -32,45 +31,18 @@ func (s *SessionConfigService) ExtractRepoFromLabels(labels []string) (string, b
 	return "", false
 }
 
-func (s *SessionConfigService) ConfigureSessionRepo(session *types.Session, labels []string, existingExternalUrls []types.ExternalURL) (*types.Session, []types.ExternalURL, bool, error) {
+func (s *SessionConfigService) ConfigureSessionRepo(session *types.Session, labels []string) (bool, error) {
 	repoFullName, found := s.ExtractRepoFromLabels(labels)
 	if !found {
-		return session, existingExternalUrls, false, nil
+		return false, nil
 	}
-
-	updated := false
 
 	if session.RepoFullName == nil || *session.RepoFullName != repoFullName {
 		session.RepoFullName = &repoFullName
-		updated = true
+		return true, nil
 	}
 
-	newExternalUrls := make([]types.ExternalURL, 0, len(existingExternalUrls)+1)
-	repoURL := types.GitHubUrl + repoFullName
-
-	if slices.ContainsFunc(existingExternalUrls, func(e types.ExternalURL) bool {
-		return e.URL == repoURL
-	}) {
-		return session, existingExternalUrls, updated, nil
-	}
-
-	found = false
-	for _, ext := range existingExternalUrls {
-		if ext.Label == "repo" {
-			ext.URL = repoURL
-			found = true
-		}
-		newExternalUrls = append(newExternalUrls, ext)
-	}
-
-	if !found {
-		newExternalUrls = append(newExternalUrls, types.ExternalURL{
-			Label: "repo",
-			URL:   repoURL,
-		})
-	}
-
-	return session, newExternalUrls, updated, nil
+	return false, nil
 }
 
 type GitEventFilterService struct{}

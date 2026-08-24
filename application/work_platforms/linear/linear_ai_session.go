@@ -267,50 +267,20 @@ func (s *linearAISession) setAgentSessionExternalUrls(ctx context.Context) error
 		labelNames[i] = label.Name
 	}
 
-	externalURLs := make([]types.ExternalURL, len(s.config.Payload.AgentSession.ExternalUrls))
-	for i, ext := range s.config.Payload.AgentSession.ExternalUrls {
-		externalURLs[i] = types.ExternalURL{
-			Label: ext.Label,
-			URL:   ext.URL,
-		}
-	}
-
-	session, newExternalUrls, sessionUpdated, err := s.config.SessionConfigService.ConfigureSessionRepo(s.config.Session, labelNames, externalURLs)
+	updated, err := s.config.SessionConfigService.ConfigureSessionRepo(s.config.Session, labelNames)
 	if err != nil {
 		return err
 	}
 
-	if sessionUpdated {
+	if updated {
 		if err := telemetry.SpanErr(ctx, s.tracer, "linear.set_external_urls.upsert_session", func(ctx context.Context) error {
-			return s.config.Sessions.UpsertAgentSession(ctx, session)
+			return s.config.Sessions.UpsertAgentSession(ctx, s.config.Session)
 		}); err != nil {
 			return err
 		}
 		slog.Debug("Configured session repo", "event_identifier", s.config.SessionEvent.Identifier)
 	}
 
-	if len(newExternalUrls) == 0 {
-		return nil
-	}
-
-	updatedExternalUrls := make([]ExternalURL, len(newExternalUrls))
-	for i, ext := range newExternalUrls {
-		updatedExternalUrls[i] = ExternalURL{
-			Label: ext.Label,
-			URL:   ext.URL,
-		}
-	}
-
-	if _, err := telemetry.Span(ctx, s.tracer, "linear.set_external_urls.request", func(ctx context.Context) (any, error) {
-		return s.config.Client.SetExternalURLs(ctx, s.accessToken, SetExternalURLsInput{
-			SessionID:    s.config.Session.Identifier,
-			ExternalURLs: updatedExternalUrls,
-		})
-	}); err != nil {
-		return err
-	}
-
-	slog.Debug("Configured session external url repo", "event_identifier", s.config.SessionEvent.Identifier)
 	return nil
 }
 
