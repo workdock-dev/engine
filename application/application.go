@@ -20,6 +20,7 @@ import (
 
 	"github.com/workdock-dev/engine/application/async"
 	"github.com/workdock-dev/engine/application/interfaces"
+	"github.com/workdock-dev/engine/domain/factories"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/repositories"
 	domain_service "github.com/workdock-dev/engine/domain/service"
@@ -111,12 +112,12 @@ func (app *App) GetEventFilterService() *domain_service.EventFilterService {
 	return domain_service.NewEventFilterService()
 }
 
-func (app *App) GetAgentConfigFactory() *domain_service.AgentConfigFactory {
-	return domain_service.NewAgentConfigFactory()
+func (app *App) GetAgentConfigFactory() *factories.AgentConfigFactory {
+	return factories.NewAgentConfigFactory()
 }
 
-func (app *App) GetPromptFactory() *domain_service.PromptFactory {
-	return domain_service.NewPromptFactory()
+func (app *App) GetPromptFactory() *factories.PromptFactory {
+	return factories.NewPromptFactory()
 }
 
 func (app *App) GetSessionConfigService() *domain_service.SessionConfigService {
