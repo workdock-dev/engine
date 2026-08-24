@@ -44,13 +44,11 @@ type Config struct {
 // webhook events and executes or stops sessions on the linearAISession worker.
 type linearPlatform struct {
 	config            Config
-	app               *application.App
 }
 
 func New(config Config) ports.ForWorkPlatform {
 	p := &linearPlatform{
 		config: config,
-		app:    config.App,
 	}
 
 	// Subscribe to Linear webhook events to archive sandboxes when an issue

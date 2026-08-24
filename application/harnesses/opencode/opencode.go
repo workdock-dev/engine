@@ -102,7 +102,6 @@ type Config struct {
 type OpenCode struct {
 	serviceName       string
 	config            Config
-	app               *application.App
 	linearAccessToken string
 	githubAccessToken string
 	secretIds         []string
@@ -116,7 +115,6 @@ type OpenCode struct {
 func New(config Config, serviceName string) (*OpenCode, error) {
 	h := &OpenCode{
 		config:      config,
-		app:         config.App,
 		tracer:      otel.Tracer("workdock.opencode"),
 		serviceName: serviceName,
 	}
@@ -446,7 +444,7 @@ func (h *OpenCode) setupGitHubCredentials(ctx context.Context) error {
 }
 
 func (h *OpenCode) uploadOpenCodeConfig(ctx context.Context) error {
-	agentConfigFactory := h.app.GetAgentConfigFactory()
+	agentConfigFactory := 	h.config.App.GetAgentConfigFactory()
 
 	agentConfig, err := agentConfigFactory.BuildOpenCodeConfig(factories.OpenCodeConfigInput{
 		Permission: h.config.Permission,

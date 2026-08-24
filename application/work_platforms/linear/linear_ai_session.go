@@ -51,7 +51,6 @@ type linearAISessionConfig struct {
 
 type linearAISession struct {
 	config            linearAISessionConfig
-	app               *application.App
 	accessToken       string
 	githubAccessToken string
 	tracer            trace.Tracer
@@ -70,7 +69,6 @@ func newLinearAISession(ctx context.Context, config linearAISessionConfig) (*lin
 
 	return &linearAISession{
 		config:      config,
-		app:         config.App,
 		accessToken: accessToken,
 		tracer:      otel.Tracer("workdock.linear"),
 	}, nil
@@ -89,7 +87,6 @@ func newLinearAISessionForCancellation(ctx context.Context, config linearAISessi
 
 	return &linearAISession{
 		config:      config,
-		app:         config.App,
 		accessToken: accessToken,
 	}, nil
 }
@@ -231,7 +228,7 @@ func (s *linearAISession) Process(ctx context.Context) error {
 }
 
 func (s *linearAISession) createPrompt() string {
-	promptFactory := s.app.GetPromptFactory()
+	promptFactory := 	s.config.App.GetPromptFactory()
 
 	var latestComment *string
 	if s.config.Payload.AgentActivity != nil {
@@ -272,7 +269,7 @@ func (s *linearAISession) setAgentSessionExternalUrls(ctx context.Context) error
 
 	originalRepoFullName := s.config.Session.RepoFullName
 
-	sessionConfigService := s.app.GetSessionConfigService()
+	sessionConfigService := 	s.config.App.GetSessionConfigService()
 	result := sessionConfigService.ConfigureSessionRepo(domain_service.ConfigureSessionRepoInput{
 		Session:      s.config.Session,
 		Labels:       domainLabels,

@@ -40,14 +40,12 @@ type GitHubPlatformConfig struct {
 
 type githubPlatform struct {
 	config GitHubPlatformConfig
-	app    *application.App
 	access *githubAccess
 }
 
 func New(config GitHubPlatformConfig) ports.ForGitHostingPlatform {
 	return &githubPlatform{
 		config: config,
-		app:    config.App,
 		access: newGitHubAccess(githubAccessConfig{
 			Client:            config.Client,
 			ForSecrets:        config.ForSecrets,
@@ -236,7 +234,7 @@ func (s *githubPlatform) handlePullRequestComment(event *WebhookEvent) error {
 		senderLogin = event.Sender.Login
 	}
 
-	eventFilterService := s.app.GetEventFilterService()
+	eventFilterService := 	s.config.App.GetEventFilterService()
 	if !eventFilterService.ShouldTriggerSessionReRunForComment(domain_service.PullRequestCommentFilterInput{
 		BotLoginName: s.config.BotLoginName,
 		SenderLogin:  senderLogin,
@@ -280,7 +278,7 @@ func (s *githubPlatform) handleCheckRun(event *WebhookEvent) error {
 		conclusion = *event.CheckRun.Conclusion
 	}
 
-	eventFilterService := s.app.GetEventFilterService()
+	eventFilterService := 	s.config.App.GetEventFilterService()
 	if !eventFilterService.ShouldTriggerSessionReRunForCheckRun(domain_service.CheckRunFilterInput{
 		BotLoginName: s.config.BotLoginName,
 		SenderLogin:  senderLogin,
