@@ -92,10 +92,11 @@ type CheckRun struct {
 }
 
 type CheckSuite struct {
-	ID         int64   `json:"id"`
-	NodeID     string  `json:"node_id"`
-	HeadBranch string  `json:"head_branch"`
-	HeadSHA    string  `json:"head_sha"`
-	Status     string  `json:"status"`
-	Conclusion *string `json:"conclusion"`
+	ID            int64         `json:"id"`
+	NodeID        string        `json:"node_id"`
+	HeadBranch    string        `json:"head_branch"`
+	HeadSHA       string        `json:"head_sha"`
+	Status        string        `json:"status"`
+	Conclusion    *string       `json:"conclusion"`
+	PullRequests  []PullRequest `json:"pull_requests,omitempty"`
 }
