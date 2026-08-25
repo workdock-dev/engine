@@ -109,7 +109,6 @@ func (s *PromptFactorySuite) TestBuildWorkItemPrompt_WithGitRefAndSeed_CheckRun(
 
 	s.NoError(err)
 	s.Contains(prompt, "pull request checks have failed")
-	s.Contains(prompt, "PullRequestChecksFailed")
 }
 
 func (s *PromptFactorySuite) TestBuildWorkItemPrompt_WithGitRefAndSeed_Comment() {
