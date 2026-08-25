@@ -23,7 +23,7 @@ import (
 	"github.com/workdock-dev/engine/domain/factories"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/repositories"
-	"github.com/workdock-dev/engine/domain/service"
+	domain_service "github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/telemetry"
 	"github.com/workdock-dev/engine/domain/types"
 	"go.opentelemetry.io/otel"
@@ -42,7 +42,7 @@ type linearAISessionConfig struct {
 	Session              *types.Session
 	Payload              *AgentSessionEventData
 	GitHubAppInstallURL  string
-	SessionConfigService *service.SessionConfigService
+	SessionConfigService *domain_service.SessionConfigService
 	PromptFactory        *factories.PromptFactory
 }
 

@@ -24,7 +24,7 @@ import (
 	"github.com/workdock-dev/engine/domain/factories"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/repositories"
-	"github.com/workdock-dev/engine/domain/service"
+	domain_service "github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/types"
 )
 
@@ -38,7 +38,7 @@ type Config struct {
 	Organizations        repositories.OrganizationRepository
 	Client               LinearClientInterface
 	GitHubAppInstallURL  string
-	SessionConfigService *service.SessionConfigService
+	SessionConfigService *domain_service.SessionConfigService
 	PromptFactory       *factories.PromptFactory
 }
 
