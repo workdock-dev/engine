@@ -75,6 +75,8 @@ func (s *githubPlatform) Ingest(ctx context.Context, event any) error {
 		return s.handlePullRequestComment(e)
 	case "check_run":
 		return s.handleCheckRun(e)
+	case "check_suite":
+		return s.handleCheckSuite(e)
 	default:
 		slog.Warn("unhandled github event", "event", e.EventType)
 	}
@@ -310,6 +312,60 @@ func (s *githubPlatform) handleCheckRun(event *WebhookEvent) error {
 			RepoFullName:   pr.Head.Repo.FullName,
 			InstallationId: installationId,
 			ChecksFailed:   []string{event.CheckRun.URL},
+		})
+	}
+
+	return nil
+}
+
+func (s *githubPlatform) handleCheckSuite(event *WebhookEvent) error {
+	if event.Sender != nil && event.Sender.Login == s.config.BotLoginName {
+		slog.Debug("check_suite event received, ignoring", "action", event.Action, "sender", s.config.BotLoginName)
+		return nil
+	}
+
+	if event.Action != "completed" {
+		slog.Debug("check_suite event not completed, ignoring", "action", event.Action)
+		return nil
+	}
+
+	if event.CheckSuite == nil {
+		slog.Warn("check_suite event without check_suite data", "action", event.Action)
+		return nil
+	}
+
+	if event.CheckSuite.Conclusion == nil {
+		slog.Debug("check_suite event without conclusion, ignoring", "action", event.Action)
+		return nil
+	}
+
+	conclusion := *event.CheckSuite.Conclusion
+	if conclusion != "failure" && conclusion != "timed_out" {
+		slog.Debug("check_suite event not failed, ignoring", "conclusion", conclusion)
+		return nil
+	}
+
+	if event.Installation == nil {
+		slog.Warn("check_suite event without installation data", "action", event.Action)
+		return nil
+	}
+
+	if len(event.CheckSuite.PullRequests) == 0 {
+		slog.Debug("check_suite event without pull requests, ignoring")
+		return nil
+	}
+
+	installationId := strconv.Itoa(event.Installation.ID)
+
+	for _, pr := range event.CheckSuite.PullRequests {
+		slog.Debug("github check_suite event", "action", event.Action, "conclusion", conclusion, "check_suite_id", event.CheckSuite.ID, "pr", pr.Head.Ref)
+
+		s.config.ForEvents.Publish(context.Background(), types.PullRequestChecksFailedEvent{
+			Provider:       types.PlatformProvider_GitHub,
+			GitRef:         pr.Head.Ref,
+			RepoFullName:   pr.Head.Repo.FullName,
+			InstallationId: installationId,
+			ChecksFailed:   []string{pr.URL},
 		})
 	}
 
