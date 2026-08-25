@@ -47,31 +47,3 @@ func (s *SessionConfigService) ConfigureSessionRepo(ctx context.Context, session
 
 	return nil
 }
-
-type GitEventFilterService struct{}
-
-func (f *GitEventFilterService) ShouldTriggerCommentEvent(senderLogin, botLoginName string, action string) bool {
-	if senderLogin == botLoginName {
-		return false
-	}
-	if action == "deleted" {
-		return false
-	}
-	return true
-}
-
-func (f *GitEventFilterService) ShouldTriggerCheckRunEvent(senderLogin, botLoginName, action, conclusion string) bool {
-	if senderLogin == botLoginName {
-		return false
-	}
-	if action != "completed" {
-		return false
-	}
-	if conclusion == "" {
-		return false
-	}
-	if conclusion != "failure" && conclusion != "timed_out" {
-		return false
-	}
-	return true
-}
