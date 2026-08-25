@@ -1,0 +1,189 @@
+# Copyright 2026 Jaziel Guerrero
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: workdock
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  postgres:
+    <<: *restart
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    environment:
+      POSTGRES_USER: workdock
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-workdock}
+      POSTGRES_DB: workdock
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workdock -d workdock"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  postgres-init:
+    image: postgres:16-bookworm
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-workdock}
+    volumes:
+      - ./docker/postgres/init-pg.sh:/usr/local/bin/init-pg.sh:ro
+    entrypoint: ["bash", "/usr/local/bin/init-pg.sh"]
+    restart: "no"
+
+  redis:
+    <<: *restart
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis-data:/data
+
+  infisical:
+    <<: *restart
+    image: ${INFISICAL_IMAGE:-infisical/infisical:latest}
+    depends_on:
+      postgres-init: { condition: service_completed_successfully }
+      redis: { condition: service_started }
+    environment:
+      NODE_ENV: production
+      ENCRYPTION_KEY: ${INFISICAL_ENCRYPTION_KEY:?set INFISICAL_ENCRYPTION_KEY in .env}
+      AUTH_SECRET: ${INFISICAL_AUTH_SECRET:?set INFISICAL_AUTH_SECRET in .env}
+      DB_CONNECTION_URI: postgresql://workdock:${POSTGRES_PASSWORD:-workdock}@postgres:5432/infisical
+      REDIS_URL: redis://redis:6379
+      SITE_URL: ${INFISICAL_SITE_URL:-http://localhost:8081}
+      OTEL_TELEMETRY_COLLECTION_ENABLED: "false"
+    ports: ["8081:8080"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider --quiet http://localhost:8080/api/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  migrate:
+    build: { context: ., dockerfile: Dockerfile }
+    entrypoint: []
+    command: ["tern", "migrate", "-c", "/app/config/tern.conf", "-m", "/app/migrations"]
+    depends_on:
+      postgres-init: { condition: service_completed_successfully }
+    volumes:
+      - ./docker/workdock:/app/config:ro
+    restart: "no"
+
+  workdock:
+    <<: *restart
+    build: { context: ., dockerfile: Dockerfile }
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      infisical: { condition: service_healthy }
+      signoz-otel-collector: { condition: service_healthy }
+    volumes:
+      - ./docker/workdock:/app/config:ro
+    ports: ["8080:8080"]
+
+  signoz-keeper:
+    <<: *restart
+    image: clickhouse/clickhouse-keeper:25.12.5
+    entrypoint: ["/usr/bin/clickhouse-keeper", "--config-file=/etc/clickhouse-keeper/keeper.yaml"]
+    volumes:
+      - signoz-keeper-data:/var/lib/clickhouse-keeper
+      - ./docker/signoz/keeper/keeper.yaml:/etc/clickhouse-keeper/keeper.yaml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-keeper-client -h localhost -p 9181 -q 'ls' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  clickhouse:
+    <<: *restart
+    image: clickhouse/clickhouse-server:25.12.5
+    depends_on:
+      signoz-keeper: { condition: service_healthy }
+    environment:
+      CLICKHOUSE_SKIP_USER_SETUP: 1
+    ulimits:
+      nofile: { soft: 262144, hard: 262144 }
+    volumes:
+      - ./docker/signoz/clickhouse/config.xml:/etc/clickhouse-server/config.d/workdock.xml:ro
+      - signoz-clickhouse-data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider --quiet http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  signoz-telemetrystore-migrator:
+    image: signoz/signoz-otel-collector:v0.144.6
+    depends_on:
+      clickhouse: { condition: service_healthy }
+    environment: &signoz-collector-env
+      SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_DSN: tcp://clickhouse:9000
+      SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_CLUSTER: cluster
+      SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_REPLICATION: "true"
+      SIGNOZ_OTEL_COLLECTOR_TIMEOUT: 10m
+    entrypoint: ["/bin/sh", "/usr/local/bin/workdock-signoz-migrate.sh"]
+    command: []
+    volumes:
+      - ./docker/signoz/migrate.sh:/usr/local/bin/workdock-signoz-migrate.sh:ro
+    restart: on-failure
+
+  signoz:
+    <<: *restart
+    image: signoz/signoz:v0.137.1
+    depends_on:
+      clickhouse: { condition: service_healthy }
+      signoz-telemetrystore-migrator: { condition: service_completed_successfully }
+    environment:
+      SIGNOZ_ALERTMANAGER_PROVIDER: signoz
+      SIGNOZ_TELEMETRYSTORE_PROVIDER: clickhouse
+      SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_DSN: tcp://clickhouse:9000
+      SIGNOZ_SQLSTORE_SQLITE_PATH: /var/lib/signoz/signoz.db
+      SIGNOZ_TOKENIZER_JWT_SECRET: ${SIGNOZ_JWT_SECRET:?set SIGNOZ_JWT_SECRET in .env}
+    volumes:
+      - signoz-sqlite-data:/var/lib/signoz
+    ports: ["8082:8080"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider --quiet http://localhost:8080/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  signoz-otel-collector:
+    <<: *restart
+    image: signoz/signoz-otel-collector:v0.144.6
+    depends_on:
+      signoz-telemetrystore-migrator: { condition: service_completed_successfully }
+    environment: *signoz-collector-env
+    entrypoint: ["/bin/sh", "/usr/local/bin/workdock-signoz-collector-start.sh"]
+    command: []
+    volumes:
+      - ./docker/signoz/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+      - ./docker/signoz/collector-start.sh:/usr/local/bin/workdock-signoz-collector-start.sh:ro
+    ports: ["4317:4317", "4318:4318"]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/13133'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  postgres-data:
+  redis-data:
+  signoz-keeper-data:
+  signoz-clickhouse-data:
+  signoz-sqlite-data:

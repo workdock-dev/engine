@@ -1,0 +1,100 @@
+# Copyright 2026 Jaziel Guerrero
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+connectors:
+  signozmeter:
+    metrics_flush_interval: 1h
+    dimensions:
+      - name: service.name
+      - name: deployment.environment
+      - name: host.name
+receivers:
+  otlp:
+    protocols:
+      grpc: { endpoint: 0.0.0.0:4317 }
+      http: { endpoint: 0.0.0.0:4318 }
+processors:
+  batch:
+    send_batch_size: 50000
+    send_batch_max_size: 55000
+    timeout: 5s
+  batch/meter:
+    send_batch_size: 20000
+    send_batch_max_size: 25000
+    timeout: 5s
+  signozspanmetrics/delta:
+    metrics_exporter: signozclickhousemetrics
+    metrics_flush_interval: 60s
+    latency_histogram_buckets: [100us, 1ms, 2ms, 6ms, 10ms, 50ms, 100ms, 250ms, 500ms, 1000ms, 1400ms, 2000ms, 5s, 10s, 20s, 40s, 60s]
+    dimensions_cache_size: 100000
+    aggregation_temporality: AGGREGATION_TEMPORALITY_DELTA
+    enable_exp_histogram: true
+    dimensions:
+      - name: service.namespace
+        default: default
+      - name: deployment.environment
+        default: default
+      - name: signoz.collector.id
+      - name: service.version
+extensions:
+  health_check: { endpoint: 0.0.0.0:13133 }
+exporters:
+  clickhousetraces:
+    datasource: tcp://clickhouse:9000/signoz_traces
+    use_new_schema: true
+    timeout: 45s
+    sending_queue:
+      enabled: false
+    low_cardinal_exception_grouping: ${env:LOW_CARDINAL_EXCEPTION_GROUPING}
+  signozclickhousemetrics:
+    dsn: tcp://clickhouse:9000/signoz_metrics
+    timeout: 45s
+    sending_queue:
+      enabled: false
+  clickhouselogsexporter:
+    dsn: tcp://clickhouse:9000/signoz_logs
+    use_new_schema: true
+    timeout: 45s
+    sending_queue:
+      enabled: false
+  signozclickhousemeter:
+    dsn: tcp://clickhouse:9000/signoz_meter
+    timeout: 45s
+    sending_queue:
+      enabled: false
+  metadataexporter:
+    cache:
+      provider: in_memory
+    dsn: tcp://clickhouse:9000/signoz_metadata
+    enabled: true
+    timeout: 45s
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [signozspanmetrics/delta, batch]
+      exporters: [clickhousetraces, signozmeter, metadataexporter]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [signozclickhousemetrics, signozmeter, metadataexporter]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [clickhouselogsexporter, signozmeter, metadataexporter]
+    metrics/meter:
+      receivers: [signozmeter]
+      processors: [batch/meter]
+      exporters: [signozclickhousemeter]

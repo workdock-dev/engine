@@ -1,0 +1,63 @@
+# Copyright 2026 Jaziel Guerrero
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Copy to docker/workdock/config.yaml and replace placeholders. Add the GitHub
+# App private key as docker/workdock/github-app.pem.
+service_name: workdock
+server_address: ":8080"
+workers: 3
+
+linear:
+  server_url: "http://localhost:8080"
+  webhook_secret: "replace-with-linear-webhook-secret"
+  client_id: "replace-with-linear-client-id"
+  client_secret: "replace-with-linear-client-secret"
+  ips: ["35.231.147.226", "35.243.134.228", "34.140.253.14", "34.38.87.206", "34.134.222.122", "35.222.25.142"]
+
+github:
+  bot_login_id: "workdock[bot]"
+  client_id: "replace-with-github-app-client-id"
+  private_key_path: "/app/config/github-app.pem"
+  webhook_secret: "replace-with-github-webhook-secret"
+  app_install_url: "https://github.com/apps/your-app-name/installations/new"
+
+daytona:
+  api_url: "https://app.daytona.io/api"
+  api_key: "replace-with-daytona-api-key"
+  target: "us"
+
+opencode:
+  destroy_on_dispose: false
+  liveness_timeout_seconds: 30
+  max_health_misses: 3
+  model: "replace-with-model"
+  permission:
+    "external_directory": "deny"
+    "*": "allow"
+
+infisical:
+  site_url: "http://infisical:8080"
+  client_id: "replace-with-universal-auth-client-id"
+  client_secret: "replace-with-universal-auth-client-secret"
+  project_id: "replace-with-infisical-project-id"
+  environment: "dev"
+
+postgres:
+  database_url: "postgresql://workdock:workdock@postgres:5432/workdock"
+
+otlp:
+  endpoint: "signoz-otel-collector:4318"
+  slog:
+    level: info
+    source: true
