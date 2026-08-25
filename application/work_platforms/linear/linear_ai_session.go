@@ -172,7 +172,7 @@ func (s *linearAISession) Process(ctx context.Context) error {
 	harness, err := createHarness(ports.NewHarnessConstructor{
 		Session:      s.config.Session,
 		SessionEvent: s.config.SessionEvent,
-		Prompt:       s.createPrompt(),
+		Prompt:       s.createPrompt(ctx),
 		Secrets: map[string]string{
 			"linearAccessToken": s.accessToken,
 			"githubAccessToken": s.githubAccessToken,
@@ -224,7 +224,7 @@ func (s *linearAISession) Process(ctx context.Context) error {
 	return nil
 }
 
-func (s *linearAISession) createPrompt() string {
+func (s *linearAISession) createPrompt(ctx context.Context) string {
 	var agentActivityContent *types.AgentActivityContent
 	if s.config.Payload.AgentActivity != nil {
 		agentActivityContent = &types.AgentActivityContent{
@@ -245,7 +245,7 @@ func (s *linearAISession) createPrompt() string {
 		TriggerReason: s.config.SessionEvent.Reason,
 	}
 
-	prompt, err := s.config.PromptFactory.BuildWorkItemPrompt(context.Background(), promptInput)
+	prompt, err := s.config.PromptFactory.BuildWorkItemPrompt(ctx, promptInput)
 	if err != nil {
 		slog.Error("failed to build prompt", "err", err, "event_identifier", s.config.SessionEvent.Identifier)
 		return ""
@@ -256,7 +256,6 @@ func (s *linearAISession) createPrompt() string {
 
 func (s *linearAISession) setAgentSessionExternalUrls(ctx context.Context) error {
 	labels, err := s.config.Client.GetIssueLabels(ctx, s.accessToken, s.config.Session.IssueId)
-
 	if err != nil {
 		slog.Error("failed to get issue labels", "issue_id", s.config.Session.IssueId, "err", err)
 		return err
@@ -267,18 +266,8 @@ func (s *linearAISession) setAgentSessionExternalUrls(ctx context.Context) error
 		labelNames[i] = label.Name
 	}
 
-	updated, err := s.config.SessionConfigService.ConfigureSessionRepo(s.config.Session, labelNames)
-	if err != nil {
+	if err := s.config.SessionConfigService.ConfigureSessionRepo(ctx, s.config.Session, labelNames, s.config.Sessions); err != nil {
 		return err
-	}
-
-	if updated {
-		if err := telemetry.SpanErr(ctx, s.tracer, "linear.set_external_urls.upsert_session", func(ctx context.Context) error {
-			return s.config.Sessions.UpsertAgentSession(ctx, s.config.Session)
-		}); err != nil {
-			return err
-		}
-		slog.Debug("Configured session repo", "event_identifier", s.config.SessionEvent.Identifier)
 	}
 
 	return nil

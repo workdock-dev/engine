@@ -246,6 +246,7 @@ func (s *githubPlatform) handlePullRequestComment(event *WebhookEvent) error {
 	}
 
 	// The GitHub App installation. Webhook payloads contain the installation property
+	// when the event is configured for and sent to a GitHub App.
 	if event.Installation == nil {
 		slog.Warn("pull request comment event without installation data", "action", event.Action)
 		return nil

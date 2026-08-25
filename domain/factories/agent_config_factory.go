@@ -24,11 +24,13 @@ import (
 type AgentConfigFactory struct{}
 
 type PermissionRule map[string]any
-type ConfigExternal struct {
+type Provider map[string]any
+
+type Config struct {
 	Model               string                `yaml:"model"`
 	Permission          PermissionRule        `yaml:"permission"`
 	Secrets             map[string]SecretSpec `yaml:"secrets"`
-	Provider            map[string]any        `yaml:"provider"`
+	Provider            Provider              `yaml:"provider"`
 	DestroyOnDispose    bool                  `yaml:"destroy_on_dispose"`
 	LivenessTimeoutSecs int                   `yaml:"liveness_timeout_seconds"`
 	MaxHealthMisses     int                   `yaml:"max_health_misses"`
@@ -41,7 +43,7 @@ type SecretSpec struct {
 
 type OpenCodeAgentConfig struct {
 	Permission PermissionRule
-	Provider   map[string]any
+	Provider   Provider
 	MCP        MCPConfig
 }
 

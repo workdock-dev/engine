@@ -197,7 +197,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_NilRepo() {
 		},
 	}
 
-	prompt := sess.createPrompt()
+	prompt := sess.createPrompt(context.Background())
 	s.Contains(prompt, "Fix")
 	s.Contains(prompt, "ENG-1")
 	s.NotContains(prompt, "https://github.com/")
@@ -217,7 +217,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_WithRepo() {
 		},
 	}
 
-	prompt := sess.createPrompt()
+	prompt := sess.createPrompt(context.Background())
 	s.Contains(prompt, "org/repo")
 }
 
@@ -236,7 +236,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_WithGitRefAndSeed() {
 		},
 	}
 
-	prompt := sess.createPrompt()
+	prompt := sess.createPrompt(context.Background())
 	s.Contains(prompt, "review comments")
 }
 
@@ -256,7 +256,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_WithAgentActivity() {
 		},
 	}
 
-	prompt := sess.createPrompt()
+	prompt := sess.createPrompt(context.Background())
 	s.Contains(prompt, "Please fix the API")
 }
 
@@ -277,7 +277,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_NilGitRef_WithSeed() {
 		},
 	}
 
-	prompt := sess.createPrompt()
+	prompt := sess.createPrompt(context.Background())
 	s.Contains(prompt, "Update the code")
 	s.NotContains(prompt, "There are review comments on the pull request")
 }
@@ -295,7 +295,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_ContainsPullRequestRules() {
 		},
 	}
 
-	prompt := sess.createPrompt()
+	prompt := sess.createPrompt(context.Background())
 	s.Contains(prompt, "## Pull Request Rules")
 	s.Contains(prompt, "Never close a pull request unless the user explicitly requests that it be closed.")
 	s.Contains(prompt, "address all applicable review comments within the same request")
