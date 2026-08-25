@@ -31,15 +31,12 @@ func TestAgentConfigFactorySuite(t *testing.T) {
 func (s *AgentConfigFactorySuite) TestBuildOpenCodeConfig_DefaultPermission() {
 	factory := AgentConfigFactory{}
 
-	config, err := factory.BuildOpenCodeConfig(nil, nil)
+	data, err := factory.BuildOpenCodeConfig(nil, nil)
 
 	s.NoError(err)
-	s.NotNil(config)
-	s.NotNil(config.Permission)
-	s.Equal("allow", config.Permission["*"])
-	s.NotNil(config.MCP.Linear)
-	s.Equal("https://mcp.linear.app/mcp", config.MCP.Linear.URL)
-	s.True(config.MCP.Linear.Enabled)
+	s.NotEmpty(data)
+	s.Contains(string(data), `"*": "allow"`)
+	s.Contains(string(data), "opencode.ai/config.json")
 }
 
 func (s *AgentConfigFactorySuite) TestBuildOpenCodeConfig_CustomPermission() {
@@ -49,12 +46,12 @@ func (s *AgentConfigFactorySuite) TestBuildOpenCodeConfig_CustomPermission() {
 		"external_directory": "deny",
 	}
 
-	config, err := factory.BuildOpenCodeConfig(permission, nil)
+	data, err := factory.BuildOpenCodeConfig(permission, nil)
 
 	s.NoError(err)
-	s.NotNil(config)
-	s.Equal("allow", config.Permission["*"])
-	s.Equal("deny", config.Permission["external_directory"])
+	s.NotEmpty(data)
+	s.Contains(string(data), `"*": "allow"`)
+	s.Contains(string(data), `"external_directory": "deny"`)
 }
 
 func (s *AgentConfigFactorySuite) TestBuildOpenCodeConfig_CustomProvider() {
@@ -65,38 +62,26 @@ func (s *AgentConfigFactorySuite) TestBuildOpenCodeConfig_CustomProvider() {
 		},
 	}
 
-	config, err := factory.BuildOpenCodeConfig(nil, provider)
+	data, err := factory.BuildOpenCodeConfig(nil, provider)
 
 	s.NoError(err)
-	s.NotNil(config)
-	s.NotNil(config.Provider)
+	s.NotEmpty(data)
+	s.Contains(string(data), "openai")
+	s.Contains(string(data), "gpt-4o")
 }
 
-func (s *AgentConfigFactorySuite) TestMarshalOpenCodeConfig() {
+func (s *AgentConfigFactorySuite) TestBuildOpenCodeConfig() {
 	factory := AgentConfigFactory{}
-	config := &OpenCodeAgentConfig{
-		Permission: PermissionRule{
-			"*": "allow",
-		},
-		Provider: Provider{
-			"openai": map[string]any{
-				"model": "gpt-4o",
-			},
-		},
-		MCP: MCPConfig{
-			Linear: MCPProvider{
-				Type:    "remote",
-				URL:     "https://mcp.linear.app/mcp",
-				Enabled: true,
-				OAuth:   false,
-				Headers: map[string]string{
-					"Authorization": "Bearer {env:LINEAR_ACCESS_TOKEN}",
-				},
-			},
+	permission := PermissionRule{
+		"*": "allow",
+	}
+	provider := Provider{
+		"openai": map[string]any{
+			"model": "gpt-4o",
 		},
 	}
 
-	data, err := factory.MarshalOpenCodeConfig(config)
+	data, err := factory.BuildOpenCodeConfig(permission, provider)
 
 	s.NoError(err)
 	s.NotEmpty(data)

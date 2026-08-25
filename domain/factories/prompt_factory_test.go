@@ -72,16 +72,14 @@ func (s *PromptFactorySuite) TestBuildWorkItemPrompt_NilRepository() {
 func (s *PromptFactorySuite) TestBuildWorkItemPrompt_WithAgentActivity() {
 	factory := PromptFactory{}
 	repo := "owner/repo"
+	agentActivityBody := "This is a user comment"
 	input := WorkItemPromptInput{
-		Title:       "Test Issue",
+		Title:         "Test Issue",
 		Identifier:   "ENG-1",
 		Repository:   &repo,
-		Description: "Test description",
+		Description:   "Test description",
 		PromptContext: "",
-		AgentActivity: &types.AgentActivityContent{
-			Type: "comment",
-			Body: "This is a user comment",
-		},
+		AgentActivity: &agentActivityBody,
 	}
 
 	prompt, err := factory.BuildWorkItemPrompt(context.Background(), input)

@@ -452,15 +452,9 @@ func (h *OpenCode) uploadOpenCodeConfig(ctx context.Context) error {
 		}
 	}
 
-	agentConfig, err := h.config.AgentConfigFactory.BuildOpenCodeConfig(permission, h.config.ConfigExternal.Provider)
+	openCodeConfig, err := h.config.AgentConfigFactory.BuildOpenCodeConfig(permission, h.config.ConfigExternal.Provider)
 	if err != nil {
 		slog.Error("failed to build opencode config", "err", err, "event_identifier", h.config.SessionEvent.Identifier)
-		return err
-	}
-
-	openCodeConfig, err := h.config.AgentConfigFactory.MarshalOpenCodeConfig(agentConfig)
-	if err != nil {
-		slog.Error("failed to marshal opencode config", "err", err, "event_identifier", h.config.SessionEvent.Identifier)
 		return err
 	}
 

@@ -225,12 +225,9 @@ func (s *linearAISession) Process(ctx context.Context) error {
 }
 
 func (s *linearAISession) createPrompt(ctx context.Context) string {
-	var agentActivityContent *types.AgentActivityContent
-	if s.config.Payload.AgentActivity != nil {
-		agentActivityContent = &types.AgentActivityContent{
-			Type: s.config.Payload.AgentActivity.Content.Type,
-			Body: s.config.Payload.AgentActivity.Content.Body,
-		}
+	var agentActivityBody *string
+	if s.config.Payload.AgentActivity != nil && s.config.Payload.AgentActivity.Content != nil {
+		agentActivityBody = &s.config.Payload.AgentActivity.Content.Body
 	}
 
 	promptInput := factories.WorkItemPromptInput{
@@ -239,7 +236,7 @@ func (s *linearAISession) createPrompt(ctx context.Context) string {
 		Repository:    s.config.Session.RepoFullName,
 		Description:   s.config.Payload.AgentSession.Issue.Description,
 		PromptContext: s.config.Payload.PromptContext,
-		AgentActivity: agentActivityContent,
+		AgentActivity: agentActivityBody,
 		GitRef:        s.config.SessionEvent.GitRef,
 		Seed:          s.config.SessionEvent.Seed,
 		TriggerReason: s.config.SessionEvent.Reason,

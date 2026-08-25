@@ -117,17 +117,6 @@ type AgentOption struct {
 	Description string `json:"description"`
 }
 
-type WorkItem struct {
-	Title       string
-	Identifier  string
-	Description string
-}
-
-type AgentActivityContent struct {
-	Type string
-	Body string
-}
-
 const (
 	GitHubUrl = "https://github.com/"
 )

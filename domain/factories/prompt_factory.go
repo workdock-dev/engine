@@ -31,7 +31,7 @@ type WorkItemPromptInput struct {
 	Repository    *string
 	Description   string
 	PromptContext string
-	AgentActivity *types.AgentActivityContent
+	AgentActivity *string
 	GitRef        *string
 	Seed          *string
 	TriggerReason types.SessionEventTriggerReason
@@ -58,7 +58,7 @@ func (f *PromptFactory) BuildWorkItemPrompt(ctx context.Context, input WorkItemP
 			prompt += fmt.Sprintf(types.PromptTemplate_LatestUserComment, "There are review comments on the pull request. Retrieve all review comments and address each one that is applicable to the current implementation. Make the necessary code changes, verify the changes, and ensure the pull request is ready for review again.")
 		}
 	} else if input.AgentActivity != nil {
-		prompt += fmt.Sprintf(types.PromptTemplate_LatestUserComment, input.AgentActivity.Body)
+		prompt += fmt.Sprintf(types.PromptTemplate_LatestUserComment, *input.AgentActivity)
 	}
 
 	slog.Debug("Prompt prepared", "identifier", input.Identifier)

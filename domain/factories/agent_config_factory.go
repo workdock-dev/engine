@@ -64,7 +64,7 @@ const (
 	LinearMCPURL            = "https://mcp.linear.app/mcp"
 )
 
-func (f *AgentConfigFactory) BuildOpenCodeConfig(permission PermissionRule, provider map[string]any) (*OpenCodeAgentConfig, error) {
+func (f *AgentConfigFactory) BuildOpenCodeConfig(permission PermissionRule, provider map[string]any) ([]byte, error) {
 	if permission == nil {
 		permission = PermissionRule{
 			"*": "allow",
@@ -89,10 +89,6 @@ func (f *AgentConfigFactory) BuildOpenCodeConfig(permission PermissionRule, prov
 		MCP:        mcp,
 	}
 
-	return config, nil
-}
-
-func (f *AgentConfigFactory) MarshalOpenCodeConfig(config *OpenCodeAgentConfig) ([]byte, error) {
 	permissionStr, err := json.Marshal(config.Permission)
 	if err != nil {
 		slog.Error("failed to marshal opencode permissions", "err", err)
