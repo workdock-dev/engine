@@ -147,6 +147,10 @@ func (f *AgentConfigFactory) ParseModelInfo(model string) (provider string, mode
 		return "unknown", "unknown"
 	}
 
+	if !strings.Contains(model, "/") {
+		return "unknown", model
+	}
+
 	before, after, found := strings.Cut(model, "/")
 	if found {
 		return before, after
