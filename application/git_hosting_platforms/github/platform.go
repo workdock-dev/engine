@@ -245,6 +245,7 @@ func (s *githubPlatform) handlePullRequestComment(event *WebhookEvent) error {
 		return nil
 	}
 
+	// The GitHub App installation. Webhook payloads contain the installation property
 	if event.Installation == nil {
 		slog.Warn("pull request comment event without installation data", "action", event.Action)
 		return nil
@@ -264,23 +265,23 @@ func (s *githubPlatform) handlePullRequestComment(event *WebhookEvent) error {
 }
 
 func (s *githubPlatform) handleCheckRun(event *WebhookEvent) error {
+	if event.CheckRun == nil {
+		slog.Warn("check_run event without check_run data", "action", event.Action)
+		return nil
+	}
+
 	senderLogin := ""
 	if event.Sender != nil {
 		senderLogin = event.Sender.Login
 	}
 
 	conclusion := ""
-	if event.CheckRun != nil && event.CheckRun.Conclusion != nil {
+	if event.CheckRun.Conclusion != nil {
 		conclusion = *event.CheckRun.Conclusion
 	}
 
 	if !s.config.GitEventFilterService.ShouldTriggerCheckRunEvent(senderLogin, s.config.BotLoginName, event.Action, conclusion) {
 		slog.Debug("check_run event received, ignoring", "action", event.Action)
-		return nil
-	}
-
-	if event.CheckRun == nil {
-		slog.Warn("check_run event without check_run data", "action", event.Action)
 		return nil
 	}
 

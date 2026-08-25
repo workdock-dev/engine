@@ -63,6 +63,11 @@ fi`
 	MaxInstallRetries = 3
 )
 
+// SecretSpec describes a dynamic secret configured per deployment: its
+// plaintext value and the host allowlist Daytona may substitute it into.
+// The fields must be exported so yaml unmarshalling can populate them;
+// unexported fields are silently skipped, which used to create secrets
+// with an empty value and no host allowlist.
 type SecretSpec struct {
 	Value string   `yaml:"value"`
 	Hosts []string `yaml:"hosts"`
