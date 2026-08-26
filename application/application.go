@@ -27,79 +27,80 @@ import (
 	"github.com/workdock-dev/engine/domain/types"
 )
 
-type Config struct {
-	WorkPlatformRegistry       ports.WorkPlatformRegistry
-	GitHostingPlatformRegistry ports.GitHostingPlatformRegistry
-	WebhooksRegistry           ports.WebhooksRegistry
-	HarnessRegistry            ports.HarnessPlatformRegistry
-
-	Organizations      repositories.OrganizationRepository
-	Sessions           repositories.SessionRepository
-	GitHubConnections repositories.GitHubConnectionRepository
-
-	ForSecrets ports.ForSecrets
-	EventBus   ports.ForEventBus
-
-	ForQueue            interfaces.Queue
-	TaskSchedulerConfig async.TaskSchedulerConfig
-}
-
 type App struct {
-	config Config
+	// Domain
+	workPlatformRegistry       ports.WorkPlatformRegistry
+	gitHostingPlatformRegistry ports.GitHostingPlatformRegistry
+	webhooksRegistry           ports.WebhooksRegistry
+	harnessRegistry            ports.HarnessPlatformRegistry
+	forSecrets                 ports.ForSecrets
+	eventBus                   ports.ForEventBus
+	organizations              repositories.OrganizationRepository
+	sessions                   repositories.SessionRepository
+	gitHubConnections          repositories.GitHubConnectionRepository
+	aiService                  *domain_service.AIService
+	gitService                 *domain_service.GitService
+	webhookService             *domain_service.WebhookService
+	sessionConfigService       *domain_service.SessionConfigService
+	gitEventFilterService      *domain_service.GitEventFilterService
+	sessionResultService       *domain_service.SessionResultService
+	promptFactory              *factories.PromptFactory
+	agentConfigFactory         *factories.AgentConfigFactory
 
-	aiService  *domain_service.AIService
-	gitService *domain_service.GitService
-
-	taskScheduler  *async.TaskScheduler
-	WebhookService *domain_service.WebhookService
-
-	sessionConfigService    *domain_service.SessionConfigService
-	gitEventFilterService   *domain_service.GitEventFilterService
-	sessionResultService    *domain_service.SessionResultService
-	promptFactory           *factories.PromptFactory
-	agentConfigFactory      *factories.AgentConfigFactory
+	// Application
+	forQueue interfaces.Queue
 }
 
-func New(config Config) (*App, error) {
-	app := &App{
-		config: config,
-	}
+func New() *App {
+	slog.Debug("application created")
+	return &App{}
+}
 
-	if config.WorkPlatformRegistry != nil && config.EventBus != nil && config.Organizations != nil && config.Sessions != nil {
-		aiService := domain_service.NewAIService(domain_service.AIServiceConfig{
-			WorkPlatformRegistry: config.WorkPlatformRegistry,
-			ForEvent:             config.EventBus,
-			Organizations:        config.Organizations,
-			Sessions:             config.Sessions,
-		})
+func WithWorkPlatformRegistry(app *App, registry ports.WorkPlatformRegistry) {
+	app.workPlatformRegistry = registry
+}
 
-		app.gitService = domain_service.NewGitService(domain_service.GitServiceConfig{
-			GitHostingPlatformRegistry: config.GitHostingPlatformRegistry,
-			ForEvent:                   config.EventBus,
-		})
+func WithGitHostingPlatformRegistry(app *App, registry ports.GitHostingPlatformRegistry) {
+	app.gitHostingPlatformRegistry = registry
+}
 
-		if config.ForQueue != nil {
-			taskScheduler, err := async.NewTaskScheduler(
-				config.ForQueue,
-				config.TaskSchedulerConfig,
-				aiService.Process,
-			)
+func WithWebhooksRegistry(app *App, registry ports.WebhooksRegistry) {
+	app.webhooksRegistry = registry
+}
 
-			if err != nil {
-				slog.Error("failed to create task scheduler", "err", err)
-				return nil, err
-			}
+func WithHarnessRegistry(app *App, registry ports.HarnessPlatformRegistry) {
+	app.harnessRegistry = registry
+}
 
-			app.taskScheduler = taskScheduler
-		}
+func WithEventBus(app *App, value ports.ForEventBus) {
+	app.eventBus = value
+}
 
-		if config.WebhooksRegistry != nil {
-			app.WebhookService = domain_service.NewWebhookService(domain_service.WebhookServiceConfig{
-				WebhooksRegistry: config.WebhooksRegistry,
-				ForEventBus:      config.EventBus,
-			})
-		}
-	}
+func WithSecretManager(app *App, value ports.ForSecrets) {
+	app.forSecrets = value
+}
+
+func WithQueue(app *App, value interfaces.Queue) {
+	app.forQueue = value
+}
+
+func (app *App) Run(ctx context.Context, taskSchedulerConfig async.TaskSchedulerConfig) error {
+	app.aiService = domain_service.NewAIService(domain_service.AIServiceConfig{
+		WorkPlatformRegistry: app.workPlatformRegistry,
+		ForEvent:             app.eventBus,
+		Organizations:        app.organizations,
+		Sessions:             app.sessions,
+	})
+
+	app.gitService = domain_service.NewGitService(domain_service.GitServiceConfig{
+		GitHostingPlatformRegistry: app.gitHostingPlatformRegistry,
+		ForEvent:                   app.eventBus,
+	})
+
+	app.webhookService = domain_service.NewWebhookService(domain_service.WebhookServiceConfig{
+		WebhooksRegistry: app.webhooksRegistry,
+		ForEventBus:      app.eventBus,
+	})
 
 	app.sessionConfigService = &domain_service.SessionConfigService{}
 	app.gitEventFilterService = &domain_service.GitEventFilterService{}
@@ -107,25 +108,22 @@ func New(config Config) (*App, error) {
 	app.promptFactory = &factories.PromptFactory{}
 	app.agentConfigFactory = &factories.AgentConfigFactory{}
 
-	slog.Debug("application created")
-	return app, nil
-}
+	taskScheduler, err := async.NewTaskScheduler(
+		app.forQueue,
+		taskSchedulerConfig,
+		app.aiService.Process,
+	)
 
-// RunWorkers starts the TaskScheduler worker pool. It blocks until the
-// provided context is cancelled.
-func (app *App) RunWorkers(ctx context.Context) error {
-	return app.taskScheduler.Run(ctx)
-}
-
-func (app *App) GetWorkPlatform(name types.PlatformProvider) (ports.ForWorkPlatform, error) {
-	registry, ok := app.config.WorkPlatformRegistry[name]
-
-	if !ok {
-		slog.Error("failed to load work platform from registry", "name", name)
-		return nil, types.ErrInternalServerError
+	if err != nil {
+		slog.Error("failed to create task scheduler", "err", err)
+		return err
 	}
 
-	return registry, nil
+	return taskScheduler.Run(ctx)
+}
+
+func (app *App) GetWebhookService() *domain_service.WebhookService {
+	return app.webhookService
 }
 
 func (app *App) GetSessionConfigService() *domain_service.SessionConfigService {
@@ -148,66 +146,49 @@ func (app *App) GetAgentConfigFactory() *factories.AgentConfigFactory {
 	return app.agentConfigFactory
 }
 
-func (app *App) SetPromptFactory(factory *factories.PromptFactory) {
-	app.promptFactory = factory
-}
+func (app *App) GetWorkPlatform(name types.PlatformProvider) (ports.ForWorkPlatform, error) {
+	registry, ok := app.workPlatformRegistry[name]
 
-func (app *App) SetAgentConfigFactory(factory *factories.AgentConfigFactory) {
-	app.agentConfigFactory = factory
+	if !ok {
+		slog.Error("failed to load work platform from registry", "name", name)
+		return nil, types.ErrInternalServerError
+	}
+
+	return registry, nil
 }
 
 func (app *App) GetHarnessRegistry() ports.HarnessPlatformRegistry {
-	return app.config.HarnessRegistry
-}
-
-func (app *App) GetGitHubConnections() repositories.GitHubConnectionRepository {
-	return app.config.GitHubConnections
-}
-
-func (app *App) GetGitHostingPlatformRegistry() ports.GitHostingPlatformRegistry {
-	return app.config.GitHostingPlatformRegistry
-}
-
-func (app *App) GetWebhooksRegistry() ports.WebhooksRegistry {
-	return app.config.WebhooksRegistry
-}
-
-func (app *App) GetOrganizations() repositories.OrganizationRepository {
-	return app.config.Organizations
-}
-
-func (app *App) GetSessions() repositories.SessionRepository {
-	return app.config.Sessions
+	return app.harnessRegistry
 }
 
 func (app *App) GetForSecrets() ports.ForSecrets {
-	return app.config.ForSecrets
+	return app.forSecrets
 }
 
 func (app *App) GetEventBus() ports.ForEventBus {
-	return app.config.EventBus
+	return app.eventBus
+}
+
+func (app *App) GetGitHostingPlatformRegistry() ports.GitHostingPlatformRegistry {
+	return app.gitHostingPlatformRegistry
+}
+
+func (app *App) GetWebhooksRegistry() ports.WebhooksRegistry {
+	return app.webhooksRegistry
+}
+
+func (app *App) GetOrganizations() repositories.OrganizationRepository {
+	return app.organizations
+}
+
+func (app *App) GetGitHubConnections() repositories.GitHubConnectionRepository {
+	return app.gitHubConnections
+}
+
+func (app *App) GetSessions() repositories.SessionRepository {
+	return app.sessions
 }
 
 func (app *App) GetForQueue() interfaces.Queue {
-	return app.config.ForQueue
-}
-
-func (app *App) GetTaskSchedulerConfig() async.TaskSchedulerConfig {
-	return app.config.TaskSchedulerConfig
-}
-
-func (app *App) SetWorkPlatformRegistry(registry ports.WorkPlatformRegistry) {
-	app.config.WorkPlatformRegistry = registry
-}
-
-func (app *App) SetGitHostingPlatformRegistry(registry ports.GitHostingPlatformRegistry) {
-	app.config.GitHostingPlatformRegistry = registry
-}
-
-func (app *App) SetWebhooksRegistry(registry ports.WebhooksRegistry) {
-	app.config.WebhooksRegistry = registry
-}
-
-func (app *App) SetHarnessRegistry(registry ports.HarnessPlatformRegistry) {
-	app.config.HarnessRegistry = registry
+	return app.forQueue
 }

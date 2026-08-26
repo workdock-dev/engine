@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lmittmann/tint"
 	"github.com/workdock-dev/engine/api"
 	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/application/async"
@@ -40,7 +41,6 @@ import (
 	"github.com/workdock-dev/engine/infrastructure/linear_client"
 	"github.com/workdock-dev/engine/infrastructure/otlp_client"
 	"github.com/workdock-dev/engine/infrastructure/postgres_client"
-	"github.com/lmittmann/tint"
 	"gopkg.in/yaml.v3"
 )
 
@@ -107,11 +107,7 @@ func main() {
 
 	if cfg.Otlp != nil {
 		shutdown, err := otlp_client.New(ctx, *cfg.Otlp, serviceName)
-
-		if err != nil {
-			os.Exit(1)
-		}
-
+		exit(err)
 		defer shutdown(ctx)
 	}
 
@@ -124,68 +120,38 @@ func main() {
 		slog.SetDefault(logger)
 	}
 
-	var forSecrets ports.ForSecrets
+	var secretManager ports.ForSecrets
 
 	switch cfg.Secrets.Mode {
 	case in_memory_secrets.ModeMemory:
-		forSecrets = in_memory_secrets.NewWithSeeds(cfg.Secrets.MemorySecrets)
+		secretManager = in_memory_secrets.NewWithSeeds(cfg.Secrets.MemorySecrets)
 		slog.Info("using in-memory secrets provider")
-
 	default:
 		infisicalClient, err := infisical_client.New(ctx, cfg.Infisical)
-
-		if err != nil {
-			os.Exit(1)
-		}
-
-		forSecrets = infisicalClient
+		exit(err)
+		secretManager = infisicalClient
 	}
 
-	linearClient, err := linear_client.New(cfg.Linear, forSecrets)
-
-	if err != nil {
-		os.Exit(1)
-	}
+	// Create infrastructure
+	linearClient, err := linear_client.New(cfg.Linear, secretManager)
+	exit(err)
 
 	githubClient, err := github_client.New(cfg.Github)
-
-	if err != nil {
-		os.Exit(1)
-	}
+	exit(err)
 
 	postgresClient, err := postgres_client.New(ctx, cfg.Postgres)
-
-	if err != nil {
-		os.Exit(1)
-	}
+	exit(err)
 
 	postgresEventQueue, err := postgres_client.NewEventQueue(ctx, postgresClient)
+	exit(err)
 
-	if err != nil {
-		os.Exit(1)
-	}
+	// Create app
+	app := application.New()
+	application.WithEventBus(app, async.NewInMemoryEventBus())
+	application.WithSecretManager(app, secretManager)
+	application.WithQueue(app, postgresEventQueue)
 
-	eventBus := async.NewInMemoryEventBus()
-
-	// Create app first (without registries since platforms need it)
-	app, err := application.New(application.Config{
-		Organizations:      postgresClient,
-		Sessions:          postgresClient,
-		GitHubConnections: postgresClient,
-		ForSecrets:        forSecrets,
-		ForQueue:          postgresEventQueue,
-		EventBus:          eventBus,
-		TaskSchedulerConfig: async.TaskSchedulerConfig{
-			Workers:       cfg.Workers,
-			LeaseDuration: time.Duration(cfg.WorkerLeaseSeconds) * time.Second,
-		},
-	})
-
-	if err != nil {
-		os.Exit(1)
-	}
-
-	// Registries configuration
+	// Create application platforms
 	opencodeHarness := func(consturctor ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 		sessionEventId := "not-set"
 		if consturctor.SessionEvent != nil {
@@ -204,47 +170,55 @@ func main() {
 
 		return opencode.New(opencode.Config{
 			ConfigExternal: cfg.Opencode,
-			Sandbox:       sandbox,
-			Parts:         consturctor.Parts,
-			Session:       consturctor.Session,
-			SessionEvent:  consturctor.SessionEvent,
-			Prompt:        consturctor.Prompt,
-			Secrets:       consturctor.Secrets,
+			Sandbox:        sandbox,
+			Parts:          consturctor.Parts,
+			Session:        consturctor.Session,
+			SessionEvent:   consturctor.SessionEvent,
+			Prompt:         consturctor.Prompt,
+			Secrets:        consturctor.Secrets,
 		}, app)
 	}
-	app.SetHarnessRegistry(ports.HarnessPlatformRegistry{
-		types.HarnessProvider_OpenCode: opencodeHarness,
-	})
 
 	githubPlatform := github.New(github.GitHubPlatformConfig{
 		Client:       githubClient,
 		BotLoginName: cfg.Github.BotLoginId,
 	}, app)
-	app.SetGitHostingPlatformRegistry(ports.GitHostingPlatformRegistry{
-		types.PlatformProvider_GitHub: githubPlatform,
-	})
-	app.SetWebhooksRegistry(ports.WebhooksRegistry{
-		types.PlatformProvider_GitHub: githubPlatform,
-	})
 
 	linearPlatform := linear.New(linear.Config{
-		Client:             linearClient,
+		Client:              linearClient,
 		GitHubAppInstallURL: cfg.Github.AppInstallURL,
 	}, app)
-	app.SetWorkPlatformRegistry(ports.WorkPlatformRegistry{
+
+	// Git hosting registry
+	application.WithGitHostingPlatformRegistry(app, ports.GitHostingPlatformRegistry{
+		types.PlatformProvider_GitHub: githubPlatform,
+	})
+
+	// Webhook registry
+	application.WithWebhooksRegistry(app, ports.WebhooksRegistry{
+		types.PlatformProvider_GitHub: githubPlatform,
 		types.PlatformProvider_Linear: linearPlatform,
 	})
-	app.GetWebhooksRegistry()[types.PlatformProvider_Linear] = linearPlatform
+
+	// Harness registry
+	application.WithHarnessRegistry(app, ports.HarnessPlatformRegistry{
+		types.HarnessProvider_OpenCode: opencodeHarness,
+	})
+
+	// Work platform registry
+	application.WithWorkPlatformRegistry(app, ports.WorkPlatformRegistry{
+		types.PlatformProvider_Linear: linearPlatform,
+	})
 
 	server, err := api.NewHTTPServer(cfg.ServerAddress, *app)
-
-	if err != nil {
-		os.Exit(1)
-	}
+	exit(err)
 
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		if err := app.RunWorkers(ctx); err != nil {
+		if err := app.Run(ctx, async.TaskSchedulerConfig{
+			Workers:       cfg.Workers,
+			LeaseDuration: time.Duration(cfg.WorkerLeaseSeconds) * time.Second,
+		}); err != nil {
 			return
 		}
 	})
@@ -260,4 +234,10 @@ func main() {
 
 	wg.Wait()
 	slog.Info("workers stopped, goodbye")
+}
+
+func exit(err error) {
+	if err != nil {
+		os.Exit(1)
+	}
 }
