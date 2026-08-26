@@ -65,35 +65,41 @@ func New(config Config) (*App, error) {
 		config: config,
 	}
 
-	aiService := domain_service.NewAIService(domain_service.AIServiceConfig{
-		WorkPlatformRegistry: config.WorkPlatformRegistry,
-		ForEvent:             config.EventBus,
-		Organizations:        config.Organizations,
-		Sessions:             config.Sessions,
-	})
+	if config.WorkPlatformRegistry != nil && config.EventBus != nil && config.Organizations != nil && config.Sessions != nil {
+		aiService := domain_service.NewAIService(domain_service.AIServiceConfig{
+			WorkPlatformRegistry: config.WorkPlatformRegistry,
+			ForEvent:             config.EventBus,
+			Organizations:        config.Organizations,
+			Sessions:             config.Sessions,
+		})
 
-	app.gitService = domain_service.NewGitService(domain_service.GitServiceConfig{
-		GitHostingPlatformRegistry: config.GitHostingPlatformRegistry,
-		ForEvent:                   config.EventBus,
-	})
+		app.gitService = domain_service.NewGitService(domain_service.GitServiceConfig{
+			GitHostingPlatformRegistry: config.GitHostingPlatformRegistry,
+			ForEvent:                   config.EventBus,
+		})
 
-	taskScheduler, err := async.NewTaskScheduler(
-		config.ForQueue,
-		config.TaskSchedulerConfig,
-		aiService.Process,
-	)
+		if config.ForQueue != nil {
+			taskScheduler, err := async.NewTaskScheduler(
+				config.ForQueue,
+				config.TaskSchedulerConfig,
+				aiService.Process,
+			)
 
-	if err != nil {
-		slog.Error("failed to create task scheduler", "err", err)
-		return nil, err
+			if err != nil {
+				slog.Error("failed to create task scheduler", "err", err)
+				return nil, err
+			}
+
+			app.taskScheduler = taskScheduler
+		}
+
+		if config.WebhooksRegistry != nil {
+			app.WebhookService = domain_service.NewWebhookService(domain_service.WebhookServiceConfig{
+				WebhooksRegistry: config.WebhooksRegistry,
+				ForEventBus:      config.EventBus,
+			})
+		}
 	}
-
-	app.taskScheduler = taskScheduler
-
-	app.WebhookService = domain_service.NewWebhookService(domain_service.WebhookServiceConfig{
-		WebhooksRegistry: config.WebhooksRegistry,
-		ForEventBus:      config.EventBus,
-	})
 
 	app.sessionConfigService = &domain_service.SessionConfigService{}
 	app.gitEventFilterService = &domain_service.GitEventFilterService{}
