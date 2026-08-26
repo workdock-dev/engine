@@ -687,12 +687,12 @@ func (s *LinearAISessionSuite) TestProcess_CreateHarnessContextCanceled() {
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return nil, context.Canceled
 		},
-	}
+	})
 
 	gitHosting := new(mockGitHosting)
 	s.mockApp.SetGitHostingPlatformRegistry(ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(true, "", nil)
