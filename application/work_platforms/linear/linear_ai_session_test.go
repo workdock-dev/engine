@@ -198,6 +198,7 @@ func (s *LinearAISessionSuite) TestCancel() {
 func (s *LinearAISessionSuite) TestCreatePrompt_NilRepo() {
 	sess := &linearAISession{
 		config: linearAISessionConfig{
+			App:          s.mockApp,
 			Session:      &types.Session{RepoFullName: nil},
 			SessionEvent: s.baseSessionEvent(),
 			Payload: &AgentSessionEventData{
@@ -218,6 +219,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_WithRepo() {
 	repo := "org/repo"
 	sess := &linearAISession{
 		config: linearAISessionConfig{
+			App:          s.mockApp,
 			Session:      &types.Session{RepoFullName: &repo},
 			SessionEvent: s.baseSessionEvent(),
 			Payload: &AgentSessionEventData{
@@ -237,6 +239,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_WithGitRefAndSeed() {
 	seed := "seed-1"
 	sess := &linearAISession{
 		config: linearAISessionConfig{
+			App:          s.mockApp,
 			Session:      &types.Session{RepoFullName: nil},
 			SessionEvent: &types.SessionEvent{GitRef: &gitRef, Seed: &seed},
 			Payload: &AgentSessionEventData{
@@ -254,6 +257,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_WithGitRefAndSeed() {
 func (s *LinearAISessionSuite) TestCreatePrompt_WithAgentActivity() {
 	sess := &linearAISession{
 		config: linearAISessionConfig{
+			App:          s.mockApp,
 			Session:      &types.Session{RepoFullName: nil},
 			SessionEvent: s.baseSessionEvent(),
 			Payload: &AgentSessionEventData{
@@ -275,6 +279,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_NilGitRef_WithSeed() {
 	seed := "seed-1"
 	sess := &linearAISession{
 		config: linearAISessionConfig{
+			App:          s.mockApp,
 			Session:      &types.Session{RepoFullName: nil},
 			SessionEvent: &types.SessionEvent{GitRef: nil, Seed: &seed},
 			Payload: &AgentSessionEventData{
@@ -296,6 +301,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_NilGitRef_WithSeed() {
 func (s *LinearAISessionSuite) TestCreatePrompt_ContainsPullRequestRules() {
 	sess := &linearAISession{
 		config: linearAISessionConfig{
+			App:          s.mockApp,
 			Session:      &types.Session{RepoFullName: nil},
 			SessionEvent: s.baseSessionEvent(),
 			Payload: &AgentSessionEventData{
