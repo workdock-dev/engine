@@ -35,7 +35,7 @@ func (s *AgentConfigFactorySuite) TestBuildOpenCodeConfig_DefaultPermission() {
 
 	s.NoError(err)
 	s.NotEmpty(data)
-	s.Contains(string(data), `"*": "allow"`)
+	s.Contains(string(data), `"*":"allow"`)
 	s.Contains(string(data), "opencode.ai/config.json")
 }
 
@@ -50,8 +50,8 @@ func (s *AgentConfigFactorySuite) TestBuildOpenCodeConfig_CustomPermission() {
 
 	s.NoError(err)
 	s.NotEmpty(data)
-	s.Contains(string(data), `"*": "allow"`)
-	s.Contains(string(data), `"external_directory": "deny"`)
+	s.Contains(string(data), `"*":"allow"`)
+	s.Contains(string(data), `"external_directory":"deny"`)
 }
 
 func (s *AgentConfigFactorySuite) TestBuildOpenCodeConfig_CustomProvider() {
