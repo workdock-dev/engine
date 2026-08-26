@@ -624,7 +624,7 @@ func (s *LinearAISessionSuite) TestProcess_AccessDenied_NotifyError() {
 	gitHosting := new(mockGitHosting)
 	s.mockApp.SetGitHostingPlatformRegistry(ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", &repo).Return(false, "", nil)
