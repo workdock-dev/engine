@@ -120,7 +120,7 @@ func (s *OpenCodeSuite) TestNew_MissingLinearAccessToken() {
 		Session:        defaultSession(),
 		SessionEvent:   defaultSessionEvent(),
 		Secrets:        map[string]string{},
-	}, "test-service")
+	}, s.mockApp)
 	s.Error(err)
 	s.Contains(err.Error(), "missing linear access token")
 }
