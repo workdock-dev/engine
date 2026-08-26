@@ -638,12 +638,12 @@ func (s *LinearAISessionSuite) TestProcess_AccessDenied_NotifyError() {
 func (s *LinearAISessionSuite) TestProcess_NoHarness() {
 	payload := s.basePayload()
 	sess := s.newProcessSession(payload)
-	s.mockApp.SetHarnessRegistry = ports.HarnessPlatformRegistry{}
+	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{})
 
 	gitHosting := new(mockGitHosting)
 	s.mockApp.SetGitHostingPlatformRegistry(ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(true, "", nil)
@@ -659,11 +659,11 @@ func (s *LinearAISessionSuite) TestProcess_CreateHarnessError() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	s.mockApp.SetHarnessRegistry = ports.HarnessPlatformRegistry{
+	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return nil, errors.New("harness error")
 		},
-	}
+	})
 
 	gitHosting := new(mockGitHosting)
 	s.mockApp.SetGitHostingPlatformRegistry(ports.GitHostingPlatformRegistry{
@@ -683,7 +683,7 @@ func (s *LinearAISessionSuite) TestProcess_CreateHarnessContextCanceled() {
 	payload := s.basePayload()
 	sess := s.newProcessSession(payload)
 
-	s.mockApp.SetHarnessRegistry = ports.HarnessPlatformRegistry{
+	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return nil, context.Canceled
 		},
@@ -707,7 +707,7 @@ func (s *LinearAISessionSuite) TestProcess_HarnessRunContextCanceled() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	s.mockApp.SetHarnessRegistry = ports.HarnessPlatformRegistry{
+	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
@@ -733,7 +733,7 @@ func (s *LinearAISessionSuite) TestProcess_HarnessRunDeadlineExceeded() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	s.mockApp.SetHarnessRegistry = ports.HarnessPlatformRegistry{
+	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
@@ -759,7 +759,7 @@ func (s *LinearAISessionSuite) TestProcess_HarnessRunUnhealthy() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	s.mockApp.SetHarnessRegistry = ports.HarnessPlatformRegistry{
+	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
@@ -785,7 +785,7 @@ func (s *LinearAISessionSuite) TestProcess_HarnessRunOtherError() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	s.mockApp.SetHarnessRegistry = ports.HarnessPlatformRegistry{
+	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
@@ -811,7 +811,7 @@ func (s *LinearAISessionSuite) TestProcess_ResultWithPR() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	s.mockApp.SetHarnessRegistry = ports.HarnessPlatformRegistry{
+	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
@@ -843,7 +843,7 @@ func (s *LinearAISessionSuite) TestProcess_ResultWithPR_UpdateError() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	s.mockApp.SetHarnessRegistry = ports.HarnessPlatformRegistry{
+	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
@@ -873,7 +873,7 @@ func (s *LinearAISessionSuite) TestProcess_ResultNil() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	s.mockApp.SetHarnessRegistry = ports.HarnessPlatformRegistry{
+	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
@@ -899,7 +899,7 @@ func (s *LinearAISessionSuite) TestProcess_ResultWithoutPR() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	s.mockApp.SetHarnessRegistry = ports.HarnessPlatformRegistry{
+	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
@@ -928,7 +928,7 @@ func (s *LinearAISessionSuite) TestProcess_ActionNotCreated() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	s.mockApp.SetHarnessRegistry = ports.HarnessPlatformRegistry{
+	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
