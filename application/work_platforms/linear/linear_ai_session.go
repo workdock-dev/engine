@@ -230,16 +230,16 @@ func (s *linearAISession) createPrompt(ctx context.Context) string {
 		agentActivityBody = &s.config.Payload.AgentActivity.Content.Body
 	}
 
-	promptInput := factories.WorkItemPromptInput{
-		Title:         s.config.Payload.AgentSession.Issue.Title,
-		Identifier:    s.config.Payload.AgentSession.Issue.Identifier,
-		Repository:    s.config.Session.RepoFullName,
-		Description:   s.config.Payload.AgentSession.Issue.Description,
+	promptInput := factories.Prompt{
+		Session:        s.config.Session,
+		SessionEvent:   s.config.SessionEvent,
+		Issue: &types.Issue{
+			Title:       s.config.Payload.AgentSession.Issue.Title,
+			Identifier:  s.config.Payload.AgentSession.Issue.Identifier,
+			Description: s.config.Payload.AgentSession.Issue.Description,
+		},
 		PromptContext: s.config.Payload.PromptContext,
 		AgentActivity: agentActivityBody,
-		GitRef:        s.config.SessionEvent.GitRef,
-		Seed:          s.config.SessionEvent.Seed,
-		TriggerReason: s.config.SessionEvent.Reason,
 	}
 
 	prompt, err := s.config.PromptFactory.BuildWorkItemPrompt(ctx, promptInput)

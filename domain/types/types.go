@@ -63,6 +63,12 @@ type Session struct {
 	RepoFullName           *string
 }
 
+type Issue struct {
+	Title       string
+	Identifier  string
+	Description string
+}
+
 type SessionEvent struct {
 	SessionIdentifier string
 	Identifier        string

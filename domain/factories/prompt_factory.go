@@ -25,34 +25,30 @@ import (
 
 type PromptFactory struct{}
 
-type WorkItemPromptInput struct {
-	Title         string
-	Identifier    string
-	Repository    *string
-	Description   string
-	PromptContext string
-	AgentActivity *string
-	GitRef        *string
-	Seed          *string
-	TriggerReason types.SessionEventTriggerReason
+type Prompt struct {
+	Session        *types.Session
+	SessionEvent   *types.SessionEvent
+	Issue          *types.Issue
+	PromptContext  string
+	AgentActivity  *string
 }
 
-func (f *PromptFactory) BuildWorkItemPrompt(ctx context.Context, input WorkItemPromptInput) (string, error) {
+func (f *PromptFactory) BuildWorkItemPrompt(ctx context.Context, input Prompt) (string, error) {
 	repo := ""
-	if input.Repository != nil {
-		repo = *input.Repository
+	if input.Session != nil && input.Session.RepoFullName != nil {
+		repo = *input.Session.RepoFullName
 	}
 
 	prompt := strings.TrimSpace(fmt.Sprintf(types.PromptTemplate_WorkItem,
-		input.Title,
-		input.Identifier,
+		input.Issue.Title,
+		input.Issue.Identifier,
 		repo,
-		input.Description,
+		input.Issue.Description,
 		input.PromptContext,
 	))
 
-	if input.GitRef != nil && input.Seed != nil {
-		if input.TriggerReason == types.SessionEventTriggerReason_CheckRun {
+	if input.SessionEvent != nil && input.SessionEvent.GitRef != nil && input.SessionEvent.Seed != nil {
+		if input.SessionEvent.Reason == types.SessionEventTriggerReason_CheckRun {
 			prompt += fmt.Sprintf(types.PromptTemplate_PullRequestChecksFailed, "The pull request checks have failed. Review the check failures, fix the issues, and ensure all checks pass before the pull request can be merged.")
 		} else {
 			prompt += fmt.Sprintf(types.PromptTemplate_LatestUserComment, "There are review comments on the pull request. Retrieve all review comments and address each one that is applicable to the current implementation. Make the necessary code changes, verify the changes, and ensure the pull request is ready for review again.")
@@ -61,6 +57,6 @@ func (f *PromptFactory) BuildWorkItemPrompt(ctx context.Context, input WorkItemP
 		prompt += fmt.Sprintf(types.PromptTemplate_LatestUserComment, *input.AgentActivity)
 	}
 
-	slog.Debug("Prompt prepared", "identifier", input.Identifier)
+	slog.Debug("Prompt prepared", "identifier", input.Issue.Identifier)
 	return prompt, nil
 }

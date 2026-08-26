@@ -33,11 +33,15 @@ func TestPromptFactorySuite(t *testing.T) {
 func (s *PromptFactorySuite) TestBuildWorkItemPrompt_Basic() {
 	factory := PromptFactory{}
 	repo := "owner/repo"
-	input := WorkItemPromptInput{
-		Title:       "Test Issue",
-		Identifier:   "ENG-1",
-		Repository:   &repo,
-		Description: "Test description",
+	input := Prompt{
+		Session: &types.Session{
+			RepoFullName: &repo,
+		},
+		Issue: &types.Issue{
+			Title:       "Test Issue",
+			Identifier:  "ENG-1",
+			Description: "Test description",
+		},
 		PromptContext: "Additional context",
 	}
 
@@ -53,11 +57,15 @@ func (s *PromptFactorySuite) TestBuildWorkItemPrompt_Basic() {
 
 func (s *PromptFactorySuite) TestBuildWorkItemPrompt_NilRepository() {
 	factory := PromptFactory{}
-	input := WorkItemPromptInput{
-		Title:       "Test Issue",
-		Identifier:   "ENG-1",
-		Repository:   nil,
-		Description: "Test description",
+	input := Prompt{
+		Session: &types.Session{
+			RepoFullName: nil,
+		},
+		Issue: &types.Issue{
+			Title:       "Test Issue",
+			Identifier:  "ENG-1",
+			Description: "Test description",
+		},
 		PromptContext: "",
 	}
 
@@ -73,11 +81,15 @@ func (s *PromptFactorySuite) TestBuildWorkItemPrompt_WithAgentActivity() {
 	factory := PromptFactory{}
 	repo := "owner/repo"
 	agentActivityBody := "This is a user comment"
-	input := WorkItemPromptInput{
-		Title:         "Test Issue",
-		Identifier:   "ENG-1",
-		Repository:   &repo,
-		Description:   "Test description",
+	input := Prompt{
+		Session: &types.Session{
+			RepoFullName: &repo,
+		},
+		Issue: &types.Issue{
+			Title:       "Test Issue",
+			Identifier:  "ENG-1",
+			Description: "Test description",
+		},
 		PromptContext: "",
 		AgentActivity: &agentActivityBody,
 	}
@@ -92,15 +104,21 @@ func (s *PromptFactorySuite) TestBuildWorkItemPrompt_WithAgentActivity() {
 func (s *PromptFactorySuite) TestBuildWorkItemPrompt_WithGitRefAndSeed_CheckRun() {
 	factory := PromptFactory{}
 	repo := "owner/repo"
-	input := WorkItemPromptInput{
-		Title:       "Test Issue",
-		Identifier:   "ENG-1",
-		Repository:   &repo,
-		Description: "Test description",
+	input := Prompt{
+		Session: &types.Session{
+			RepoFullName: &repo,
+		},
+		SessionEvent: &types.SessionEvent{
+			GitRef: strPtr("feature-branch"),
+			Seed:   strPtr("seed-123"),
+			Reason: types.SessionEventTriggerReason_CheckRun,
+		},
+		Issue: &types.Issue{
+			Title:       "Test Issue",
+			Identifier:  "ENG-1",
+			Description: "Test description",
+		},
 		PromptContext: "",
-		GitRef:        strPtr("feature-branch"),
-		Seed:          strPtr("seed-123"),
-		TriggerReason: types.SessionEventTriggerReason_CheckRun,
 	}
 
 	prompt, err := factory.BuildWorkItemPrompt(context.Background(), input)
@@ -112,15 +130,21 @@ func (s *PromptFactorySuite) TestBuildWorkItemPrompt_WithGitRefAndSeed_CheckRun(
 func (s *PromptFactorySuite) TestBuildWorkItemPrompt_WithGitRefAndSeed_Comment() {
 	factory := PromptFactory{}
 	repo := "owner/repo"
-	input := WorkItemPromptInput{
-		Title:       "Test Issue",
-		Identifier:   "ENG-1",
-		Repository:   &repo,
-		Description: "Test description",
+	input := Prompt{
+		Session: &types.Session{
+			RepoFullName: &repo,
+		},
+		SessionEvent: &types.SessionEvent{
+			GitRef: strPtr("feature-branch"),
+			Seed:   strPtr("seed-123"),
+			Reason: types.SessionEventTriggerReason_PRComment,
+		},
+		Issue: &types.Issue{
+			Title:       "Test Issue",
+			Identifier:  "ENG-1",
+			Description: "Test description",
+		},
 		PromptContext: "",
-		GitRef:        strPtr("feature-branch"),
-		Seed:          strPtr("seed-123"),
-		TriggerReason: types.SessionEventTriggerReason_PRComment,
 	}
 
 	prompt, err := factory.BuildWorkItemPrompt(context.Background(), input)
@@ -132,14 +156,20 @@ func (s *PromptFactorySuite) TestBuildWorkItemPrompt_WithGitRefAndSeed_Comment()
 func (s *PromptFactorySuite) TestBuildWorkItemPrompt_GitRefWithoutSeed() {
 	factory := PromptFactory{}
 	repo := "owner/repo"
-	input := WorkItemPromptInput{
-		Title:       "Test Issue",
-		Identifier:   "ENG-1",
-		Repository:   &repo,
-		Description: "Test description",
+	input := Prompt{
+		Session: &types.Session{
+			RepoFullName: &repo,
+		},
+		SessionEvent: &types.SessionEvent{
+			GitRef: strPtr("feature-branch"),
+			Seed:   nil,
+		},
+		Issue: &types.Issue{
+			Title:       "Test Issue",
+			Identifier:  "ENG-1",
+			Description: "Test description",
+		},
 		PromptContext: "",
-		GitRef:        strPtr("feature-branch"),
-		Seed:          nil,
 	}
 
 	prompt, err := factory.BuildWorkItemPrompt(context.Background(), input)
