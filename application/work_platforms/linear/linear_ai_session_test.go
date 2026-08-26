@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/workdock-dev/engine/application"
+	"github.com/workdock-dev/engine/domain/factories"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/types"
 	"github.com/stretchr/testify/mock"
@@ -51,6 +52,7 @@ func (s *LinearAISessionSuite) SetupTest() {
 		Organizations:      s.organizations,
 		GitHubConnections: s.sessions,
 	})
+	s.mockApp.SetPromptFactory(&factories.PromptFactory{})
 }
 
 func (s *LinearAISessionSuite) validTokenRaw() string {

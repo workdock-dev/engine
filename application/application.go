@@ -148,6 +148,14 @@ func (app *App) GetAgentConfigFactory() *factories.AgentConfigFactory {
 	return app.agentConfigFactory
 }
 
+func (app *App) SetPromptFactory(factory *factories.PromptFactory) {
+	app.promptFactory = factory
+}
+
+func (app *App) SetAgentConfigFactory(factory *factories.AgentConfigFactory) {
+	app.agentConfigFactory = factory
+}
+
 func (app *App) GetHarnessRegistry() ports.HarnessPlatformRegistry {
 	return app.config.HarnessRegistry
 }
