@@ -72,6 +72,18 @@ func WithHarnessRegistry(app *App, registry ports.HarnessPlatformRegistry) {
 	app.harnessRegistry = registry
 }
 
+func WithOrganizationRepository(app *App, value repositories.OrganizationRepository) {
+	app.organizations = value
+}
+
+func WithSessionRepository(app *App, value repositories.SessionRepository) {
+	app.sessions = value
+}
+
+func WithGitHubRepository(app *App, value repositories.GitHubConnectionRepository) {
+	app.gitHubConnections = value
+}
+
 func WithEventBus(app *App, value ports.ForEventBus) {
 	app.eventBus = value
 }

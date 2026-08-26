@@ -150,6 +150,9 @@ func main() {
 	application.WithEventBus(app, async.NewInMemoryEventBus())
 	application.WithSecretManager(app, secretManager)
 	application.WithQueue(app, postgresEventQueue)
+	application.WithOrganizationRepository(app, postgresClient)
+	application.WithSessionRepository(app, postgresClient)
+	application.WithGitHubRepository(app, postgresClient)
 
 	// Create application platforms
 	opencodeHarness := func(consturctor ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
