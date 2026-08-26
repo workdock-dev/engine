@@ -38,6 +38,7 @@ type LinearPlatformSuite struct {
 	secrets       *mockSecrets
 	sessions      *mockSessions
 	organizations *mockOrganizations
+	events       *mockEventBus
 	platform      *linearPlatform
 	mockApp       *application.App
 }
@@ -47,13 +48,16 @@ func (s *LinearPlatformSuite) SetupTest() {
 	s.secrets = new(mockSecrets)
 	s.sessions = new(mockSessions)
 	s.organizations = new(mockOrganizations)
+	s.events = new(mockEventBus)
+	s.events.On("Subscribe", mock.Anything, mock.Anything).Return()
 
-	s.mockApp, _ = application.New(application.Config{
-		ForSecrets:        s.secrets,
-		Sessions:          s.sessions,
-		Organizations:      s.organizations,
-		GitHubConnections: s.sessions,
-	})
+	s.mockApp = application.New()
+	application.WithSecretManager(s.mockApp, s.secrets)
+	application.WithSessionRepository(s.mockApp, s.sessions)
+	application.WithOrganizationRepository(s.mockApp, s.organizations)
+	application.WithGitHubRepository(s.mockApp, s.sessions)
+	application.WithEventBus(s.mockApp, s.events)
+	s.mockApp.Init()
 
 	s.platform = &linearPlatform{
 		app:   s.mockApp,
@@ -386,13 +390,13 @@ func (s *LinearPlatformSuite) TestProcess_Success() {
 	s.client.On("CreateAgentActivity", mock.Anything, "at", mock.Anything).Return(nil)
 
 	gitHosting := new(mockGitHosting)
-	s.mockApp.SetGitHostingPlatformRegistry(ports.GitHostingPlatformRegistry{
+	application.WithGitHostingPlatformRegistry(s.mockApp, ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
 	})
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(true, "", nil)
 
 	harness := new(mockHarness)
-	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{
+	application.WithHarnessRegistry(s.mockApp, ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
@@ -613,7 +617,7 @@ func (s *LinearPlatformSuite) TestArchiveSandboxForIssue_DoneState_Archives() {
 	}, nil)
 
 	harness := new(mockHarness)
-	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{
+	application.WithHarnessRegistry(s.mockApp, ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
@@ -638,7 +642,7 @@ func (s *LinearPlatformSuite) TestArchiveSandboxForIssue_DoneState_HarnessConstr
 		StateType: "completed",
 	}, nil)
 
-	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{
+	application.WithHarnessRegistry(s.mockApp, ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return nil, errors.New("harness error")
 		},
@@ -662,7 +666,7 @@ func (s *LinearPlatformSuite) TestArchiveSandboxForIssue_DoneState_ArchiveError_
 	}, nil)
 
 	harness := new(mockHarness)
-	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{
+	application.WithHarnessRegistry(s.mockApp, ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},

@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/workdock-dev/engine/application"
+	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -30,12 +31,28 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type mockEventBus struct {
+	mock.Mock
+}
+
+func (m *mockEventBus) Publish(ctx context.Context, event ports.DomainEvent) error {
+	args := m.Called(ctx, event)
+	return args.Error(0)
+}
+
+func (m *mockEventBus) Subscribe(eventType string, handler ports.EventHandler) {
+	m.Called(eventType, handler)
+}
+
 type OpenCodeSuite struct {
 	suite.Suite
-	sandbox *mockSandbox
-	parts   *mockParts
-	mockApp *application.App
+	sandbox  *mockSandbox
+	parts    *mockParts
+	mockApp  *application.App
+	eventBus *mockEventBus
 }
+
+var _ ports.ForEventBus = (*mockEventBus)(nil)
 
 func TestOpenCodeSuite(t *testing.T) {
 	otel.SetTracerProvider(oteltracenoop.NewTracerProvider())
@@ -46,7 +63,11 @@ func TestOpenCodeSuite(t *testing.T) {
 func (s *OpenCodeSuite) SetupTest() {
 	s.sandbox = new(mockSandbox)
 	s.parts = new(mockParts)
-	s.mockApp, _ = application.New(application.Config{})
+	s.eventBus = new(mockEventBus)
+	s.eventBus.On("Subscribe", mock.Anything, mock.Anything).Return()
+	s.mockApp = application.New()
+	application.WithEventBus(s.mockApp, s.eventBus)
+	s.mockApp.Init()
 }
 
 func (s *OpenCodeSuite) baseConfig() Config {

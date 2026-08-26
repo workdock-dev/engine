@@ -243,11 +243,25 @@ func (m *mockGitHosting) Webhook(ctx context.Context, req types.WebhookRequest) 
 	return args.Get(0), args.Get(1).(types.WebhookEventType), args.Error(2)
 }
 
+type mockEventBus struct {
+	mock.Mock
+}
+
+func (m *mockEventBus) Publish(ctx context.Context, event ports.DomainEvent) error {
+	args := m.Called(ctx, event)
+	return args.Error(0)
+}
+
+func (m *mockEventBus) Subscribe(eventType string, handler ports.EventHandler) {
+	m.Called(eventType, handler)
+}
+
 // Compile-time interface checks.
 var _ LinearClientInterface = (*mockLinearClient)(nil)
 var _ ports.ForSecrets = (*mockSecrets)(nil)
 var _ ports.ForHarnessPlatform = (*mockHarness)(nil)
 var _ ports.ForGitHostingPlatform = (*mockGitHosting)(nil)
+var _ ports.ForEventBus = (*mockEventBus)(nil)
 
 // tracerNoop returns a no-op tracer for tests.
 func tracerNoop() trace.Tracer {

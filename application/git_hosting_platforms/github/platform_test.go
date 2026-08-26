@@ -148,11 +148,11 @@ func (s *GitHubPlatformSuite) SetupTest() {
 
 	s.events.On("Subscribe", mock.Anything, mock.Anything).Return()
 
-	s.mockApp, _ = application.New(application.Config{
-		ForSecrets:        s.secrets,
-		EventBus:          s.events,
-		GitHubConnections: s.connections,
-	})
+	s.mockApp = application.New()
+	application.WithSecretManager(s.mockApp, s.secrets)
+	application.WithEventBus(s.mockApp, s.events)
+	application.WithGitHubRepository(s.mockApp, s.connections)
+	s.mockApp.Init()
 
 	s.platform = &githubPlatform{
 		app:   s.mockApp,
