@@ -514,6 +514,7 @@ func (s *LinearAISessionSuite) TestProcess_NoGitHubRegistry() {
 
 func (s *LinearAISessionSuite) TestProcess_VerifyAccessConnectionReRequested() {
 	payload := s.basePayload()
+	sess := s.newProcessSession(payload)
 
 	gitHosting := new(mockGitHosting)
 	s.mockApp.SetGitHostingPlatformRegistry(ports.GitHostingPlatformRegistry{

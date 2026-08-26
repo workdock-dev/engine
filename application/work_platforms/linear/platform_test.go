@@ -68,7 +68,7 @@ func (s *LinearPlatformSuite) SetupTest() {
 // ---------------------------------------------------------------------------
 
 func (s *LinearPlatformSuite) TestNew() {
-	p := New(Config{Client: s.client})
+	p := New(Config{Client: s.client}, s.mockApp)
 	s.NotNil(p)
 }
 
