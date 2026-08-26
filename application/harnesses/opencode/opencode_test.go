@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -33,6 +34,7 @@ type OpenCodeSuite struct {
 	suite.Suite
 	sandbox *mockSandbox
 	parts   *mockParts
+	mockApp *application.App
 }
 
 func TestOpenCodeSuite(t *testing.T) {
@@ -44,6 +46,7 @@ func TestOpenCodeSuite(t *testing.T) {
 func (s *OpenCodeSuite) SetupTest() {
 	s.sandbox = new(mockSandbox)
 	s.parts = new(mockParts)
+	s.mockApp, _ = application.New(application.Config{})
 }
 
 func (s *OpenCodeSuite) baseConfig() Config {
@@ -67,7 +70,7 @@ func (s *OpenCodeSuite) newHarness(secrets map[string]string) *OpenCode {
 	if secrets != nil {
 		cfg.Secrets = secrets
 	}
-	h, _ := New(cfg, "test-service")
+	h, _ := New(cfg, s.mockApp)
 	return h
 }
 
@@ -220,7 +223,7 @@ func (s *OpenCodeSuite) TestRun_DynamicSecretFails() {
 	cfg.ConfigExternal.Secrets = map[string]SecretSpec{
 		"MY_SECRET": {Value: "s3cret", Hosts: []string{"example.com"}},
 	}
-	h, _ := New(cfg, "test-service")
+	h, _ := New(cfg, s.mockApp)
 
 	s.sandbox.On("SetSecret", mock.Anything, "lin_at_123", []string{"mcp.linear.app"}).Return("sid-1", "linear-secret", nil)
 	s.sandbox.On("SetSecret", mock.Anything, "s3cret", []string{"example.com"}).Return("", "", assert.AnError)
@@ -485,7 +488,7 @@ func (s *OpenCodeSuite) TestRun_WithDynamicSecrets() {
 	cfg.ConfigExternal.Secrets = map[string]SecretSpec{
 		"CUSTOM_VAR": {Value: "val1", Hosts: []string{"api.example.com"}},
 	}
-	h, _ := New(cfg, "test-service")
+	h, _ := New(cfg, s.mockApp)
 
 	s.sandbox.On("SetSecret", mock.Anything, "lin_at_123", []string{"mcp.linear.app"}).Return("sid-1", "linear-secret", nil)
 	s.sandbox.On("SetSecret", mock.Anything, "val1", []string{"api.example.com"}).Return("sid-2", "custom-secret", nil)
@@ -579,7 +582,7 @@ func (s *OpenCodeSuite) TestRun_ModelWithProviderSlash() {
 func (s *OpenCodeSuite) TestRun_ModelWithoutSlash() {
 	cfg := s.baseConfig()
 	cfg.ConfigExternal.Model = "gpt-4"
-	h, _ := New(cfg, "test-service")
+	h, _ := New(cfg, s.mockApp)
 	s.fullHappyPath(true, "")
 
 	result, err := h.Run(context.Background())
@@ -590,7 +593,7 @@ func (s *OpenCodeSuite) TestRun_ModelWithoutSlash() {
 func (s *OpenCodeSuite) TestRun_EmptyModel() {
 	cfg := s.baseConfig()
 	cfg.ConfigExternal.Model = ""
-	h, _ := New(cfg, "test-service")
+	h, _ := New(cfg, s.mockApp)
 	s.fullHappyPath(true, "")
 
 	result, err := h.Run(context.Background())
@@ -646,7 +649,7 @@ func (s *OpenCodeSuite) TestRun_PRMetadataContextCanceled() {
 func (s *OpenCodeSuite) TestRun_WithoutDynamicSecrets() {
 	cfg := s.baseConfig()
 	cfg.ConfigExternal.Secrets = nil
-	h, _ := New(cfg, "test-service")
+	h, _ := New(cfg, s.mockApp)
 	s.fullHappyPath(true, "")
 
 	result, err := h.Run(context.Background())
@@ -659,7 +662,7 @@ func (s *OpenCodeSuite) TestRun_WithoutDynamicSecrets() {
 func (s *OpenCodeSuite) TestDispose_DestroyOnDispose() {
 	cfg := s.baseConfig()
 	cfg.DestroyOnDispose = true
-	h, _ := New(cfg, "test-service")
+	h, _ := New(cfg, s.mockApp)
 	h.secretIds = []string{"sid-1", "sid-2"}
 
 	ctx := context.Background()
@@ -677,7 +680,7 @@ func (s *OpenCodeSuite) TestDispose_DestroyOnDispose() {
 func (s *OpenCodeSuite) TestDispose_Shutdown() {
 	cfg := s.baseConfig()
 	cfg.DestroyOnDispose = false
-	h, _ := New(cfg, "test-service")
+	h, _ := New(cfg, s.mockApp)
 	h.secretIds = []string{"sid-1"}
 
 	ctx := context.Background()
@@ -693,7 +696,7 @@ func (s *OpenCodeSuite) TestDispose_Shutdown() {
 
 func (s *OpenCodeSuite) TestDispose_DeletesSecrets() {
 	cfg := s.baseConfig()
-	h, _ := New(cfg, "test-service")
+	h, _ := New(cfg, s.mockApp)
 	h.secretIds = []string{"sid-a", "sid-b", "sid-c"}
 
 	ctx := context.Background()
@@ -728,7 +731,7 @@ func (s *OpenCodeSuite) TestRun_Unhealthy() {
 	cfg := s.baseConfig()
 	cfg.LivenessTimeoutSecs = 1
 	cfg.MaxHealthMisses = 1
-	h, _ := New(cfg, "test-service")
+	h, _ := New(cfg, s.mockApp)
 
 	s.sandbox.On("SetSecret", mock.Anything, "lin_at_123", []string{"mcp.linear.app"}).Return("sid-1", "linear-secret", nil)
 	s.sandbox.On("GetOrCreateSandbox", mock.Anything, mock.Anything, mock.Anything).Return(true, nil)
@@ -761,7 +764,7 @@ func (s *OpenCodeSuite) TestRun_Unhealthy() {
 func (s *OpenCodeSuite) TestRun_UploadOpenCodeConfigWithProvider() {
 	cfg := s.baseConfig()
 	cfg.ConfigExternal.Provider = map[string]any{"openai": map[string]any{"apiKey": "sk-123"}}
-	h, _ := New(cfg, "test-service")
+	h, _ := New(cfg, s.mockApp)
 
 	s.sandbox.On("SetSecret", mock.Anything, "lin_at_123", []string{"mcp.linear.app"}).Return("sid-1", "linear-secret", nil)
 	s.sandbox.On("GetOrCreateSandbox", mock.Anything, mock.Anything, mock.Anything).Return(true, nil)
