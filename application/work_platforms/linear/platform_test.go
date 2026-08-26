@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/types"
 	"github.com/stretchr/testify/mock"
@@ -38,6 +39,7 @@ type LinearPlatformSuite struct {
 	sessions      *mockSessions
 	organizations *mockOrganizations
 	platform      *linearPlatform
+	mockApp       *application.App
 }
 
 func (s *LinearPlatformSuite) SetupTest() {
@@ -46,14 +48,16 @@ func (s *LinearPlatformSuite) SetupTest() {
 	s.sessions = new(mockSessions)
 	s.organizations = new(mockOrganizations)
 
+	s.mockApp, _ = application.New(application.Config{
+		ForSecrets: s.secrets,
+		Sessions:   s.sessions,
+		Organizations: s.organizations,
+	})
+
 	s.platform = &linearPlatform{
+		app:   s.mockApp,
 		config: Config{
-			Client:             s.client,
-			ForSecrets:         s.secrets,
-			Sessions:           s.sessions,
-			Organizations:      s.organizations,
-			HarnessRegistry:    ports.HarnessPlatformRegistry{},
-			GitHostingRegistry: ports.GitHostingPlatformRegistry{},
+			Client: s.client,
 		},
 	}
 }
@@ -381,13 +385,17 @@ func (s *LinearPlatformSuite) TestProcess_Success() {
 	s.client.On("CreateAgentActivity", mock.Anything, "at", mock.Anything).Return(nil)
 
 	gitHosting := new(mockGitHosting)
-	s.platform.config.GitHostingRegistry[types.PlatformProvider_GitHub] = gitHosting
+	s.mockApp.SetGitHostingPlatformRegistry(ports.GitHostingPlatformRegistry{
+		types.PlatformProvider_GitHub: gitHosting,
+	})
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(true, "", nil)
 
 	harness := new(mockHarness)
-	s.platform.config.HarnessRegistry[types.HarnessProvider_OpenCode] = func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
-		return harness, nil
-	}
+	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{
+		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
+			return harness, nil
+		},
+	})
 	harness.On("Run", mock.Anything).Return(nil, nil)
 	harness.On("Dispose", mock.Anything).Return(nil)
 
@@ -604,9 +612,11 @@ func (s *LinearPlatformSuite) TestArchiveSandboxForIssue_DoneState_Archives() {
 	}, nil)
 
 	harness := new(mockHarness)
-	s.platform.config.HarnessRegistry[types.HarnessProvider_OpenCode] = func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
-		return harness, nil
-	}
+	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{
+		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
+			return harness, nil
+		},
+	})
 	harness.On("Archive", mock.Anything).Return(nil)
 
 	err := s.platform.archiveSandboxForIssue(context.Background(), "issue-1")
@@ -627,9 +637,11 @@ func (s *LinearPlatformSuite) TestArchiveSandboxForIssue_DoneState_HarnessConstr
 		StateType: "completed",
 	}, nil)
 
-	s.platform.config.HarnessRegistry[types.HarnessProvider_OpenCode] = func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
-		return nil, errors.New("harness error")
-	}
+	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{
+		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
+			return nil, errors.New("harness error")
+		},
+	})
 
 	err := s.platform.archiveSandboxForIssue(context.Background(), "issue-1")
 	s.NoError(err)
@@ -649,9 +661,11 @@ func (s *LinearPlatformSuite) TestArchiveSandboxForIssue_DoneState_ArchiveError_
 	}, nil)
 
 	harness := new(mockHarness)
-	s.platform.config.HarnessRegistry[types.HarnessProvider_OpenCode] = func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
-		return harness, nil
-	}
+	s.mockApp.SetHarnessRegistry(ports.HarnessPlatformRegistry{
+		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
+			return harness, nil
+		},
+	})
 	harness.On("Archive", mock.Anything).Return(errors.New("archive failed"))
 
 	err := s.platform.archiveSandboxForIssue(context.Background(), "issue-1")
