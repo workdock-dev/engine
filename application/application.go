@@ -31,6 +31,7 @@ type Config struct {
 	WorkPlatformRegistry       ports.WorkPlatformRegistry
 	GitHostingPlatformRegistry ports.GitHostingPlatformRegistry
 	WebhooksRegistry           ports.WebhooksRegistry
+	HarnessRegistry            ports.HarnessPlatformRegistry
 
 	Organizations repositories.OrganizationRepository
 	Sessions      repositories.SessionRepository
@@ -138,4 +139,56 @@ func (app *App) GetPromptFactory() *factories.PromptFactory {
 
 func (app *App) GetAgentConfigFactory() *factories.AgentConfigFactory {
 	return app.agentConfigFactory
+}
+
+func (app *App) GetHarnessRegistry() ports.HarnessPlatformRegistry {
+	return app.config.HarnessRegistry
+}
+
+func (app *App) GetGitHostingPlatformRegistry() ports.GitHostingPlatformRegistry {
+	return app.config.GitHostingPlatformRegistry
+}
+
+func (app *App) GetWebhooksRegistry() ports.WebhooksRegistry {
+	return app.config.WebhooksRegistry
+}
+
+func (app *App) GetOrganizations() repositories.OrganizationRepository {
+	return app.config.Organizations
+}
+
+func (app *App) GetSessions() repositories.SessionRepository {
+	return app.config.Sessions
+}
+
+func (app *App) GetForSecrets() ports.ForSecrets {
+	return app.config.ForSecrets
+}
+
+func (app *App) GetEventBus() ports.ForEventBus {
+	return app.config.EventBus
+}
+
+func (app *App) GetForQueue() interfaces.Queue {
+	return app.config.ForQueue
+}
+
+func (app *App) GetTaskSchedulerConfig() async.TaskSchedulerConfig {
+	return app.config.TaskSchedulerConfig
+}
+
+func (app *App) SetWorkPlatformRegistry(registry ports.WorkPlatformRegistry) {
+	app.config.WorkPlatformRegistry = registry
+}
+
+func (app *App) SetGitHostingPlatformRegistry(registry ports.GitHostingPlatformRegistry) {
+	app.config.GitHostingPlatformRegistry = registry
+}
+
+func (app *App) SetWebhooksRegistry(registry ports.WebhooksRegistry) {
+	app.config.WebhooksRegistry = registry
+}
+
+func (app *App) SetHarnessRegistry(registry ports.HarnessPlatformRegistry) {
+	app.config.HarnessRegistry = registry
 }

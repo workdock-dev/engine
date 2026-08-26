@@ -23,6 +23,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/application/interfaces"
 	"github.com/workdock-dev/engine/domain/factories"
 	"github.com/workdock-dev/engine/domain/ports"
@@ -85,14 +86,12 @@ type ConfigExternal struct {
 
 type Config struct {
 	ConfigExternal
-	Parts               ports.ForHarnessParts
-	Sandbox             interfaces.Sandbox
-	Session             *types.Session
-	SessionEvent        *types.SessionEvent
-	Prompt              string
-	Secrets             map[string]string
-	AgentConfigFactory  *factories.AgentConfigFactory
-	SessionResultService *domain_service.SessionResultService
+	Parts        ports.ForHarnessParts
+	Sandbox      interfaces.Sandbox
+	Session      *types.Session
+	SessionEvent *types.SessionEvent
+	Prompt       string
+	Secrets      map[string]string
 }
 
 // OpenCode implements ports.ForSandboxing on top of the daytona
@@ -100,11 +99,11 @@ type Config struct {
 // configuration, the prompt upload, and parsing the opencode run output. Each
 // instance has its own daytona sandbox, isolating users from each other.
 type OpenCode struct {
-	serviceName       string
-	config            Config
-	linearAccessToken string
-	githubAccessToken string
-	secretIds         []string
+	app                *application.App
+	config             Config
+	linearAccessToken  string
+	githubAccessToken  string
+	secretIds          []string
 	sandboxCreated    bool
 	sandboxSecrets    map[string]string
 	tracer            trace.Tracer
@@ -112,11 +111,11 @@ type OpenCode struct {
 
 // New builds the harness bound to a session: it validates the
 // secrets and creates the daytona sandbox instance.
-func New(config Config, serviceName string) (*OpenCode, error) {
+func New(config Config, app *application.App) (*OpenCode, error) {
 	h := &OpenCode{
-		config:      config,
-		tracer:      otel.Tracer("workdock.opencode"),
-		serviceName: serviceName,
+		app:   app,
+		config: config,
+		tracer: otel.Tracer("workdock.opencode"),
 	}
 
 	// Setup linear access token
@@ -452,7 +451,7 @@ func (h *OpenCode) uploadOpenCodeConfig(ctx context.Context) error {
 		}
 	}
 
-	openCodeConfig, err := h.config.AgentConfigFactory.BuildOpenCodeConfig(permission, h.config.ConfigExternal.Provider)
+	openCodeConfig, err := h.app.GetAgentConfigFactory().BuildOpenCodeConfig(permission, h.config.ConfigExternal.Provider)
 	if err != nil {
 		slog.Error("failed to build opencode config", "err", err, "event_identifier", h.config.SessionEvent.Identifier)
 		return err
@@ -483,5 +482,5 @@ func (h *OpenCode) getPRMetadata(ctx context.Context) *types.PullRequest {
 	}
 
 	slog.Debug("Session PR Metadata", "event_identifier", h.config.SessionEvent.Identifier, "details", result)
-	return h.config.SessionResultService.ParsePullRequestMetadata(result)
+	return h.app.GetSessionResultService().ParsePullRequestMetadata(result)
 }

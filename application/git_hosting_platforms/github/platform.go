@@ -22,6 +22,7 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/repositories"
 	domain_service "github.com/workdock-dev/engine/domain/service"
@@ -29,27 +30,25 @@ import (
 )
 
 type GitHubPlatformConfig struct {
-	ForSecrets            ports.ForSecrets
-	ForEvents             ports.ForEventBus
-	GitHubConnections     repositories.GitHubConnectionRepository
-	Client                ClientInterface
-	BotLoginName          string
-	GitEventFilterService *domain_service.GitEventFilterService
+	Client     ClientInterface
+	BotLoginName string
 }
 
 type githubPlatform struct {
-	config GitHubPlatformConfig
-	access *githubAccess
+	app     *application.App
+	config  GitHubPlatformConfig
+	access  *githubAccess
 }
 
-func New(config GitHubPlatformConfig) ports.ForGitHostingPlatform {
+func New(config GitHubPlatformConfig, app *application.App) ports.ForGitHostingPlatform {
 	return &githubPlatform{
+		app:   app,
 		config: config,
 		access: newGitHubAccess(githubAccessConfig{
 			Client:            config.Client,
-			ForSecrets:        config.ForSecrets,
-			ForEvent:          config.ForEvents,
-			GitHubConnections: config.GitHubConnections,
+			ForSecrets:        app.GetForSecrets(),
+			ForEvent:          app.GetEventBus(),
+			GitHubConnections: app.GetSessions(),
 		}),
 	}
 }
@@ -154,7 +153,7 @@ func (s *githubPlatform) handleInstallation(ctx context.Context, event *WebhookE
 		return ctx.Err()
 	}
 
-	if err := s.config.ForSecrets.Set(ctx, GitHub_SecretPath, installationId, string(tokenData)); err != nil {
+	if err := s.app.GetForSecrets().Set(ctx, GitHub_SecretPath, installationId, string(tokenData)); err != nil {
 		slog.Error("failed to store installation access token", "installation_id", event.Installation.ID, "err", err)
 		return err
 	}
@@ -235,7 +234,7 @@ func (s *githubPlatform) handlePullRequestComment(event *WebhookEvent) error {
 		senderLogin = event.Sender.Login
 	}
 
-	if !s.config.GitEventFilterService.ShouldTriggerCommentEvent(senderLogin, s.config.BotLoginName, event.Action) {
+	if !s.app.GetGitEventFilterService().ShouldTriggerCommentEvent(senderLogin, s.config.BotLoginName, event.Action) {
 		slog.Debug("pull request comment event received, ignoring", "action", event.Action, "sender", senderLogin)
 		return nil
 	}
@@ -255,7 +254,7 @@ func (s *githubPlatform) handlePullRequestComment(event *WebhookEvent) error {
 	installationId := strconv.Itoa(event.Installation.ID)
 	slog.Debug("github pull_request event", "action", event.Action, "delivery_id", event.DeliveryID)
 
-	s.config.ForEvents.Publish(context.Background(), types.PullRequestCommentedEvent{
+	s.app.GetEventBus().Publish(context.Background(), types.PullRequestCommentedEvent{
 		Provider:       types.PlatformProvider_GitHub,
 		GitRef:         event.PullRequest.Head.Ref,
 		RepoFullName:   event.PullRequest.Head.Repo.FullName,
@@ -281,7 +280,7 @@ func (s *githubPlatform) handleCheckRun(event *WebhookEvent) error {
 		conclusion = *event.CheckRun.Conclusion
 	}
 
-	if !s.config.GitEventFilterService.ShouldTriggerCheckRunEvent(senderLogin, s.config.BotLoginName, event.Action, conclusion) {
+	if !s.app.GetGitEventFilterService().ShouldTriggerCheckRunEvent(senderLogin, s.config.BotLoginName, event.Action, conclusion) {
 		slog.Debug("check_run event received, ignoring", "action", event.Action)
 		return nil
 	}
@@ -301,7 +300,7 @@ func (s *githubPlatform) handleCheckRun(event *WebhookEvent) error {
 	for _, pr := range event.CheckRun.PullRequests {
 		slog.Debug("github check_run event", "action", event.Action, "conclusion", conclusion, "check_run_id", event.CheckRun.ID, "pr", pr.Head.Ref)
 
-		s.config.ForEvents.Publish(context.Background(), types.PullRequestChecksFailedEvent{
+		s.app.GetEventBus().Publish(context.Background(), types.PullRequestChecksFailedEvent{
 			Provider:       types.PlatformProvider_GitHub,
 			GitRef:         pr.Head.Ref,
 			RepoFullName:   pr.Head.Repo.FullName,
@@ -355,7 +354,7 @@ func (s *githubPlatform) handleCheckSuite(event *WebhookEvent) error {
 	for _, pr := range event.CheckSuite.PullRequests {
 		slog.Debug("github check_suite event", "action", event.Action, "conclusion", conclusion, "check_suite_id", event.CheckSuite.ID, "pr", pr.Head.Ref)
 
-		s.config.ForEvents.Publish(context.Background(), types.PullRequestChecksFailedEvent{
+		s.app.GetEventBus().Publish(context.Background(), types.PullRequestChecksFailedEvent{
 			Provider:       types.PlatformProvider_GitHub,
 			GitRef:         pr.Head.Ref,
 			RepoFullName:   pr.Head.Repo.FullName,

@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/factories"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/repositories"
@@ -32,18 +33,13 @@ import (
 )
 
 type linearAISessionConfig struct {
-	HarnessRegistry      ports.HarnessPlatformRegistry
-	GitHostingRegistry   ports.GitHostingPlatformRegistry
-	Client               LinearClientInterface
-	ForSecrets           ports.ForSecrets
-	Sessions             repositories.SessionRepository
-	Job                  *types.EventJob
-	SessionEvent         *types.SessionEvent
-	Session              *types.Session
-	Payload              *AgentSessionEventData
-	GitHubAppInstallURL  string
-	SessionConfigService *domain_service.SessionConfigService
-	PromptFactory        *factories.PromptFactory
+	App                 *application.App
+	Client              LinearClientInterface
+	Job                 *types.EventJob
+	SessionEvent        *types.SessionEvent
+	Session             *types.Session
+	Payload             *AgentSessionEventData
+	GitHubAppInstallURL string
 }
 
 type linearAISession struct {
@@ -55,7 +51,7 @@ type linearAISession struct {
 
 func newLinearAISession(ctx context.Context, config linearAISessionConfig) (*linearAISession, error) {
 	tokenHandler := newTokenHandler(tokenHandlerConfig{
-		ForSecrets: config.ForSecrets,
+		ForSecrets: config.App.GetForSecrets(),
 		Client:     config.Client,
 	})
 	accessToken, err := tokenHandler.GetLinearAccessToken(ctx, config.Session.OrganizationIdentifier)
@@ -73,7 +69,7 @@ func newLinearAISession(ctx context.Context, config linearAISessionConfig) (*lin
 
 func newLinearAISessionForCancellation(ctx context.Context, config linearAISessionConfig) (*linearAISession, error) {
 	tokenHandler := newTokenHandler(tokenHandlerConfig{
-		ForSecrets: config.ForSecrets,
+		ForSecrets: config.App.GetForSecrets(),
 		Client:     config.Client,
 	})
 	accessToken, err := tokenHandler.GetLinearAccessToken(ctx, config.Session.OrganizationIdentifier)
@@ -105,7 +101,7 @@ func (s *linearAISession) Process(ctx context.Context) error {
 	}
 
 	// TODO: Fix/Get git hosting provider
-	registry, ok := s.config.GitHostingRegistry[types.PlatformProvider_GitHub]
+	registry, ok := s.config.App.GetGitHostingPlatformRegistry()[types.PlatformProvider_GitHub]
 
 	if !ok {
 		err := errors.New("github hosting provider not register")
@@ -159,7 +155,7 @@ func (s *linearAISession) Process(ctx context.Context) error {
 
 	// TODO: Implement a way of choosing harnesses
 	harnessName := types.HarnessProvider_OpenCode
-	createHarness, ok := s.config.HarnessRegistry[harnessName]
+	createHarness, ok := s.config.App.GetHarnessRegistry()[harnessName]
 
 	if !ok {
 		err := fmt.Errorf("harness %s not found", types.HarnessProvider_OpenCode)
@@ -217,7 +213,7 @@ func (s *linearAISession) Process(ctx context.Context) error {
 		s.config.SessionEvent.Result = result
 		s.config.SessionEvent.GitRef = &result.PullRequest.HeadRefName
 		return telemetry.SpanErr(ctx, s.tracer, "linear.update_session_event", func(ctx context.Context) error {
-			return s.config.Sessions.UpdateSessionEventResult(ctx, s.config.SessionEvent)
+			return s.config.App.GetSessions().UpdateSessionEventResult(ctx, s.config.SessionEvent)
 		})
 	}
 
@@ -242,7 +238,7 @@ func (s *linearAISession) createPrompt(ctx context.Context) string {
 		Prompt:        agentActivityBody,
 	}
 
-	prompt, err := s.config.PromptFactory.Build(ctx, promptInput)
+	prompt, err := s.config.App.GetPromptFactory().Build(ctx, promptInput)
 	if err != nil {
 		slog.Error("failed to build prompt", "err", err, "event_identifier", s.config.SessionEvent.Identifier)
 		return ""
@@ -263,7 +259,7 @@ func (s *linearAISession) setAgentSessionExternalUrls(ctx context.Context) error
 		labelNames[i] = label.Name
 	}
 
-	if err := s.config.SessionConfigService.ConfigureSessionRepo(ctx, s.config.Session, labelNames, s.config.Sessions); err != nil {
+	if err := s.config.App.GetSessionConfigService().ConfigureSessionRepo(ctx, s.config.Session, labelNames, s.config.App.GetSessions()); err != nil {
 		return err
 	}
 

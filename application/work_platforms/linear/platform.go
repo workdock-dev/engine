@@ -21,45 +21,35 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/workdock-dev/engine/domain/factories"
+	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/ports"
-	"github.com/workdock-dev/engine/domain/repositories"
-	domain_service "github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/types"
 )
 
 // Config holds the dependencies required to run Linear sessions.
 type Config struct {
-	HarnessRegistry      ports.HarnessPlatformRegistry
-	GitHostingRegistry   ports.GitHostingPlatformRegistry
-	ForSecrets           ports.ForSecrets
-	ForEvent             ports.ForEventBus
-	Sessions             repositories.SessionRepository
-	Organizations        repositories.OrganizationRepository
-	Client               LinearClientInterface
-	GitHubAppInstallURL  string
-	SessionConfigService *domain_service.SessionConfigService
-	PromptFactory       *factories.PromptFactory
+	Client              LinearClientInterface
+	GitHubAppInstallURL string
 }
 
 // linearPlatform adapts AIService to the Linear provider. It normalizes Linear
 // webhook events and executes or stops sessions on the linearAISession worker.
 type linearPlatform struct {
+	app  *application.App
 	config Config
 }
 
-func New(config Config) ports.ForWorkPlatform {
+func New(config Config, app *application.App) ports.ForWorkPlatform {
 	p := &linearPlatform{
+		app:   app,
 		config: config,
 	}
 
-	// Subscribe to Linear webhook events to archive sandboxes when an issue
-	// transitions to a "done" status.
-	if config.ForEvent != nil {
+	if app.GetEventBus() != nil {
 		eventType := types.PlatformWebhookEvent(types.PlatformProvider_Linear)
 		slog.Debug("linearPlatform subscribed for event", "event_type", eventType)
 
-		config.ForEvent.Subscribe(
+		app.GetEventBus().Subscribe(
 			eventType,
 			func(ctx context.Context, event ports.DomainEvent) error {
 				e, ok := event.(types.WebhookEvent)
@@ -113,11 +103,11 @@ func (p *linearPlatform) CompleteOAuth(ctx context.Context, code, errorP string)
 		return "", types.ErrInternalServerError
 	}
 
-	if err := p.config.ForSecrets.Set(ctx, SecretsPath, event.Workspace.ID, string(data)); err != nil {
+	if err := p.app.GetForSecrets().Set(ctx, SecretsPath, event.Workspace.ID, string(data)); err != nil {
 		return "", types.ErrInternalServerError
 	}
 
-	if err := p.config.Organizations.UpsertOrganization(ctx, &types.Organization{
+	if err := p.app.GetOrganizations().UpsertOrganization(ctx, &types.Organization{
 		Identifier: event.Workspace.ID,
 		Provider:   types.PlatformProvider_Linear,
 		Name:       event.Workspace.Name,
@@ -205,18 +195,13 @@ func (p *linearPlatform) Process(ctx context.Context, config ports.ProcessConfig
 	}
 
 	service, err := newLinearAISession(ctx, linearAISessionConfig{
-		HarnessRegistry:      p.config.HarnessRegistry,
-		GitHostingRegistry:   p.config.GitHostingRegistry,
+		App:                   p.app,
 		Client:               p.config.Client,
-		ForSecrets:           p.config.ForSecrets,
-		Sessions:             p.config.Sessions,
 		Job:                  config.Job,
 		SessionEvent:         config.SessionEvent,
 		Session:              config.Session,
 		Payload:              &linearEvent,
 		GitHubAppInstallURL:  p.config.GitHubAppInstallURL,
-		SessionConfigService: p.config.SessionConfigService,
-		PromptFactory:        p.config.PromptFactory,
 	})
 
 	if err != nil {
@@ -229,9 +214,9 @@ func (p *linearPlatform) Process(ctx context.Context, config ports.ProcessConfig
 // Cancel stops an in-flight Linear session.
 func (p *linearPlatform) Cancel(ctx context.Context, session *types.Session) error {
 	service, err := newLinearAISessionForCancellation(ctx, linearAISessionConfig{
-		Client:     p.config.Client,
-		ForSecrets: p.config.ForSecrets,
-		Session:    session,
+		App:    p.app,
+		Client: p.config.Client,
+		Session: session,
 	})
 
 	if err != nil {
@@ -291,7 +276,7 @@ func (p *linearPlatform) castAnyToAgentSessionEventData(event any) (*AgentSessio
 // given issue ID, queries Linear for the current issue state, and only proceeds
 // with archiving when the issue state type is "completed".
 func (p *linearPlatform) archiveSandboxForIssue(ctx context.Context, issueId string) error {
-	sessions, err := p.config.Sessions.GetAgentSessionsByIssueId(ctx, issueId)
+	sessions, err := p.app.GetSessions().GetAgentSessionsByIssueId(ctx, issueId)
 
 	if err != nil {
 		slog.Error("failed to get sessions for issue", "err", err, "issue_id", issueId)
@@ -304,7 +289,7 @@ func (p *linearPlatform) archiveSandboxForIssue(ctx context.Context, issueId str
 	}
 
 	accessToken, err := newTokenHandler(tokenHandlerConfig{
-		ForSecrets: p.config.ForSecrets,
+		ForSecrets: p.app.GetForSecrets(),
 		Client:     p.config.Client,
 	}).GetLinearAccessToken(ctx, sessions[0].OrganizationIdentifier)
 
@@ -326,7 +311,7 @@ func (p *linearPlatform) archiveSandboxForIssue(ctx context.Context, issueId str
 	}
 
 	for _, session := range sessions {
-		harnessConstructor, ok := p.config.HarnessRegistry[types.HarnessProvider_OpenCode]
+		harnessConstructor, ok := p.app.GetHarnessRegistry()[types.HarnessProvider_OpenCode]
 
 		if !ok {
 			slog.Error("harness provider not found in registry", "provider", types.HarnessProvider_OpenCode)
