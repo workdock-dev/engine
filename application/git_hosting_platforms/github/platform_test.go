@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/repositories"
 	"github.com/workdock-dev/engine/domain/types"
@@ -136,6 +137,7 @@ type GitHubPlatformSuite struct {
 	events      *mockEventBus
 	connections *mockGitHubConnections
 	platform    *githubPlatform
+	mockApp     *application.App
 }
 
 func (s *GitHubPlatformSuite) SetupTest() {
@@ -144,13 +146,19 @@ func (s *GitHubPlatformSuite) SetupTest() {
 	s.events = new(mockEventBus)
 	s.connections = new(mockGitHubConnections)
 
+	s.events.On("Subscribe", mock.Anything, mock.Anything).Return()
+
+	s.mockApp = application.New()
+	application.WithSecretManager(s.mockApp, s.secrets)
+	application.WithEventBus(s.mockApp, s.events)
+	application.WithGitHubRepository(s.mockApp, s.connections)
+	s.mockApp.Init()
+
 	s.platform = &githubPlatform{
+		app:   s.mockApp,
 		config: GitHubPlatformConfig{
-			ForSecrets:        s.secrets,
-			ForEvents:         s.events,
-			GitHubConnections: s.connections,
-			Client:            s.client,
-			BotLoginName:      "workdock-bot",
+			Client:       s.client,
+			BotLoginName: "workdock-bot",
 		},
 		access: newGitHubAccess(githubAccessConfig{
 			ForSecrets:        s.secrets,
@@ -167,11 +175,9 @@ func (s *GitHubPlatformSuite) SetupTest() {
 
 func (s *GitHubPlatformSuite) TestNew() {
 	p := New(GitHubPlatformConfig{
-		Client:            s.client,
-		ForSecrets:        s.secrets,
-		ForEvents:         s.events,
-		GitHubConnections: s.connections,
-	})
+		Client:       s.client,
+		BotLoginName: "workdock-bot",
+	}, s.mockApp)
 	s.NotNil(p)
 }
 

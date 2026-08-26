@@ -22,7 +22,7 @@ import (
 )
 
 func (s *Server) handleLinearWebhook(w http.ResponseWriter, r *http.Request) {
-	if err := s.app.WebhookService.On(
+	if err := s.app.GetWebhookService().On(
 		r.Context(),
 		types.PlatformProvider_Linear,
 		types.WebhookRequest{

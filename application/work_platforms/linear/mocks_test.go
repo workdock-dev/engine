@@ -162,6 +162,24 @@ func (m *mockSessions) CancelSession(ctx context.Context, queuedBy, reason strin
 	return args.Int(0), args.Error(1)
 }
 
+func (m *mockSessions) GetGitHubConnection(ctx context.Context, repoFullName string) (*types.GitHubConnection, error) {
+	args := m.Called(ctx, repoFullName)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*types.GitHubConnection), args.Error(1)
+}
+
+func (m *mockSessions) UpsertGitHubConnection(ctx context.Context, connection *types.GitHubConnection) error {
+	args := m.Called(ctx, connection)
+	return args.Error(0)
+}
+
+func (m *mockSessions) ResetGitHubConnection(ctx context.Context, installationId string, repos []string) error {
+	args := m.Called(ctx, installationId, repos)
+	return args.Error(0)
+}
+
 type mockOrganizations struct {
 	mock.Mock
 }
@@ -225,11 +243,25 @@ func (m *mockGitHosting) Webhook(ctx context.Context, req types.WebhookRequest) 
 	return args.Get(0), args.Get(1).(types.WebhookEventType), args.Error(2)
 }
 
+type mockEventBus struct {
+	mock.Mock
+}
+
+func (m *mockEventBus) Publish(ctx context.Context, event ports.DomainEvent) error {
+	args := m.Called(ctx, event)
+	return args.Error(0)
+}
+
+func (m *mockEventBus) Subscribe(eventType string, handler ports.EventHandler) {
+	m.Called(eventType, handler)
+}
+
 // Compile-time interface checks.
 var _ LinearClientInterface = (*mockLinearClient)(nil)
 var _ ports.ForSecrets = (*mockSecrets)(nil)
 var _ ports.ForHarnessPlatform = (*mockHarness)(nil)
 var _ ports.ForGitHostingPlatform = (*mockGitHosting)(nil)
+var _ ports.ForEventBus = (*mockEventBus)(nil)
 
 // tracerNoop returns a no-op tracer for tests.
 func tracerNoop() trace.Tracer {

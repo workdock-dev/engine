@@ -21,7 +21,7 @@ import (
 )
 
 func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
-	if err := s.app.WebhookService.On(r.Context(), types.PlatformProvider_GitHub, types.WebhookRequest{
+	if err := s.app.GetWebhookService().On(r.Context(), types.PlatformProvider_GitHub, types.WebhookRequest{
 		Headers:    r.Header,
 		RemoteAddr: r.RemoteAddr,
 		Body:       r.Body,

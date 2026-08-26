@@ -19,6 +19,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/types"
 	"github.com/stretchr/testify/mock"
@@ -35,6 +36,8 @@ type LinearAISessionSuite struct {
 	secrets       *mockSecrets
 	sessions      *mockSessions
 	organizations *mockOrganizations
+	events       *mockEventBus
+	mockApp       *application.App
 }
 
 func (s *LinearAISessionSuite) SetupTest() {
@@ -42,6 +45,16 @@ func (s *LinearAISessionSuite) SetupTest() {
 	s.secrets = new(mockSecrets)
 	s.sessions = new(mockSessions)
 	s.organizations = new(mockOrganizations)
+	s.events = new(mockEventBus)
+	s.events.On("Subscribe", mock.Anything, mock.Anything).Return()
+
+	s.mockApp = application.New()
+	application.WithSecretManager(s.mockApp, s.secrets)
+	application.WithSessionRepository(s.mockApp, s.sessions)
+	application.WithOrganizationRepository(s.mockApp, s.organizations)
+	application.WithGitHubRepository(s.mockApp, s.sessions)
+	application.WithEventBus(s.mockApp, s.events)
+	s.mockApp.Init()
 }
 
 func (s *LinearAISessionSuite) validTokenRaw() string {
@@ -107,9 +120,9 @@ func (s *LinearAISessionSuite) TestNewLinearAISession_TokenError() {
 	s.secrets.On("Get", mock.Anything, SecretsPath, "org-1").Return("", errors.New("secrets error"))
 
 	sess, err := newLinearAISession(context.Background(), linearAISessionConfig{
-		ForSecrets: s.secrets,
-		Client:     s.client,
-		Session:    &types.Session{OrganizationIdentifier: "org-1"},
+		App:      s.mockApp,
+		Client:   s.client,
+		Session:  &types.Session{OrganizationIdentifier: "org-1"},
 	})
 	s.Error(err)
 	s.Nil(sess)
@@ -119,9 +132,9 @@ func (s *LinearAISessionSuite) TestNewLinearAISession_Success() {
 	s.secrets.On("Get", mock.Anything, SecretsPath, "org-1").Return(s.validTokenRaw(), nil)
 
 	sess, err := newLinearAISession(context.Background(), linearAISessionConfig{
-		ForSecrets: s.secrets,
-		Client:     s.client,
-		Session:    &types.Session{OrganizationIdentifier: "org-1"},
+		App:      s.mockApp,
+		Client:   s.client,
+		Session:  &types.Session{OrganizationIdentifier: "org-1"},
 	})
 	s.NoError(err)
 	s.NotNil(sess)
@@ -137,9 +150,9 @@ func (s *LinearAISessionSuite) TestNewLinearAISessionForCancellation_TokenError(
 	s.secrets.On("Get", mock.Anything, SecretsPath, "org-1").Return("", errors.New("secrets error"))
 
 	sess, err := newLinearAISessionForCancellation(context.Background(), linearAISessionConfig{
-		ForSecrets: s.secrets,
-		Client:     s.client,
-		Session:    &types.Session{OrganizationIdentifier: "org-1"},
+		App:      s.mockApp,
+		Client:   s.client,
+		Session:  &types.Session{OrganizationIdentifier: "org-1"},
 	})
 	s.Error(err)
 	s.Nil(sess)
@@ -149,9 +162,9 @@ func (s *LinearAISessionSuite) TestNewLinearAISessionForCancellation_Success() {
 	s.secrets.On("Get", mock.Anything, SecretsPath, "org-1").Return(s.validTokenRaw(), nil)
 
 	sess, err := newLinearAISessionForCancellation(context.Background(), linearAISessionConfig{
-		ForSecrets: s.secrets,
-		Client:     s.client,
-		Session:    &types.Session{OrganizationIdentifier: "org-1"},
+		App:      s.mockApp,
+		Client:   s.client,
+		Session:  &types.Session{OrganizationIdentifier: "org-1"},
 	})
 	s.NoError(err)
 	s.NotNil(sess)
@@ -187,6 +200,7 @@ func (s *LinearAISessionSuite) TestCancel() {
 func (s *LinearAISessionSuite) TestCreatePrompt_NilRepo() {
 	sess := &linearAISession{
 		config: linearAISessionConfig{
+			App:          s.mockApp,
 			Session:      &types.Session{RepoFullName: nil},
 			SessionEvent: s.baseSessionEvent(),
 			Payload: &AgentSessionEventData{
@@ -207,6 +221,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_WithRepo() {
 	repo := "org/repo"
 	sess := &linearAISession{
 		config: linearAISessionConfig{
+			App:          s.mockApp,
 			Session:      &types.Session{RepoFullName: &repo},
 			SessionEvent: s.baseSessionEvent(),
 			Payload: &AgentSessionEventData{
@@ -226,6 +241,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_WithGitRefAndSeed() {
 	seed := "seed-1"
 	sess := &linearAISession{
 		config: linearAISessionConfig{
+			App:          s.mockApp,
 			Session:      &types.Session{RepoFullName: nil},
 			SessionEvent: &types.SessionEvent{GitRef: &gitRef, Seed: &seed},
 			Payload: &AgentSessionEventData{
@@ -243,6 +259,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_WithGitRefAndSeed() {
 func (s *LinearAISessionSuite) TestCreatePrompt_WithAgentActivity() {
 	sess := &linearAISession{
 		config: linearAISessionConfig{
+			App:          s.mockApp,
 			Session:      &types.Session{RepoFullName: nil},
 			SessionEvent: s.baseSessionEvent(),
 			Payload: &AgentSessionEventData{
@@ -264,6 +281,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_NilGitRef_WithSeed() {
 	seed := "seed-1"
 	sess := &linearAISession{
 		config: linearAISessionConfig{
+			App:          s.mockApp,
 			Session:      &types.Session{RepoFullName: nil},
 			SessionEvent: &types.SessionEvent{GitRef: nil, Seed: &seed},
 			Payload: &AgentSessionEventData{
@@ -285,6 +303,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_NilGitRef_WithSeed() {
 func (s *LinearAISessionSuite) TestCreatePrompt_ContainsPullRequestRules() {
 	sess := &linearAISession{
 		config: linearAISessionConfig{
+			App:          s.mockApp,
 			Session:      &types.Session{RepoFullName: nil},
 			SessionEvent: s.baseSessionEvent(),
 			Payload: &AgentSessionEventData{
@@ -468,12 +487,11 @@ func (s *LinearAISessionSuite) TestNotifyGitHubConnectionRequired() {
 func (s *LinearAISessionSuite) newProcessSession(payload *AgentSessionEventData) *linearAISession {
 	return &linearAISession{
 		config: linearAISessionConfig{
-			Session:      s.baseSession(),
+			App:         s.mockApp,
+			Session:     s.baseSession(),
 			SessionEvent: s.baseSessionEvent(),
-			Payload:      payload,
-			Client:       s.client,
-			ForSecrets:   s.secrets,
-			Sessions:     s.sessions,
+			Payload:     payload,
+			Client:      s.client,
 		},
 		accessToken: "at_valid",
 		tracer:      tracerNoop(),
@@ -493,8 +511,8 @@ func (s *LinearAISessionSuite) TestProcess_SetExternalURLError() {
 
 func (s *LinearAISessionSuite) TestProcess_NoGitHubRegistry() {
 	payload := s.basePayload()
+	application.WithGitHostingPlatformRegistry(s.mockApp,ports.GitHostingPlatformRegistry{})
 	sess := s.newProcessSession(payload)
-	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{}
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	s.client.On("CreateAgentActivity", mock.Anything, "at_valid", mock.Anything).Return(nil)
@@ -509,9 +527,9 @@ func (s *LinearAISessionSuite) TestProcess_VerifyAccessConnectionReRequested() {
 	sess := s.newProcessSession(payload)
 
 	gitHosting := new(mockGitHosting)
-	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{
+	application.WithGitHostingPlatformRegistry(s.mockApp,ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(false, "", types.ErrGitHubConnectionReRequested)
@@ -529,9 +547,9 @@ func (s *LinearAISessionSuite) TestProcess_VerifyAccessConnectionReRequested_Not
 	sess := s.newProcessSession(payload)
 
 	gitHosting := new(mockGitHosting)
-	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{
+	application.WithGitHostingPlatformRegistry(s.mockApp,ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(false, "", types.ErrGitHubConnectionReRequested)
@@ -546,9 +564,9 @@ func (s *LinearAISessionSuite) TestProcess_VerifyAccessOtherError() {
 	sess := s.newProcessSession(payload)
 
 	gitHosting := new(mockGitHosting)
-	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{
+	application.WithGitHostingPlatformRegistry(s.mockApp,ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(false, "", errors.New("verify error"))
@@ -568,9 +586,9 @@ func (s *LinearAISessionSuite) TestProcess_AccessDenied() {
 	sess.config.Session = session
 
 	gitHosting := new(mockGitHosting)
-	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{
+	application.WithGitHostingPlatformRegistry(s.mockApp,ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", &repo).Return(false, "", nil)
@@ -592,9 +610,9 @@ func (s *LinearAISessionSuite) TestProcess_AccessDenied_RequestConnectionError()
 	sess.config.Session = session
 
 	gitHosting := new(mockGitHosting)
-	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{
+	application.WithGitHostingPlatformRegistry(s.mockApp,ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", &repo).Return(false, "", nil)
@@ -615,9 +633,9 @@ func (s *LinearAISessionSuite) TestProcess_AccessDenied_NotifyError() {
 	sess.config.Session = session
 
 	gitHosting := new(mockGitHosting)
-	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{
+	application.WithGitHostingPlatformRegistry(s.mockApp,ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", &repo).Return(false, "", nil)
@@ -631,12 +649,12 @@ func (s *LinearAISessionSuite) TestProcess_AccessDenied_NotifyError() {
 func (s *LinearAISessionSuite) TestProcess_NoHarness() {
 	payload := s.basePayload()
 	sess := s.newProcessSession(payload)
-	sess.config.HarnessRegistry = ports.HarnessPlatformRegistry{}
+	application.WithHarnessRegistry(s.mockApp,ports.HarnessPlatformRegistry{})
 
 	gitHosting := new(mockGitHosting)
-	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{
+	application.WithGitHostingPlatformRegistry(s.mockApp,ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(true, "", nil)
@@ -652,16 +670,16 @@ func (s *LinearAISessionSuite) TestProcess_CreateHarnessError() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	sess.config.HarnessRegistry = ports.HarnessPlatformRegistry{
+	application.WithHarnessRegistry(s.mockApp,ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return nil, errors.New("harness error")
 		},
-	}
+	})
 
 	gitHosting := new(mockGitHosting)
-	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{
+	application.WithGitHostingPlatformRegistry(s.mockApp,ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(true, "", nil)
@@ -676,16 +694,16 @@ func (s *LinearAISessionSuite) TestProcess_CreateHarnessContextCanceled() {
 	payload := s.basePayload()
 	sess := s.newProcessSession(payload)
 
-	sess.config.HarnessRegistry = ports.HarnessPlatformRegistry{
+	application.WithHarnessRegistry(s.mockApp,ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return nil, context.Canceled
 		},
-	}
+	})
 
 	gitHosting := new(mockGitHosting)
-	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{
+	application.WithGitHostingPlatformRegistry(s.mockApp,ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(true, "", nil)
@@ -700,16 +718,16 @@ func (s *LinearAISessionSuite) TestProcess_HarnessRunContextCanceled() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	sess.config.HarnessRegistry = ports.HarnessPlatformRegistry{
+	application.WithHarnessRegistry(s.mockApp,ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
-	}
+	})
 
 	gitHosting := new(mockGitHosting)
-	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{
+	application.WithGitHostingPlatformRegistry(s.mockApp,ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(true, "", nil)
@@ -726,16 +744,16 @@ func (s *LinearAISessionSuite) TestProcess_HarnessRunDeadlineExceeded() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	sess.config.HarnessRegistry = ports.HarnessPlatformRegistry{
+	application.WithHarnessRegistry(s.mockApp,ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
-	}
+	})
 
 	gitHosting := new(mockGitHosting)
-	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{
+	application.WithGitHostingPlatformRegistry(s.mockApp,ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(true, "", nil)
@@ -752,16 +770,16 @@ func (s *LinearAISessionSuite) TestProcess_HarnessRunUnhealthy() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	sess.config.HarnessRegistry = ports.HarnessPlatformRegistry{
+	application.WithHarnessRegistry(s.mockApp,ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
-	}
+	})
 
 	gitHosting := new(mockGitHosting)
-	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{
+	application.WithGitHostingPlatformRegistry(s.mockApp,ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(true, "", nil)
@@ -778,16 +796,16 @@ func (s *LinearAISessionSuite) TestProcess_HarnessRunOtherError() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	sess.config.HarnessRegistry = ports.HarnessPlatformRegistry{
+	application.WithHarnessRegistry(s.mockApp,ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
-	}
+	})
 
 	gitHosting := new(mockGitHosting)
-	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{
+	application.WithGitHostingPlatformRegistry(s.mockApp,ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(true, "", nil)
@@ -804,16 +822,16 @@ func (s *LinearAISessionSuite) TestProcess_ResultWithPR() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	sess.config.HarnessRegistry = ports.HarnessPlatformRegistry{
+	application.WithHarnessRegistry(s.mockApp,ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
-	}
+	})
 
 	gitHosting := new(mockGitHosting)
-	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{
+	application.WithGitHostingPlatformRegistry(s.mockApp,ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	pr := &types.PullRequest{HeadRefName: "feature", Number: 42, URL: "https://github.com/org/repo/pull/42"}
 	result := &types.SessionEventResult{PullRequest: pr}
@@ -836,16 +854,16 @@ func (s *LinearAISessionSuite) TestProcess_ResultWithPR_UpdateError() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	sess.config.HarnessRegistry = ports.HarnessPlatformRegistry{
+	application.WithHarnessRegistry(s.mockApp,ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
-	}
+	})
 
 	gitHosting := new(mockGitHosting)
-	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{
+	application.WithGitHostingPlatformRegistry(s.mockApp,ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	pr := &types.PullRequest{HeadRefName: "feature", Number: 42, URL: "https://github.com/org/repo/pull/42"}
 	result := &types.SessionEventResult{PullRequest: pr}
@@ -866,16 +884,16 @@ func (s *LinearAISessionSuite) TestProcess_ResultNil() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	sess.config.HarnessRegistry = ports.HarnessPlatformRegistry{
+	application.WithHarnessRegistry(s.mockApp,ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
-	}
+	})
 
 	gitHosting := new(mockGitHosting)
-	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{
+	application.WithGitHostingPlatformRegistry(s.mockApp,ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(true, "", nil)
@@ -892,16 +910,16 @@ func (s *LinearAISessionSuite) TestProcess_ResultWithoutPR() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	sess.config.HarnessRegistry = ports.HarnessPlatformRegistry{
+	application.WithHarnessRegistry(s.mockApp,ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
-	}
+	})
 
 	gitHosting := new(mockGitHosting)
-	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{
+	application.WithGitHostingPlatformRegistry(s.mockApp,ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	result := &types.SessionEventResult{}
 
@@ -921,16 +939,16 @@ func (s *LinearAISessionSuite) TestProcess_ActionNotCreated() {
 	sess := s.newProcessSession(payload)
 
 	harness := new(mockHarness)
-	sess.config.HarnessRegistry = ports.HarnessPlatformRegistry{
+	application.WithHarnessRegistry(s.mockApp,ports.HarnessPlatformRegistry{
 		types.HarnessProvider_OpenCode: func(c ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
 			return harness, nil
 		},
-	}
+	})
 
 	gitHosting := new(mockGitHosting)
-	sess.config.GitHostingRegistry = ports.GitHostingPlatformRegistry{
+	application.WithGitHostingPlatformRegistry(s.mockApp,ports.GitHostingPlatformRegistry{
 		types.PlatformProvider_GitHub: gitHosting,
-	}
+	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
 	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(true, "", nil)
