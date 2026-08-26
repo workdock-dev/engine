@@ -213,6 +213,9 @@ func main() {
 		types.PlatformProvider_Linear: linearPlatform,
 	})
 
+	// Complete the application initialization
+	app.Init()
+
 	server, err := api.NewHTTPServer(cfg.ServerAddress, *app)
 	exit(err)
 

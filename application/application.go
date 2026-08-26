@@ -96,7 +96,7 @@ func WithQueue(app *App, value interfaces.Queue) {
 	app.forQueue = value
 }
 
-func (app *App) Run(ctx context.Context, taskSchedulerConfig async.TaskSchedulerConfig) error {
+func (app *App) Init() {
 	app.aiService = domain_service.NewAIService(domain_service.AIServiceConfig{
 		WorkPlatformRegistry: app.workPlatformRegistry,
 		ForEvent:             app.eventBus,
@@ -119,10 +119,12 @@ func (app *App) Run(ctx context.Context, taskSchedulerConfig async.TaskScheduler
 	app.sessionResultService = &domain_service.SessionResultService{}
 	app.promptFactory = &factories.PromptFactory{}
 	app.agentConfigFactory = &factories.AgentConfigFactory{}
+}
 
+func (app *App) Run(ctx context.Context, config async.TaskSchedulerConfig) error {
 	taskScheduler, err := async.NewTaskScheduler(
 		app.forQueue,
-		taskSchedulerConfig,
+		config,
 		app.aiService.Process,
 	)
 
