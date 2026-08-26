@@ -35,13 +35,13 @@ type Config struct {
 // linearPlatform adapts AIService to the Linear provider. It normalizes Linear
 // webhook events and executes or stops sessions on the linearAISession worker.
 type linearPlatform struct {
-	app  *application.App
+	app    *application.App
 	config Config
 }
 
 func New(config Config, app *application.App) ports.ForWorkPlatform {
 	p := &linearPlatform{
-		app:   app,
+		app:    app,
 		config: config,
 	}
 
@@ -195,13 +195,13 @@ func (p *linearPlatform) Process(ctx context.Context, config ports.ProcessConfig
 	}
 
 	service, err := newLinearAISession(ctx, linearAISessionConfig{
-		App:                   p.app,
-		Client:               p.config.Client,
-		Job:                  config.Job,
-		SessionEvent:         config.SessionEvent,
-		Session:              config.Session,
-		Payload:              &linearEvent,
-		GitHubAppInstallURL:  p.config.GitHubAppInstallURL,
+		App:                 p.app,
+		Client:              p.config.Client,
+		Job:                 config.Job,
+		SessionEvent:        config.SessionEvent,
+		Session:             config.Session,
+		Payload:             &linearEvent,
+		GitHubAppInstallURL: p.config.GitHubAppInstallURL,
 	})
 
 	if err != nil {
@@ -214,8 +214,8 @@ func (p *linearPlatform) Process(ctx context.Context, config ports.ProcessConfig
 // Cancel stops an in-flight Linear session.
 func (p *linearPlatform) Cancel(ctx context.Context, session *types.Session) error {
 	service, err := newLinearAISessionForCancellation(ctx, linearAISessionConfig{
-		App:    p.app,
-		Client: p.config.Client,
+		App:     p.app,
+		Client:  p.config.Client,
 		Session: session,
 	})
 

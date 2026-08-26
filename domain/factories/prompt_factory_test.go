@@ -18,8 +18,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/workdock-dev/engine/domain/types"
 	"github.com/stretchr/testify/suite"
+	"github.com/workdock-dev/engine/domain/types"
 )
 
 type PromptFactorySuite struct {
@@ -91,7 +91,7 @@ func (s *PromptFactorySuite) TestBuild_WithAgentActivity() {
 			Description: "Test description",
 		},
 		PromptContext: "",
-		Prompt: &agentActivityBody,
+		Prompt:        &agentActivityBody,
 	}
 
 	prompt, err := factory.Build(context.Background(), input)

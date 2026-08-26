@@ -29,9 +29,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/workdock-dev/engine/application/work_platforms/linear"
 	"github.com/workdock-dev/engine/domain/types"
-	"github.com/stretchr/testify/suite"
 )
 
 type LinearServiceSuite struct {

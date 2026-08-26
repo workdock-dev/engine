@@ -225,8 +225,8 @@ func (s *linearAISession) createPrompt(ctx context.Context) string {
 	}
 
 	promptInput := factories.WorkItemPromptInput{
-		Session:        s.config.Session,
-		SessionEvent:   s.config.SessionEvent,
+		Session:      s.config.Session,
+		SessionEvent: s.config.SessionEvent,
 		Issue: &types.Issue{
 			Title:       s.config.Payload.AgentSession.Issue.Title,
 			Identifier:  s.config.Payload.AgentSession.Issue.Identifier,

@@ -40,8 +40,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/workdock-dev/engine/domain/types"
 	"github.com/stretchr/testify/suite"
+	"github.com/workdock-dev/engine/domain/types"
 )
 
 type GitHubClientSuite struct {

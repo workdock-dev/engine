@@ -26,11 +26,11 @@ import (
 type PromptFactory struct{}
 
 type WorkItemPromptInput struct {
-	Session        *types.Session
-	SessionEvent   *types.SessionEvent
-	Issue          *types.Issue
-	PromptContext  string
-	Prompt  *string
+	Session       *types.Session
+	SessionEvent  *types.SessionEvent
+	Issue         *types.Issue
+	PromptContext string
+	Prompt        *string
 }
 
 func (f *PromptFactory) Build(ctx context.Context, input WorkItemPromptInput) (string, error) {

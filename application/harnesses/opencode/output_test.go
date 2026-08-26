@@ -21,9 +21,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/workdock-dev/engine/domain/types"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"github.com/workdock-dev/engine/domain/types"
 )
 
 type OutputSuite struct {

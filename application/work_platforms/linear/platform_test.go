@@ -21,11 +21,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/suite"
 	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/types"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/suite"
 )
 
 func TestLinearPlatformSuite(t *testing.T) {
@@ -38,7 +38,7 @@ type LinearPlatformSuite struct {
 	secrets       *mockSecrets
 	sessions      *mockSessions
 	organizations *mockOrganizations
-	events       *mockEventBus
+	events        *mockEventBus
 	platform      *linearPlatform
 	mockApp       *application.App
 }
@@ -60,7 +60,7 @@ func (s *LinearPlatformSuite) SetupTest() {
 	s.mockApp.Init()
 
 	s.platform = &linearPlatform{
-		app:   s.mockApp,
+		app: s.mockApp,
 		config: Config{
 			Client: s.client,
 		},

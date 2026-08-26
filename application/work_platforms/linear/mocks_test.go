@@ -17,9 +17,9 @@ package linear
 import (
 	"context"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/types"
-	"github.com/stretchr/testify/mock"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 )

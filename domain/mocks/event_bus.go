@@ -17,8 +17,8 @@ package mocks
 import (
 	"context"
 
-	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/stretchr/testify/mock"
+	"github.com/workdock-dev/engine/domain/ports"
 )
 
 type EventBus struct {

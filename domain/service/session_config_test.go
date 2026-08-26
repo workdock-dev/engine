@@ -19,16 +19,16 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/workdock-dev/engine/domain/mocks"
-	"github.com/workdock-dev/engine/domain/types"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"github.com/workdock-dev/engine/domain/mocks"
+	"github.com/workdock-dev/engine/domain/types"
 )
 
 type SessionConfigServiceSuite struct {
 	suite.Suite
 	sessionRepo *mocks.SessionRepository
-	session    *types.Session
+	session     *types.Session
 }
 
 func TestSessionConfigServiceSuite(t *testing.T) {

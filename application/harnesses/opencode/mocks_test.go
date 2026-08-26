@@ -18,8 +18,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/workdock-dev/engine/domain/types"
 	"github.com/stretchr/testify/mock"
+	"github.com/workdock-dev/engine/domain/types"
 )
 
 type mockSandbox struct {

@@ -28,19 +28,19 @@ import (
 )
 
 type GitHubPlatformConfig struct {
-	Client     ClientInterface
+	Client       ClientInterface
 	BotLoginName string
 }
 
 type githubPlatform struct {
-	app     *application.App
-	config  GitHubPlatformConfig
-	access  *githubAccess
+	app    *application.App
+	config GitHubPlatformConfig
+	access *githubAccess
 }
 
 func New(config GitHubPlatformConfig, app *application.App) ports.ForGitHostingPlatform {
 	return &githubPlatform{
-		app:   app,
+		app:    app,
 		config: config,
 		access: newGitHubAccess(githubAccessConfig{
 			Client:            config.Client,

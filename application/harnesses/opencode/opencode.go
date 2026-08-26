@@ -97,11 +97,11 @@ type Config struct {
 // configuration, the prompt upload, and parsing the opencode run output. Each
 // instance has its own daytona sandbox, isolating users from each other.
 type OpenCode struct {
-	app                *application.App
-	config             Config
-	linearAccessToken  string
-	githubAccessToken  string
-	secretIds          []string
+	app               *application.App
+	config            Config
+	linearAccessToken string
+	githubAccessToken string
+	secretIds         []string
 	sandboxCreated    bool
 	sandboxSecrets    map[string]string
 	tracer            trace.Tracer
@@ -111,7 +111,7 @@ type OpenCode struct {
 // secrets and creates the daytona sandbox instance.
 func New(config Config, app *application.App) (*OpenCode, error) {
 	h := &OpenCode{
-		app:   app,
+		app:    app,
 		config: config,
 		tracer: otel.Tracer("workdock.opencode"),
 	}

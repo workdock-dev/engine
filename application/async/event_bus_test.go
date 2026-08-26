@@ -20,8 +20,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/stretchr/testify/suite"
+	"github.com/workdock-dev/engine/domain/ports"
 )
 
 type event struct {

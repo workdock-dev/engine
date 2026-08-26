@@ -17,8 +17,8 @@ package mocks
 import (
 	"context"
 
-	"github.com/workdock-dev/engine/domain/types"
 	"github.com/stretchr/testify/mock"
+	"github.com/workdock-dev/engine/domain/types"
 )
 
 type Webhooks struct {
