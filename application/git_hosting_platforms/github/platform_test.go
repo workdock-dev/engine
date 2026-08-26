@@ -146,6 +146,8 @@ func (s *GitHubPlatformSuite) SetupTest() {
 	s.events = new(mockEventBus)
 	s.connections = new(mockGitHubConnections)
 
+	s.events.On("Subscribe", mock.Anything, mock.Anything).Return()
+
 	s.mockApp, _ = application.New(application.Config{
 		ForSecrets:        s.secrets,
 		EventBus:          s.events,
