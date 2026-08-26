@@ -226,7 +226,7 @@ func (s *linearAISession) Process(ctx context.Context) error {
 
 func (s *linearAISession) createPrompt(ctx context.Context) string {
 	var agentActivityBody *string
-	if s.config.Payload.AgentActivity != nil && s.config.Payload.AgentActivity.Content != nil {
+	if s.config.Payload.AgentActivity != nil {
 		agentActivityBody = &s.config.Payload.AgentActivity.Content.Body
 	}
 
