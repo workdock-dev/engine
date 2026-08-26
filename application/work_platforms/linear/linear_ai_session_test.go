@@ -197,7 +197,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_NilRepo() {
 		},
 	}
 
-	prompt := sess.createPrompt()
+	prompt := sess.createPrompt(context.Background())
 	s.Contains(prompt, "Fix")
 	s.Contains(prompt, "ENG-1")
 	s.NotContains(prompt, "https://github.com/")
@@ -217,7 +217,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_WithRepo() {
 		},
 	}
 
-	prompt := sess.createPrompt()
+	prompt := sess.createPrompt(context.Background())
 	s.Contains(prompt, "org/repo")
 }
 
@@ -236,7 +236,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_WithGitRefAndSeed() {
 		},
 	}
 
-	prompt := sess.createPrompt()
+	prompt := sess.createPrompt(context.Background())
 	s.Contains(prompt, "review comments")
 }
 
@@ -256,7 +256,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_WithAgentActivity() {
 		},
 	}
 
-	prompt := sess.createPrompt()
+	prompt := sess.createPrompt(context.Background())
 	s.Contains(prompt, "Please fix the API")
 }
 
@@ -277,7 +277,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_NilGitRef_WithSeed() {
 		},
 	}
 
-	prompt := sess.createPrompt()
+	prompt := sess.createPrompt(context.Background())
 	s.Contains(prompt, "Update the code")
 	s.NotContains(prompt, "There are review comments on the pull request")
 }
@@ -295,7 +295,7 @@ func (s *LinearAISessionSuite) TestCreatePrompt_ContainsPullRequestRules() {
 		},
 	}
 
-	prompt := sess.createPrompt()
+	prompt := sess.createPrompt(context.Background())
 	s.Contains(prompt, "## Pull Request Rules")
 	s.Contains(prompt, "Never close a pull request unless the user explicitly requests that it be closed.")
 	s.Contains(prompt, "address all applicable review comments within the same request")
@@ -459,323 +459,6 @@ func (s *LinearAISessionSuite) TestNotifyGitHubConnectionRequired() {
 		return input.Content.Type == AgentActivityContentType_Elicitation &&
 			input.Signal == SignalType_Auth
 	}))
-}
-
-// ---------------------------------------------------------------------------
-// setAgentSessionExternalUrls
-// ---------------------------------------------------------------------------
-
-func (s *LinearAISessionSuite) TestSetAgentSessionExternalUrls_GetIssueLabelsError() {
-	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, errors.New("labels error"))
-
-	sess := &linearAISession{
-		config: linearAISessionConfig{
-			Session:      s.baseSession(),
-			SessionEvent: s.baseSessionEvent(),
-			Payload:      s.basePayload(),
-			Client:       s.client,
-			Sessions:     s.sessions,
-		},
-		accessToken: "at_valid",
-		tracer:      tracerNoop(),
-	}
-
-	err := sess.setAgentSessionExternalUrls(context.Background())
-	s.Error(err)
-}
-
-func (s *LinearAISessionSuite) TestSetAgentSessionExternalUrls_NoRepoLabels() {
-	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{
-		{ID: "1", Name: "bug"},
-	}, nil)
-
-	sess := &linearAISession{
-		config: linearAISessionConfig{
-			Session:      s.baseSession(),
-			SessionEvent: s.baseSessionEvent(),
-			Payload:      s.basePayload(),
-			Client:       s.client,
-			Sessions:     s.sessions,
-		},
-		accessToken: "at_valid",
-		tracer:      tracerNoop(),
-	}
-
-	err := sess.setAgentSessionExternalUrls(context.Background())
-	s.NoError(err)
-	s.client.AssertNotCalled(s.T(), "SetExternalURLs")
-	s.sessions.AssertNotCalled(s.T(), "UpsertAgentSession")
-}
-
-func (s *LinearAISessionSuite) TestSetAgentSessionExternalUrls_RepoLabel_NilSessionRepo() {
-	session := s.baseSession()
-	session.RepoFullName = nil
-
-	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{
-		{ID: "1", Name: "repo=org/repo"},
-	}, nil)
-	s.sessions.On("UpsertAgentSession", mock.Anything, mock.Anything).Return(nil)
-	s.client.On("SetExternalURLs", mock.Anything, "at_valid", mock.Anything).Return(&AgentSessionUpdatePayload{}, nil)
-
-	sess := &linearAISession{
-		config: linearAISessionConfig{
-			Session:      session,
-			SessionEvent: s.baseSessionEvent(),
-			Payload:      s.basePayload(),
-			Client:       s.client,
-			Sessions:     s.sessions,
-		},
-		accessToken: "at_valid",
-		tracer:      tracerNoop(),
-	}
-
-	err := sess.setAgentSessionExternalUrls(context.Background())
-	s.NoError(err)
-	s.sessions.AssertCalled(s.T(), "UpsertAgentSession", mock.Anything, mock.Anything)
-	s.client.AssertCalled(s.T(), "SetExternalURLs", mock.Anything, "at_valid", mock.Anything)
-}
-
-func (s *LinearAISessionSuite) TestSetAgentSessionExternalUrls_RepoLabel_DifferentSessionRepo() {
-	session := s.baseSession()
-	otherRepo := "org/old-repo"
-	session.RepoFullName = &otherRepo
-
-	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{
-		{ID: "1", Name: "repo=org/new-repo"},
-	}, nil)
-	s.sessions.On("UpsertAgentSession", mock.Anything, mock.Anything).Return(nil)
-	s.client.On("SetExternalURLs", mock.Anything, "at_valid", mock.Anything).Return(&AgentSessionUpdatePayload{}, nil)
-
-	sess := &linearAISession{
-		config: linearAISessionConfig{
-			Session:      session,
-			SessionEvent: s.baseSessionEvent(),
-			Payload:      s.basePayload(),
-			Client:       s.client,
-			Sessions:     s.sessions,
-		},
-		accessToken: "at_valid",
-		tracer:      tracerNoop(),
-	}
-
-	err := sess.setAgentSessionExternalUrls(context.Background())
-	s.NoError(err)
-	s.sessions.AssertCalled(s.T(), "UpsertAgentSession", mock.Anything, mock.Anything)
-}
-
-func (s *LinearAISessionSuite) TestSetAgentSessionExternalUrls_RepoLabel_SameSessionRepo() {
-	session := s.baseSession()
-	sameRepo := "org/repo"
-	session.RepoFullName = &sameRepo
-
-	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{
-		{ID: "1", Name: "repo=org/repo"},
-	}, nil)
-	s.client.On("SetExternalURLs", mock.Anything, "at_valid", mock.Anything).Return(&AgentSessionUpdatePayload{}, nil)
-
-	sess := &linearAISession{
-		config: linearAISessionConfig{
-			Session:      session,
-			SessionEvent: s.baseSessionEvent(),
-			Payload:      s.basePayload(),
-			Client:       s.client,
-			Sessions:     s.sessions,
-		},
-		accessToken: "at_valid",
-		tracer:      tracerNoop(),
-	}
-
-	err := sess.setAgentSessionExternalUrls(context.Background())
-	s.NoError(err)
-	s.sessions.AssertNotCalled(s.T(), "UpsertAgentSession")
-}
-
-func (s *LinearAISessionSuite) TestSetAgentSessionExternalUrls_AlreadyHasRepoURL() {
-	session := s.baseSession()
-	session.RepoFullName = nil
-
-	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{
-		{ID: "1", Name: "repo=org/repo"},
-	}, nil)
-	s.sessions.On("UpsertAgentSession", mock.Anything, mock.Anything).Return(nil)
-	s.client.On("SetExternalURLs", mock.Anything, "at_valid", mock.Anything).Return(&AgentSessionUpdatePayload{}, nil)
-
-	sess := &linearAISession{
-		config: linearAISessionConfig{
-			Session:      session,
-			SessionEvent: s.baseSessionEvent(),
-			Payload: &AgentSessionEventData{
-				AgentSession: &AgentSession{
-					ID:        "session-1",
-					UpdatedAt: "2026-01-01T00:00:00Z",
-					Creator:   User{Name: "Alice"},
-					Issue: Issue{
-						ID:         "issue-1",
-						Title:      "Fix bug",
-						Identifier: "ENG-1",
-					},
-					ExternalUrls: []ExternalURL{
-						{Label: "repo", URL: "https://github.com/org/repo"},
-					},
-				},
-			},
-			Client:   s.client,
-			Sessions: s.sessions,
-		},
-		accessToken: "at_valid",
-		tracer:      tracerNoop(),
-	}
-
-	err := sess.setAgentSessionExternalUrls(context.Background())
-	s.NoError(err)
-	s.client.AssertNotCalled(s.T(), "SetExternalURLs")
-}
-
-func (s *LinearAISessionSuite) TestSetAgentSessionExternalUrls_UpdateExistingRepoLabel() {
-	session := s.baseSession()
-	session.RepoFullName = nil
-
-	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{
-		{ID: "1", Name: "repo=org/new-repo"},
-	}, nil)
-	s.sessions.On("UpsertAgentSession", mock.Anything, mock.Anything).Return(nil)
-	s.client.On("SetExternalURLs", mock.Anything, "at_valid", mock.Anything).Return(&AgentSessionUpdatePayload{}, nil)
-
-	sess := &linearAISession{
-		config: linearAISessionConfig{
-			Session:      session,
-			SessionEvent: s.baseSessionEvent(),
-			Payload: &AgentSessionEventData{
-				AgentSession: &AgentSession{
-					ID:        "session-1",
-					UpdatedAt: "2026-01-01T00:00:00Z",
-					Creator:   User{Name: "Alice"},
-					Issue: Issue{
-						ID:         "issue-1",
-						Title:      "Fix bug",
-						Identifier: "ENG-1",
-					},
-					ExternalUrls: []ExternalURL{
-						{Label: "repo", URL: "https://github.com/org/old-repo"},
-					},
-				},
-			},
-			Client:   s.client,
-			Sessions: s.sessions,
-		},
-		accessToken: "at_valid",
-		tracer:      tracerNoop(),
-	}
-
-	err := sess.setAgentSessionExternalUrls(context.Background())
-	s.NoError(err)
-	s.client.AssertCalled(s.T(), "SetExternalURLs", mock.Anything, "at_valid", mock.MatchedBy(func(input SetExternalURLsInput) bool {
-		for _, u := range input.ExternalURLs {
-			if u.Label == "repo" && u.URL == "https://github.com/org/new-repo" {
-				return true
-			}
-		}
-		return false
-	}))
-}
-
-func (s *LinearAISessionSuite) TestSetAgentSessionExternalUrls_AppendRepoLabel() {
-	session := s.baseSession()
-	session.RepoFullName = nil
-
-	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{
-		{ID: "1", Name: "repo=org/repo"},
-	}, nil)
-	s.sessions.On("UpsertAgentSession", mock.Anything, mock.Anything).Return(nil)
-	s.client.On("SetExternalURLs", mock.Anything, "at_valid", mock.Anything).Return(&AgentSessionUpdatePayload{}, nil)
-
-	sess := &linearAISession{
-		config: linearAISessionConfig{
-			Session:      session,
-			SessionEvent: s.baseSessionEvent(),
-			Payload: &AgentSessionEventData{
-				AgentSession: &AgentSession{
-					ID:        "session-1",
-					UpdatedAt: "2026-01-01T00:00:00Z",
-					Creator:   User{Name: "Alice"},
-					Issue: Issue{
-						ID:         "issue-1",
-						Title:      "Fix bug",
-						Identifier: "ENG-1",
-					},
-					ExternalUrls: []ExternalURL{
-						{Label: "docs", URL: "https://docs.example.com"},
-					},
-				},
-			},
-			Client:   s.client,
-			Sessions: s.sessions,
-		},
-		accessToken: "at_valid",
-		tracer:      tracerNoop(),
-	}
-
-	err := sess.setAgentSessionExternalUrls(context.Background())
-	s.NoError(err)
-	s.client.AssertCalled(s.T(), "SetExternalURLs", mock.Anything, "at_valid", mock.MatchedBy(func(input SetExternalURLsInput) bool {
-		for _, u := range input.ExternalURLs {
-			if u.Label == "repo" && u.URL == "https://github.com/org/repo" {
-				return true
-			}
-		}
-		return false
-	}))
-}
-
-func (s *LinearAISessionSuite) TestSetAgentSessionExternalUrls_SetExternalURLError() {
-	session := s.baseSession()
-	session.RepoFullName = nil
-
-	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{
-		{ID: "1", Name: "repo=org/repo"},
-	}, nil)
-	s.sessions.On("UpsertAgentSession", mock.Anything, mock.Anything).Return(nil)
-	s.client.On("SetExternalURLs", mock.Anything, "at_valid", mock.Anything).Return(nil, errors.New("set urls error"))
-
-	sess := &linearAISession{
-		config: linearAISessionConfig{
-			Session:      session,
-			SessionEvent: s.baseSessionEvent(),
-			Payload:      s.basePayload(),
-			Client:       s.client,
-			Sessions:     s.sessions,
-		},
-		accessToken: "at_valid",
-		tracer:      tracerNoop(),
-	}
-
-	err := sess.setAgentSessionExternalUrls(context.Background())
-	s.Error(err)
-}
-
-func (s *LinearAISessionSuite) TestSetAgentSessionExternalUrls_UpsertSessionError() {
-	session := s.baseSession()
-	session.RepoFullName = nil
-
-	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{
-		{ID: "1", Name: "repo=org/repo"},
-	}, nil)
-	s.sessions.On("UpsertAgentSession", mock.Anything, mock.Anything).Return(errors.New("upsert error"))
-
-	sess := &linearAISession{
-		config: linearAISessionConfig{
-			Session:      session,
-			SessionEvent: s.baseSessionEvent(),
-			Payload:      s.basePayload(),
-			Client:       s.client,
-			Sessions:     s.sessions,
-		},
-		accessToken: "at_valid",
-		tracer:      tracerNoop(),
-	}
-
-	err := sess.setAgentSessionExternalUrls(context.Background())
-	s.Error(err)
 }
 
 // ---------------------------------------------------------------------------

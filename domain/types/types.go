@@ -63,6 +63,12 @@ type Session struct {
 	RepoFullName           *string
 }
 
+type Issue struct {
+	Title       string
+	Identifier  string
+	Description string
+}
+
 type SessionEvent struct {
 	SessionIdentifier string
 	Identifier        string
@@ -115,6 +121,15 @@ type AgentElicitation struct {
 type AgentOption struct {
 	Label       string `json:"label"`
 	Description string `json:"description"`
+}
+
+const (
+	GitHubUrl = "https://github.com/"
+)
+
+type ExternalURL struct {
+	Label string
+	URL   string
 }
 
 // EventJob is the durable unit of work. It references a persisted SessionEvent

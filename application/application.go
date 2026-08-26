@@ -20,6 +20,7 @@ import (
 
 	"github.com/workdock-dev/engine/application/async"
 	"github.com/workdock-dev/engine/application/interfaces"
+	"github.com/workdock-dev/engine/domain/factories"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/repositories"
 	domain_service "github.com/workdock-dev/engine/domain/service"
@@ -49,6 +50,12 @@ type App struct {
 
 	taskScheduler  *async.TaskScheduler
 	WebhookService *domain_service.WebhookService
+
+	sessionConfigService    *domain_service.SessionConfigService
+	gitEventFilterService   *domain_service.GitEventFilterService
+	sessionResultService    *domain_service.SessionResultService
+	promptFactory           *factories.PromptFactory
+	agentConfigFactory      *factories.AgentConfigFactory
 }
 
 func New(config Config) (*App, error) {
@@ -86,6 +93,12 @@ func New(config Config) (*App, error) {
 		ForEventBus:      config.EventBus,
 	})
 
+	app.sessionConfigService = &domain_service.SessionConfigService{}
+	app.gitEventFilterService = &domain_service.GitEventFilterService{}
+	app.sessionResultService = &domain_service.SessionResultService{}
+	app.promptFactory = &factories.PromptFactory{}
+	app.agentConfigFactory = &factories.AgentConfigFactory{}
+
 	slog.Debug("application created")
 	return app, nil
 }
@@ -105,4 +118,24 @@ func (app *App) GetWorkPlatform(name types.PlatformProvider) (ports.ForWorkPlatf
 	}
 
 	return registry, nil
+}
+
+func (app *App) GetSessionConfigService() *domain_service.SessionConfigService {
+	return app.sessionConfigService
+}
+
+func (app *App) GetGitEventFilterService() *domain_service.GitEventFilterService {
+	return app.gitEventFilterService
+}
+
+func (app *App) GetSessionResultService() *domain_service.SessionResultService {
+	return app.sessionResultService
+}
+
+func (app *App) GetPromptFactory() *factories.PromptFactory {
+	return app.promptFactory
+}
+
+func (app *App) GetAgentConfigFactory() *factories.AgentConfigFactory {
+	return app.agentConfigFactory
 }

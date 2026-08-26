@@ -21,21 +21,25 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/workdock-dev/engine/domain/factories"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/repositories"
+	domain_service "github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/types"
 )
 
 // Config holds the dependencies required to run Linear sessions.
 type Config struct {
-	HarnessRegistry     ports.HarnessPlatformRegistry
-	GitHostingRegistry  ports.GitHostingPlatformRegistry
-	ForSecrets          ports.ForSecrets
-	ForEvent            ports.ForEventBus
-	Sessions            repositories.SessionRepository
-	Organizations       repositories.OrganizationRepository
-	Client              LinearClientInterface
-	GitHubAppInstallURL string
+	HarnessRegistry      ports.HarnessPlatformRegistry
+	GitHostingRegistry   ports.GitHostingPlatformRegistry
+	ForSecrets           ports.ForSecrets
+	ForEvent             ports.ForEventBus
+	Sessions             repositories.SessionRepository
+	Organizations        repositories.OrganizationRepository
+	Client               LinearClientInterface
+	GitHubAppInstallURL  string
+	SessionConfigService *domain_service.SessionConfigService
+	PromptFactory       *factories.PromptFactory
 }
 
 // linearPlatform adapts AIService to the Linear provider. It normalizes Linear
@@ -201,16 +205,18 @@ func (p *linearPlatform) Process(ctx context.Context, config ports.ProcessConfig
 	}
 
 	service, err := newLinearAISession(ctx, linearAISessionConfig{
-		HarnessRegistry:     p.config.HarnessRegistry,
-		GitHostingRegistry:  p.config.GitHostingRegistry,
-		Client:              p.config.Client,
-		ForSecrets:          p.config.ForSecrets,
-		Sessions:            p.config.Sessions,
-		Job:                 config.Job,
-		SessionEvent:        config.SessionEvent,
-		Session:             config.Session,
-		Payload:             &linearEvent,
-		GitHubAppInstallURL: p.config.GitHubAppInstallURL,
+		HarnessRegistry:      p.config.HarnessRegistry,
+		GitHostingRegistry:   p.config.GitHostingRegistry,
+		Client:               p.config.Client,
+		ForSecrets:           p.config.ForSecrets,
+		Sessions:             p.config.Sessions,
+		Job:                  config.Job,
+		SessionEvent:         config.SessionEvent,
+		Session:              config.Session,
+		Payload:              &linearEvent,
+		GitHubAppInstallURL:  p.config.GitHubAppInstallURL,
+		SessionConfigService: p.config.SessionConfigService,
+		PromptFactory:        p.config.PromptFactory,
 	})
 
 	if err != nil {
