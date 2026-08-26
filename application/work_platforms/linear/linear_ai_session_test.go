@@ -116,9 +116,9 @@ func (s *LinearAISessionSuite) TestNewLinearAISession_TokenError() {
 	s.secrets.On("Get", mock.Anything, SecretsPath, "org-1").Return("", errors.New("secrets error"))
 
 	sess, err := newLinearAISession(context.Background(), linearAISessionConfig{
-		ForSecrets: s.secrets,
-		Client:     s.client,
-		Session:    &types.Session{OrganizationIdentifier: "org-1"},
+		App:      s.mockApp,
+		Client:   s.client,
+		Session:  &types.Session{OrganizationIdentifier: "org-1"},
 	})
 	s.Error(err)
 	s.Nil(sess)
@@ -128,9 +128,9 @@ func (s *LinearAISessionSuite) TestNewLinearAISession_Success() {
 	s.secrets.On("Get", mock.Anything, SecretsPath, "org-1").Return(s.validTokenRaw(), nil)
 
 	sess, err := newLinearAISession(context.Background(), linearAISessionConfig{
-		ForSecrets: s.secrets,
-		Client:     s.client,
-		Session:    &types.Session{OrganizationIdentifier: "org-1"},
+		App:      s.mockApp,
+		Client:   s.client,
+		Session:  &types.Session{OrganizationIdentifier: "org-1"},
 	})
 	s.NoError(err)
 	s.NotNil(sess)
@@ -146,9 +146,9 @@ func (s *LinearAISessionSuite) TestNewLinearAISessionForCancellation_TokenError(
 	s.secrets.On("Get", mock.Anything, SecretsPath, "org-1").Return("", errors.New("secrets error"))
 
 	sess, err := newLinearAISessionForCancellation(context.Background(), linearAISessionConfig{
-		ForSecrets: s.secrets,
-		Client:     s.client,
-		Session:    &types.Session{OrganizationIdentifier: "org-1"},
+		App:      s.mockApp,
+		Client:   s.client,
+		Session:  &types.Session{OrganizationIdentifier: "org-1"},
 	})
 	s.Error(err)
 	s.Nil(sess)
@@ -158,9 +158,9 @@ func (s *LinearAISessionSuite) TestNewLinearAISessionForCancellation_Success() {
 	s.secrets.On("Get", mock.Anything, SecretsPath, "org-1").Return(s.validTokenRaw(), nil)
 
 	sess, err := newLinearAISessionForCancellation(context.Background(), linearAISessionConfig{
-		ForSecrets: s.secrets,
-		Client:     s.client,
-		Session:    &types.Session{OrganizationIdentifier: "org-1"},
+		App:      s.mockApp,
+		Client:   s.client,
+		Session:  &types.Session{OrganizationIdentifier: "org-1"},
 	})
 	s.NoError(err)
 	s.NotNil(sess)
