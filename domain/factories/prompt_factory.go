@@ -25,15 +25,15 @@ import (
 
 type PromptFactory struct{}
 
-type Prompt struct {
+type WorkItemPromptInput struct {
 	Session        *types.Session
 	SessionEvent   *types.SessionEvent
 	Issue          *types.Issue
 	PromptContext  string
-	AgentActivity  *string
+	Prompt  *string
 }
 
-func (f *PromptFactory) Build(ctx context.Context, input Prompt) (string, error) {
+func (f *PromptFactory) Build(ctx context.Context, input WorkItemPromptInput) (string, error) {
 	repo := ""
 	if input.Session != nil && input.Session.RepoFullName != nil {
 		repo = *input.Session.RepoFullName
@@ -53,8 +53,8 @@ func (f *PromptFactory) Build(ctx context.Context, input Prompt) (string, error)
 		} else {
 			prompt += fmt.Sprintf(types.PromptTemplate_LatestUserComment, "There are review comments on the pull request. Retrieve all review comments and address each one that is applicable to the current implementation. Make the necessary code changes, verify the changes, and ensure the pull request is ready for review again.")
 		}
-	} else if input.AgentActivity != nil {
-		prompt += fmt.Sprintf(types.PromptTemplate_LatestUserComment, *input.AgentActivity)
+	} else if input.Prompt != nil {
+		prompt += fmt.Sprintf(types.PromptTemplate_LatestUserComment, *input.Prompt)
 	}
 
 	slog.Debug("Prompt prepared", "identifier", input.Issue.Identifier)

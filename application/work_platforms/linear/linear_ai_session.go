@@ -230,7 +230,7 @@ func (s *linearAISession) createPrompt(ctx context.Context) string {
 		agentActivityBody = &s.config.Payload.AgentActivity.Content.Body
 	}
 
-	promptInput := factories.Prompt{
+	promptInput := factories.WorkItemPromptInput{
 		Session:        s.config.Session,
 		SessionEvent:   s.config.SessionEvent,
 		Issue: &types.Issue{
@@ -239,7 +239,7 @@ func (s *linearAISession) createPrompt(ctx context.Context) string {
 			Description: s.config.Payload.AgentSession.Issue.Description,
 		},
 		PromptContext: s.config.Payload.PromptContext,
-		AgentActivity: agentActivityBody,
+		Prompt:        agentActivityBody,
 	}
 
 	prompt, err := s.config.PromptFactory.Build(ctx, promptInput)

@@ -33,7 +33,7 @@ func TestPromptFactorySuite(t *testing.T) {
 func (s *PromptFactorySuite) TestBuild_Basic() {
 	factory := PromptFactory{}
 	repo := "owner/repo"
-	input := Prompt{
+	input := WorkItemPromptInput{
 		Session: &types.Session{
 			RepoFullName: &repo,
 		},
@@ -57,7 +57,7 @@ func (s *PromptFactorySuite) TestBuild_Basic() {
 
 func (s *PromptFactorySuite) TestBuild_NilRepository() {
 	factory := PromptFactory{}
-	input := Prompt{
+	input := WorkItemPromptInput{
 		Session: &types.Session{
 			RepoFullName: nil,
 		},
@@ -81,7 +81,7 @@ func (s *PromptFactorySuite) TestBuild_WithAgentActivity() {
 	factory := PromptFactory{}
 	repo := "owner/repo"
 	agentActivityBody := "This is a user comment"
-	input := Prompt{
+	input := WorkItemPromptInput{
 		Session: &types.Session{
 			RepoFullName: &repo,
 		},
@@ -91,7 +91,7 @@ func (s *PromptFactorySuite) TestBuild_WithAgentActivity() {
 			Description: "Test description",
 		},
 		PromptContext: "",
-		AgentActivity: &agentActivityBody,
+		Prompt: &agentActivityBody,
 	}
 
 	prompt, err := factory.Build(context.Background(), input)
@@ -104,7 +104,7 @@ func (s *PromptFactorySuite) TestBuild_WithAgentActivity() {
 func (s *PromptFactorySuite) TestBuild_WithGitRefAndSeed_CheckRun() {
 	factory := PromptFactory{}
 	repo := "owner/repo"
-	input := Prompt{
+	input := WorkItemPromptInput{
 		Session: &types.Session{
 			RepoFullName: &repo,
 		},
@@ -130,7 +130,7 @@ func (s *PromptFactorySuite) TestBuild_WithGitRefAndSeed_CheckRun() {
 func (s *PromptFactorySuite) TestBuild_WithGitRefAndSeed_Comment() {
 	factory := PromptFactory{}
 	repo := "owner/repo"
-	input := Prompt{
+	input := WorkItemPromptInput{
 		Session: &types.Session{
 			RepoFullName: &repo,
 		},
@@ -156,7 +156,7 @@ func (s *PromptFactorySuite) TestBuild_WithGitRefAndSeed_Comment() {
 func (s *PromptFactorySuite) TestBuild_GitRefWithoutSeed() {
 	factory := PromptFactory{}
 	repo := "owner/repo"
-	input := Prompt{
+	input := WorkItemPromptInput{
 		Session: &types.Session{
 			RepoFullName: &repo,
 		},
