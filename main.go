@@ -169,11 +169,12 @@ func main() {
 
 	// Create app first (without registries since platforms need it)
 	app, err := application.New(application.Config{
-		Organizations: postgresClient,
-		Sessions:      postgresClient,
-		ForSecrets:    forSecrets,
-		ForQueue:      postgresEventQueue,
-		EventBus:      eventBus,
+		Organizations:      postgresClient,
+		Sessions:          postgresClient,
+		GitHubConnections: postgresClient,
+		ForSecrets:        forSecrets,
+		ForQueue:          postgresEventQueue,
+		EventBus:          eventBus,
 		TaskSchedulerConfig: async.TaskSchedulerConfig{
 			Workers:       cfg.Workers,
 			LeaseDuration: time.Duration(cfg.WorkerLeaseSeconds) * time.Second,

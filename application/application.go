@@ -33,8 +33,9 @@ type Config struct {
 	WebhooksRegistry           ports.WebhooksRegistry
 	HarnessRegistry            ports.HarnessPlatformRegistry
 
-	Organizations repositories.OrganizationRepository
-	Sessions      repositories.SessionRepository
+	Organizations      repositories.OrganizationRepository
+	Sessions           repositories.SessionRepository
+	GitHubConnections repositories.GitHubConnectionRepository
 
 	ForSecrets ports.ForSecrets
 	EventBus   ports.ForEventBus
@@ -143,6 +144,10 @@ func (app *App) GetAgentConfigFactory() *factories.AgentConfigFactory {
 
 func (app *App) GetHarnessRegistry() ports.HarnessPlatformRegistry {
 	return app.config.HarnessRegistry
+}
+
+func (app *App) GetGitHubConnections() repositories.GitHubConnectionRepository {
+	return app.config.GitHubConnections
 }
 
 func (app *App) GetGitHostingPlatformRegistry() ports.GitHostingPlatformRegistry {

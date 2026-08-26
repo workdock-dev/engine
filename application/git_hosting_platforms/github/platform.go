@@ -24,8 +24,6 @@ import (
 
 	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/ports"
-	"github.com/workdock-dev/engine/domain/repositories"
-	domain_service "github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/types"
 )
 
@@ -48,7 +46,7 @@ func New(config GitHubPlatformConfig, app *application.App) ports.ForGitHostingP
 			Client:            config.Client,
 			ForSecrets:        app.GetForSecrets(),
 			ForEvent:          app.GetEventBus(),
-			GitHubConnections: app.GetSessions(),
+			GitHubConnections: app.GetGitHubConnections(),
 		}),
 	}
 }

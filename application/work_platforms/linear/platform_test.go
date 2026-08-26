@@ -49,9 +49,10 @@ func (s *LinearPlatformSuite) SetupTest() {
 	s.organizations = new(mockOrganizations)
 
 	s.mockApp, _ = application.New(application.Config{
-		ForSecrets: s.secrets,
-		Sessions:   s.sessions,
-		Organizations: s.organizations,
+		ForSecrets:        s.secrets,
+		Sessions:          s.sessions,
+		Organizations:      s.organizations,
+		GitHubConnections: s.sessions,
 	})
 
 	s.platform = &linearPlatform{
