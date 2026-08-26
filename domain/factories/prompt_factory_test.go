@@ -30,7 +30,7 @@ func TestPromptFactorySuite(t *testing.T) {
 	suite.Run(t, new(PromptFactorySuite))
 }
 
-func (s *PromptFactorySuite) TestBuildWorkItemPrompt_Basic() {
+func (s *PromptFactorySuite) TestBuild_Basic() {
 	factory := PromptFactory{}
 	repo := "owner/repo"
 	input := Prompt{
@@ -45,7 +45,7 @@ func (s *PromptFactorySuite) TestBuildWorkItemPrompt_Basic() {
 		PromptContext: "Additional context",
 	}
 
-	prompt, err := factory.BuildWorkItemPrompt(context.Background(), input)
+	prompt, err := factory.Build(context.Background(), input)
 
 	s.NoError(err)
 	s.Contains(prompt, "Test Issue")
@@ -55,7 +55,7 @@ func (s *PromptFactorySuite) TestBuildWorkItemPrompt_Basic() {
 	s.Contains(prompt, "Additional context")
 }
 
-func (s *PromptFactorySuite) TestBuildWorkItemPrompt_NilRepository() {
+func (s *PromptFactorySuite) TestBuild_NilRepository() {
 	factory := PromptFactory{}
 	input := Prompt{
 		Session: &types.Session{
@@ -69,7 +69,7 @@ func (s *PromptFactorySuite) TestBuildWorkItemPrompt_NilRepository() {
 		PromptContext: "",
 	}
 
-	prompt, err := factory.BuildWorkItemPrompt(context.Background(), input)
+	prompt, err := factory.Build(context.Background(), input)
 
 	s.NoError(err)
 	s.Contains(prompt, "Test Issue")
@@ -77,7 +77,7 @@ func (s *PromptFactorySuite) TestBuildWorkItemPrompt_NilRepository() {
 	s.Contains(prompt, "Test description")
 }
 
-func (s *PromptFactorySuite) TestBuildWorkItemPrompt_WithAgentActivity() {
+func (s *PromptFactorySuite) TestBuild_WithAgentActivity() {
 	factory := PromptFactory{}
 	repo := "owner/repo"
 	agentActivityBody := "This is a user comment"
@@ -94,14 +94,14 @@ func (s *PromptFactorySuite) TestBuildWorkItemPrompt_WithAgentActivity() {
 		AgentActivity: &agentActivityBody,
 	}
 
-	prompt, err := factory.BuildWorkItemPrompt(context.Background(), input)
+	prompt, err := factory.Build(context.Background(), input)
 
 	s.NoError(err)
 	s.Contains(prompt, "This is a user comment")
 	s.Contains(prompt, "Latest User Comment")
 }
 
-func (s *PromptFactorySuite) TestBuildWorkItemPrompt_WithGitRefAndSeed_CheckRun() {
+func (s *PromptFactorySuite) TestBuild_WithGitRefAndSeed_CheckRun() {
 	factory := PromptFactory{}
 	repo := "owner/repo"
 	input := Prompt{
@@ -121,13 +121,13 @@ func (s *PromptFactorySuite) TestBuildWorkItemPrompt_WithGitRefAndSeed_CheckRun(
 		PromptContext: "",
 	}
 
-	prompt, err := factory.BuildWorkItemPrompt(context.Background(), input)
+	prompt, err := factory.Build(context.Background(), input)
 
 	s.NoError(err)
 	s.Contains(prompt, "pull request checks have failed")
 }
 
-func (s *PromptFactorySuite) TestBuildWorkItemPrompt_WithGitRefAndSeed_Comment() {
+func (s *PromptFactorySuite) TestBuild_WithGitRefAndSeed_Comment() {
 	factory := PromptFactory{}
 	repo := "owner/repo"
 	input := Prompt{
@@ -147,13 +147,13 @@ func (s *PromptFactorySuite) TestBuildWorkItemPrompt_WithGitRefAndSeed_Comment()
 		PromptContext: "",
 	}
 
-	prompt, err := factory.BuildWorkItemPrompt(context.Background(), input)
+	prompt, err := factory.Build(context.Background(), input)
 
 	s.NoError(err)
 	s.Contains(prompt, "review comments on the pull request")
 }
 
-func (s *PromptFactorySuite) TestBuildWorkItemPrompt_GitRefWithoutSeed() {
+func (s *PromptFactorySuite) TestBuild_GitRefWithoutSeed() {
 	factory := PromptFactory{}
 	repo := "owner/repo"
 	input := Prompt{
@@ -172,7 +172,7 @@ func (s *PromptFactorySuite) TestBuildWorkItemPrompt_GitRefWithoutSeed() {
 		PromptContext: "",
 	}
 
-	prompt, err := factory.BuildWorkItemPrompt(context.Background(), input)
+	prompt, err := factory.Build(context.Background(), input)
 
 	s.NoError(err)
 	s.NotContains(prompt, "review comments on the pull request")

@@ -242,7 +242,7 @@ func (s *linearAISession) createPrompt(ctx context.Context) string {
 		AgentActivity: agentActivityBody,
 	}
 
-	prompt, err := s.config.PromptFactory.BuildWorkItemPrompt(ctx, promptInput)
+	prompt, err := s.config.PromptFactory.Build(ctx, promptInput)
 	if err != nil {
 		slog.Error("failed to build prompt", "err", err, "event_identifier", s.config.SessionEvent.Identifier)
 		return ""

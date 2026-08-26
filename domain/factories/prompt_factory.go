@@ -33,7 +33,7 @@ type Prompt struct {
 	AgentActivity  *string
 }
 
-func (f *PromptFactory) BuildWorkItemPrompt(ctx context.Context, input Prompt) (string, error) {
+func (f *PromptFactory) Build(ctx context.Context, input Prompt) (string, error) {
 	repo := ""
 	if input.Session != nil && input.Session.RepoFullName != nil {
 		repo = *input.Session.RepoFullName
