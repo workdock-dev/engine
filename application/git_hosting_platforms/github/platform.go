@@ -311,29 +311,23 @@ func (s *githubPlatform) handleCheckRun(event *WebhookEvent) error {
 }
 
 func (s *githubPlatform) handleCheckSuite(event *WebhookEvent) error {
-	if event.Sender != nil && event.Sender.Login == s.config.BotLoginName {
-		slog.Debug("check_suite event received, ignoring", "action", event.Action, "sender", s.config.BotLoginName)
-		return nil
-	}
-
-	if event.Action != "completed" {
-		slog.Debug("check_suite event not completed, ignoring", "action", event.Action)
-		return nil
-	}
-
 	if event.CheckSuite == nil {
 		slog.Warn("check_suite event without check_suite data", "action", event.Action)
 		return nil
 	}
 
-	if event.CheckSuite.Conclusion == nil {
-		slog.Debug("check_suite event without conclusion, ignoring", "action", event.Action)
-		return nil
+	senderLogin := ""
+	if event.Sender != nil {
+		senderLogin = event.Sender.Login
 	}
 
-	conclusion := *event.CheckSuite.Conclusion
-	if conclusion != "failure" && conclusion != "timed_out" {
-		slog.Debug("check_suite event not failed, ignoring", "conclusion", conclusion)
+	conclusion := ""
+	if event.CheckSuite.Conclusion != nil {
+		conclusion = *event.CheckSuite.Conclusion
+	}
+
+	if !s.app.GetGitEventFilterService().ShouldTriggerCheckRunEvent(senderLogin, s.config.BotLoginName, event.Action, conclusion) {
+		slog.Debug("check_suite event received, ignoring", "action", event.Action)
 		return nil
 	}
 
