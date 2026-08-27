@@ -22,6 +22,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/types"
 )
 
@@ -36,6 +37,7 @@ type GitHubAccessSuite struct {
 	events      *mockEventBus
 	connections *mockGitHubConnections
 	access      *githubAccess
+	mockApp     *application.App
 }
 
 func (s *GitHubAccessSuite) SetupTest() {
@@ -44,12 +46,16 @@ func (s *GitHubAccessSuite) SetupTest() {
 	s.events = new(mockEventBus)
 	s.connections = new(mockGitHubConnections)
 
+	s.mockApp = application.New()
+	application.WithSecretManager(s.mockApp, s.secrets)
+	application.WithEventBus(s.mockApp, s.events)
+	application.WithGitHubRepository(s.mockApp, s.connections)
+	s.mockApp.Init()
+
 	s.access = newGitHubAccess(githubAccessConfig{
-		ForSecrets:        s.secrets,
-		ForEvent:          s.events,
-		GitHubConnections: s.connections,
-		Client:            s.client,
-	})
+		ForSecrets: s.secrets,
+		Client:     s.client,
+	}, s.mockApp)
 }
 
 // ---------------------------------------------------------------------------
