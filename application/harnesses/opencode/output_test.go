@@ -23,13 +23,14 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
-	domain_service "github.com/workdock-dev/engine/domain/service"
+	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/types"
 )
 
 type OutputSuite struct {
 	suite.Suite
-	parts *mockParts
+	parts   *mockParts
+	mockApp *application.App
 }
 
 func TestOutputSuite(t *testing.T) {
@@ -38,14 +39,27 @@ func TestOutputSuite(t *testing.T) {
 
 func (s *OutputSuite) SetupTest() {
 	s.parts = new(mockParts)
+	s.mockApp = application.New()
+	s.mockApp.Init()
 }
 
-func (s *OutputSuite) newOutput(stdout, stderr <-chan string, opts ...func(*OpenCodeOutput)) *OpenCodeOutput {
+func (s *OutputSuite) newOutput(stdout, stderr <-chan string, livenessTimeout time.Duration, maxMisses int, onUnhealthy func()) *OpenCodeOutput {
 	o, err := NewOpenCodeOutput(
-		nil, // app - not needed for tests with disabled liveness
+		s.mockApp,
 		s.parts,
 		"anthropic",
 		"claude-3",
+		"lin_at_123",
+		"session-1",
+		stdout,
+		stderr,
+		livenessTimeout,
+		maxMisses,
+		onUnhealthy,
+	)
+	s.Require().NoError(err)
+	return o
+}
 		"lin_at_123",
 		"session-1",
 		stdout,
@@ -88,7 +102,7 @@ func (s *OutputSuite) TestNewOpenCodeOutput_Success() {
 func (s *OutputSuite) TestParse_TextEvent() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Response", mock.Anything, "hello world").Once()
 
@@ -103,7 +117,7 @@ func (s *OutputSuite) TestParse_TextEvent() {
 func (s *OutputSuite) TestParse_ReasoningEvent() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Thought", mock.Anything, "thinking...").Once()
 
@@ -118,7 +132,7 @@ func (s *OutputSuite) TestParse_ReasoningEvent() {
 func (s *OutputSuite) TestParse_ToolUseEvent() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "bash" && a.Input == "ls"
@@ -141,7 +155,7 @@ func (s *OutputSuite) TestParse_ToolUseEvent() {
 func (s *OutputSuite) TestParse_StepStartEvent() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Thought", mock.Anything, "").Once()
 
@@ -156,7 +170,7 @@ func (s *OutputSuite) TestParse_StepStartEvent() {
 func (s *OutputSuite) TestParse_FileEvent() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Thought", mock.Anything, "").Once()
 
@@ -171,7 +185,7 @@ func (s *OutputSuite) TestParse_FileEvent() {
 func (s *OutputSuite) TestParse_SubtaskEvent() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Thought", mock.Anything, "").Once()
 
@@ -185,7 +199,7 @@ func (s *OutputSuite) TestParse_SubtaskEvent() {
 func (s *OutputSuite) TestParse_SnapshotEvent() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Thought", mock.Anything, "").Once()
 
@@ -199,7 +213,7 @@ func (s *OutputSuite) TestParse_SnapshotEvent() {
 func (s *OutputSuite) TestParse_PatchEvent() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Thought", mock.Anything, "").Once()
 
@@ -213,7 +227,7 @@ func (s *OutputSuite) TestParse_PatchEvent() {
 func (s *OutputSuite) TestParse_AgentEvent() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Thought", mock.Anything, "").Once()
 
@@ -227,7 +241,7 @@ func (s *OutputSuite) TestParse_AgentEvent() {
 func (s *OutputSuite) TestParse_CompactionEvent() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Thought", mock.Anything, "").Once()
 
@@ -241,7 +255,7 @@ func (s *OutputSuite) TestParse_CompactionEvent() {
 func (s *OutputSuite) TestParse_RetryEvent() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Thought", mock.Anything, "").Once()
 
@@ -255,7 +269,7 @@ func (s *OutputSuite) TestParse_RetryEvent() {
 func (s *OutputSuite) TestParse_StepFinishEvent() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Response", mock.Anything, "").Once()
 
@@ -287,7 +301,7 @@ func (s *OutputSuite) TestParse_StepFinishEvent() {
 func (s *OutputSuite) TestParse_StepFinishWithCache() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Response", mock.Anything, "").Once()
 
@@ -326,7 +340,7 @@ func (s *OutputSuite) TestParse_StepFinishWithCache() {
 func (s *OutputSuite) TestParse_InvalidJSON() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	stdout <- "not valid json at all {{{"
 	close(stdout)
@@ -342,7 +356,7 @@ func (s *OutputSuite) TestParse_InvalidJSON() {
 func (s *OutputSuite) TestParse_EmptyLine() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	stdout <- ""
 	close(stdout)
@@ -354,7 +368,7 @@ func (s *OutputSuite) TestParse_EmptyLine() {
 func (s *OutputSuite) TestParse_PartialLineThenFlushed() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Response", mock.Anything, "hello").Once()
 
@@ -371,7 +385,7 @@ func (s *OutputSuite) TestParse_PartialLineThenFlushed() {
 func (s *OutputSuite) TestParse_PartialLineThenClose() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Response", mock.Anything, "hello").Once()
 
@@ -388,7 +402,7 @@ func (s *OutputSuite) TestParse_PartialLineThenClose() {
 func (s *OutputSuite) TestParse_Stderr() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	stderr <- "some error output"
 	close(stdout)
@@ -401,7 +415,7 @@ func (s *OutputSuite) TestParse_Stderr() {
 func (s *OutputSuite) TestParse_BothChannelsClose() {
 	stdout := make(chan string)
 	stderr := make(chan string)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	close(stdout)
 	close(stderr)
@@ -412,7 +426,7 @@ func (s *OutputSuite) TestParse_BothChannelsClose() {
 func (s *OutputSuite) TestParse_ContextCancel() {
 	stdout := make(chan string, 100)
 	stderr := make(chan string, 100)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -427,7 +441,7 @@ func (s *OutputSuite) TestParse_ContextCancel() {
 func (s *OutputSuite) TestParseTool_Bash() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "bash" && a.Input == "ls -la" && a.Output == "result"
@@ -446,7 +460,7 @@ func (s *OutputSuite) TestParseTool_Bash() {
 func (s *OutputSuite) TestParseTool_GlobWithPaths() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "glob" && a.Input == "*.go in src/"
@@ -465,7 +479,7 @@ func (s *OutputSuite) TestParseTool_GlobWithPaths() {
 func (s *OutputSuite) TestParseTool_GlobNoPath() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "glob" && a.Input == "*.go"
@@ -484,7 +498,7 @@ func (s *OutputSuite) TestParseTool_GlobNoPath() {
 func (s *OutputSuite) TestParseTool_Read() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "read" && a.Input == "main.go"
@@ -503,7 +517,7 @@ func (s *OutputSuite) TestParseTool_Read() {
 func (s *OutputSuite) TestParseTool_GrepWithPaths() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "grep" && a.Input == "TODO in src/"
@@ -522,7 +536,7 @@ func (s *OutputSuite) TestParseTool_GrepWithPaths() {
 func (s *OutputSuite) TestParseTool_GrepNoPath() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "grep" && a.Input == "TODO"
@@ -541,7 +555,7 @@ func (s *OutputSuite) TestParseTool_GrepNoPath() {
 func (s *OutputSuite) TestParseTool_Webfetch() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "webfetch" && a.Input == "https://example.com"
@@ -560,7 +574,7 @@ func (s *OutputSuite) TestParseTool_Webfetch() {
 func (s *OutputSuite) TestParseTool_Websearch() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "websearch" && a.Input == "golang testing"
@@ -579,7 +593,7 @@ func (s *OutputSuite) TestParseTool_Websearch() {
 func (s *OutputSuite) TestParseTool_Write() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "write" && a.Input == "test.go"
@@ -598,7 +612,7 @@ func (s *OutputSuite) TestParseTool_Write() {
 func (s *OutputSuite) TestParseTool_Edit() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "edit" && a.Input == "main.go"
@@ -617,7 +631,7 @@ func (s *OutputSuite) TestParseTool_Edit() {
 func (s *OutputSuite) TestParseTool_Task() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "task" && a.Input == "fix the bug"
@@ -636,7 +650,7 @@ func (s *OutputSuite) TestParseTool_Task() {
 func (s *OutputSuite) TestParseTool_Execute() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "execute" && a.Input == "go test ./..."
@@ -655,7 +669,7 @@ func (s *OutputSuite) TestParseTool_Execute() {
 func (s *OutputSuite) TestParseTool_ApplyPatchWithFiles() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "apply_patch" && a.Input == "a.go, b.go"
@@ -682,7 +696,7 @@ func (s *OutputSuite) TestParseTool_ApplyPatchWithFiles() {
 func (s *OutputSuite) TestParseTool_ApplyPatchEmpty() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "apply_patch"
@@ -701,7 +715,7 @@ func (s *OutputSuite) TestParseTool_ApplyPatchEmpty() {
 func (s *OutputSuite) TestParseTool_Todowrite() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "todowrite" && a.Input == "step 1, step 2"
@@ -728,7 +742,7 @@ func (s *OutputSuite) TestParseTool_Todowrite() {
 func (s *OutputSuite) TestParseTool_TodowriteEmpty() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "todowrite"
@@ -747,7 +761,7 @@ func (s *OutputSuite) TestParseTool_TodowriteEmpty() {
 func (s *OutputSuite) TestParseTool_Skill() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "skill" && a.Input == "testing"
@@ -766,7 +780,7 @@ func (s *OutputSuite) TestParseTool_Skill() {
 func (s *OutputSuite) TestParseTool_Default() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "unknown_tool"
@@ -785,7 +799,7 @@ func (s *OutputSuite) TestParseTool_Default() {
 func (s *OutputSuite) TestParseTool_WithEndTime() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	endTime := int64(200)
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
@@ -809,7 +823,7 @@ func (s *OutputSuite) TestParseTool_WithEndTime() {
 func (s *OutputSuite) TestParseTool_EndTimeZeroStart() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	endTime := int64(200)
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
@@ -844,7 +858,7 @@ func (s *OutputSuite) TestParseTool_EndTimeZeroStart() {
 func (s *OutputSuite) TestParseTool_ToolStartOnly() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "bash"
@@ -868,7 +882,7 @@ func (s *OutputSuite) TestParseTool_ToolStartOnly() {
 func (s *OutputSuite) TestParseTool_NoTime() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "bash"
@@ -890,7 +904,7 @@ func (s *OutputSuite) TestParseTool_NoTime() {
 func (s *OutputSuite) TestParseTool_ErrorStatus() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	endTime := int64(200)
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
@@ -915,7 +929,7 @@ func (s *OutputSuite) TestParseTool_ErrorStatus() {
 func (s *OutputSuite) TestParseTool_Question() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Elicitation", mock.Anything, mock.MatchedBy(func(e types.AgentElicitation) bool {
 		return e.Question == "Which option?" && len(e.Options) == 2
@@ -950,7 +964,7 @@ func (s *OutputSuite) TestParseTool_Question() {
 func (s *OutputSuite) TestParseTool_QuestionInvalidFormat() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	stdout <- makeWireEvent("tool_use", ToolPart{
 		Tool:   "question",
@@ -971,7 +985,7 @@ func (s *OutputSuite) TestParseTool_QuestionInvalidFormat() {
 func (s *OutputSuite) TestParseQuestions_ValidQuestions() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Elicitation", mock.Anything, mock.MatchedBy(func(e types.AgentElicitation) bool {
 		return e.Question == "What?" && e.Multiple == true && len(e.Options) == 1
@@ -1005,7 +1019,7 @@ func (s *OutputSuite) TestParseQuestions_ValidQuestions() {
 func (s *OutputSuite) TestParseQuestions_NoQuestionsKey() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	stdout <- makeWireEvent("tool_use", ToolPart{
 		Tool:   "question",
@@ -1024,7 +1038,7 @@ func (s *OutputSuite) TestParseQuestions_NoQuestionsKey() {
 func (s *OutputSuite) TestParseQuestions_InvalidQuestionEntry() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	questions := []any{"not a map"}
 	questionsJSON, _ := json.Marshal(questions)
@@ -1046,7 +1060,7 @@ func (s *OutputSuite) TestParseQuestions_InvalidQuestionEntry() {
 func (s *OutputSuite) TestParseQuestions_InvalidOptionEntry() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Elicitation", mock.Anything, mock.MatchedBy(func(e types.AgentElicitation) bool {
 		return e.Question == "What?" && len(e.Options) == 0
@@ -1080,7 +1094,7 @@ func (s *OutputSuite) TestParseQuestions_InvalidOptionEntry() {
 func (s *OutputSuite) TestLivenessProbe_DisabledTimeout() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	close(stdout)
 	close(stderr)
@@ -1091,7 +1105,7 @@ func (s *OutputSuite) TestLivenessProbe_DisabledTimeout() {
 func (s *OutputSuite) TestLivenessProbe_DisabledMaxMisses() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	close(stdout)
 	close(stderr)
@@ -1101,10 +1115,7 @@ func (s *OutputSuite) TestLivenessProbe_DisabledMaxMisses() {
 func (s *OutputSuite) TestLivenessProbe_DisabledOnUnhealthy() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
-		out.SetLivenessPolicy(domain_service.NewLivenessPolicy(time.Millisecond, 1))
-		out.onUnhealthy = nil
-	})
+	o := s.newOutput(stdout, stderr, time.Millisecond, 1, nil)
 
 	close(stdout)
 	close(stderr)
@@ -1115,11 +1126,8 @@ func (s *OutputSuite) TestLivenessProbe_Unhealthy() {
 	stdout := make(chan string)
 	stderr := make(chan string)
 	unhealthyCalled := make(chan struct{}, 1)
-	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
-		out.SetLivenessPolicy(domain_service.NewLivenessPolicy(10*time.Millisecond, 1))
-		out.onUnhealthy = func() {
-			unhealthyCalled <- struct{}{}
-		}
+	o := s.newOutput(stdout, stderr, 10*time.Millisecond, 1, func() {
+		unhealthyCalled <- struct{}{}
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1141,9 +1149,7 @@ func (s *OutputSuite) TestLivenessProbe_Unhealthy() {
 func (s *OutputSuite) TestLivenessProbe_ActivityResets() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
-		out.SetLivenessPolicy(domain_service.NewLivenessPolicy(20*time.Millisecond, 2))
-	})
+	o := s.newOutput(stdout, stderr, 20*time.Millisecond, 2, nil)
 
 	s.parts.On("Response", mock.Anything, mock.Anything).Maybe()
 
@@ -1169,7 +1175,7 @@ func (s *OutputSuite) TestLivenessProbe_ActivityResets() {
 func (s *OutputSuite) TestParse_PartTypeToolUseNormalized() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Action", mock.Anything, mock.MatchedBy(func(a types.AgentAction) bool {
 		return a.Name == "bash"
@@ -1188,7 +1194,7 @@ func (s *OutputSuite) TestParse_PartTypeToolUseNormalized() {
 func (s *OutputSuite) TestParse_MultipleEvents() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Thought", mock.Anything, "").Once()
 	s.parts.On("Response", mock.Anything, "hello").Once()
@@ -1217,7 +1223,7 @@ func (s *OutputSuite) TestParse_MultipleEvents() {
 func (s *OutputSuite) TestParseLine_CancelledContext() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -1230,7 +1236,7 @@ func (s *OutputSuite) TestParseLine_CancelledContext() {
 func (s *OutputSuite) TestParseLine_WhitespaceOnly() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	stdout <- "   \t  \n"
 	close(stdout)
@@ -1241,7 +1247,7 @@ func (s *OutputSuite) TestParseLine_WhitespaceOnly() {
 func (s *OutputSuite) TestParsePart_ReasoningUnmarshalError() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	stdout <- makeWireEvent("reasoning", json.RawMessage(`"not an object"`))
 	close(stdout)
@@ -1253,7 +1259,7 @@ func (s *OutputSuite) TestParsePart_ReasoningUnmarshalError() {
 func (s *OutputSuite) TestParsePart_TextUnmarshalError() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	stdout <- makeWireEvent("text", json.RawMessage(`"not an object"`))
 	close(stdout)
@@ -1265,7 +1271,7 @@ func (s *OutputSuite) TestParsePart_TextUnmarshalError() {
 func (s *OutputSuite) TestParsePart_ToolUnmarshalError() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	stdout <- makeWireEvent("tool_use", json.RawMessage(`"not an object"`))
 	close(stdout)
@@ -1277,7 +1283,7 @@ func (s *OutputSuite) TestParsePart_ToolUnmarshalError() {
 func (s *OutputSuite) TestParsePart_StepFinishUnmarshalError() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	stdout <- makeWireEvent("step_finish", json.RawMessage(`"not an object"`))
 	close(stdout)
@@ -1289,7 +1295,7 @@ func (s *OutputSuite) TestParsePart_StepFinishUnmarshalError() {
 func (s *OutputSuite) TestParse_UnexpectedPartType() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Response", mock.Anything, mock.MatchedBy(func(text string) bool {
 		return strings.Contains(text, "An unexpected format has been received by the harness") && strings.Contains(text, "APIError")
@@ -1309,7 +1315,7 @@ func (s *OutputSuite) TestParse_UnexpectedPartType() {
 func (s *OutputSuite) TestParse_UnexpectedPartType_UnknownType() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr)
+	o := s.newOutput(stdout, stderr, 0, 0, nil)
 
 	s.parts.On("Response", mock.Anything, mock.MatchedBy(func(text string) bool {
 		return strings.Contains(text, "An unexpected format has been received by the harness") && strings.Contains(text, "something_new")

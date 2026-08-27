@@ -101,7 +101,7 @@ func NewOpenCodeOutput(
 	}
 
 	var policy *domain_service.LivenessPolicy
-	if livenessTimeout > 0 && maxMisses > 0 {
+	if livenessTimeout > 0 && maxMisses > 0 && app != nil {
 		policy = app.NewLivenessPolicy(livenessTimeout, maxMisses)
 	}
 
@@ -401,10 +401,6 @@ func (o *OpenCodeOutput) Parse(ctx context.Context) {
 
 func (o *OpenCodeOutput) StderrError() error {
 	return o.stderrError
-}
-
-func (o *OpenCodeOutput) SetLivenessPolicy(policy *domain_service.LivenessPolicy) {
-	o.livenessPolicy = policy
 }
 
 // startLivenessProbe watches for a stalled harness: when no chunk has been

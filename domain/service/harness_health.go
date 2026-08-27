@@ -53,18 +53,11 @@ func NewLivenessPolicy(timeout time.Duration, maxMisses int) *LivenessPolicy {
 }
 
 func (p *LivenessPolicy) OnActivity(t time.Time) {
-	if p.timeout <= 0 || p.maxMisses <= 0 {
-		return
-	}
 	p.lastActivity = t
 	p.missed = 0
 }
 
 func (p *LivenessPolicy) Check(t time.Time) HealthStatus {
-	if p.timeout <= 0 || p.maxMisses <= 0 {
-		return HealthStatus_Healthy
-	}
-
 	if p.lastActivity.IsZero() {
 		p.lastActivity = t
 		return HealthStatus_Healthy
@@ -98,8 +91,4 @@ func (p *LivenessPolicy) MaxMisses() int {
 
 func (p *LivenessPolicy) LastActivity() time.Time {
 	return p.lastActivity
-}
-
-func (p *LivenessPolicy) IsDisabled() bool {
-	return p.timeout <= 0 || p.maxMisses <= 0
 }
