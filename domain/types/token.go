@@ -30,10 +30,6 @@ type TokenState struct {
 }
 
 func (t TokenState) LifecycleDecision(now time.Time, refreshWindow time.Duration) TokenLifecycleDecision {
-	if now.After(t.ExpiresAt) {
-		return TokenLifecycleExpired
-	}
-
 	if now.Add(refreshWindow).After(t.ExpiresAt) {
 		if !t.HasRefresh {
 			return TokenLifecycleExpired
