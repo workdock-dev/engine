@@ -14,14 +14,10 @@
 
 package domain_service
 
-type IssueState string
-
-const (
-	IssueStateCompleted IssueState = "completed"
-)
+import "github.com/workdock-dev/engine/domain/types"
 
 type IssueLifecycleService struct{}
 
 func (s *IssueLifecycleService) ShouldArchiveForIssue(stateType string) bool {
-	return stateType == string(IssueStateCompleted)
+	return stateType == string(types.IssueStateCompleted)
 }
