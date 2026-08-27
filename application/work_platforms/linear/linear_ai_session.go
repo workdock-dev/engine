@@ -201,7 +201,7 @@ func (s *linearAISession) Process(ctx context.Context) error {
 		if s.config.Job != nil && s.config.Job.WillRetry {
 			s.notifyRetryScheduled(ctx)
 		} else {
-			s.reportServerInternalError(ctx, err.Error())
+			s.reportServerInternalError(ctx)
 		}
 
 		return err
@@ -329,16 +329,12 @@ func (s *linearAISession) Elicitation(ctx context.Context, elicitation types.Age
 
 // reportServerInternalError notifies the user about an unexpected
 // server-side error via a best-effort Linear activity.
-func (s *linearAISession) reportServerInternalError(ctx context.Context, errMsg ...string) {
-	body := "Internal Server Error 500"
-	if len(errMsg) > 0 {
-		body = errMsg[0]
-	}
+func (s *linearAISession) reportServerInternalError(ctx context.Context) {
 	s.config.Client.CreateAgentActivity(ctx, s.accessToken, CreateAgentActivityInput{
 		AgentSessionID: s.config.Payload.AgentSession.ID,
 		Content: AgentActivityContent{
 			Type: AgentActivityContentType_Error,
-			Body: body,
+			Body: "Internal Server Error 500",
 		},
 	})
 }
