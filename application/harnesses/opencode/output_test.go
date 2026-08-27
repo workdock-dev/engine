@@ -1079,23 +1079,18 @@ func (s *OutputSuite) TestParseQuestions_InvalidOptionEntry() {
 func (s *OutputSuite) TestLivenessProbe_DisabledTimeout() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
-		out.livenessTimeout = 0
-	})
+	o := s.newOutput(stdout, stderr)
 
 	close(stdout)
 	close(stderr)
 	o.Parse(context.Background())
-	// No panic, no unhealthy callback
+	// No panic, no unhealthy callback - livenessPolicy is nil by default (livenessTimeout=0)
 }
 
 func (s *OutputSuite) TestLivenessProbe_DisabledMaxMisses() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
-		out.livenessTimeout = time.Millisecond
-		out.maxMisses = 0
-	})
+	o := s.newOutput(stdout, stderr)
 
 	close(stdout)
 	close(stderr)
