@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/workdock-dev/engine/domain/ports"
-	"github.com/workdock-dev/engine/domain/service"
+	domain_service "github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/telemetry"
 	"github.com/workdock-dev/engine/domain/types"
 	"go.opentelemetry.io/otel"
@@ -56,7 +56,7 @@ type OpenCodeOutput struct {
 	stderr            <-chan string
 	sessionId         string
 
-	livenessPolicy *service.LivenessPolicy
+	livenessPolicy *domain_service.LivenessPolicy
 	onUnhealthy    func()
 
 	lastEvent atomic.Int64
@@ -97,9 +97,9 @@ func NewOpenCodeOutput(
 		return nil, err
 	}
 
-	var policy *service.LivenessPolicy
+	var policy *domain_service.LivenessPolicy
 	if livenessTimeout > 0 && maxMisses > 0 {
-		policy = service.NewLivenessPolicy(livenessTimeout, maxMisses)
+		policy = domain_service.NewLivenessPolicy(livenessTimeout, maxMisses)
 	}
 
 	return &OpenCodeOutput{
@@ -399,7 +399,7 @@ func (o *OpenCodeOutput) StderrError() error {
 	return o.stderrError
 }
 
-func (o *OpenCodeOutput) SetLivenessPolicy(policy *service.LivenessPolicy) {
+func (o *OpenCodeOutput) SetLivenessPolicy(policy *domain_service.LivenessPolicy) {
 	o.livenessPolicy = policy
 }
 
@@ -437,16 +437,16 @@ func (o *OpenCodeOutput) startLivenessProbe(ctx context.Context) {
 				))
 
 				switch status {
-				case service.HealthStatus_Healthy:
+				case domain_service.HealthStatus_Healthy:
 					continue
-				case service.HealthStatus_Missed:
+				case domain_service.HealthStatus_Missed:
 					slog.Warn("harness health check missed",
 						"event_identifier", o.sessionId,
 						"missed", o.livenessPolicy.MissedCount(),
 						"max", o.livenessPolicy.MaxMisses(),
 						"idle_for", now.Sub(last).Round(time.Second),
 					)
-				case service.HealthStatus_Unhealthy:
+				case domain_service.HealthStatus_Unhealthy:
 					span.AddEvent("opencode.liveness.unhealthy", trace.WithAttributes(
 						attribute.Int("missed", o.livenessPolicy.MissedCount()),
 						attribute.Int("max", o.livenessPolicy.MaxMisses()),

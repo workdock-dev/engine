@@ -24,14 +24,14 @@ import (
 
 	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/ports"
-	"github.com/workdock-dev/engine/domain/service"
+	domain_service "github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/types"
 )
 
 type GitHubPlatformConfig struct {
 	Client               ClientInterface
 	BotLoginName        string
-	EventClassification *service.EventClassificationService
+	EventClassification *domain_service.EventClassificationService
 }
 
 type githubPlatform struct {
@@ -42,7 +42,7 @@ type githubPlatform struct {
 
 func New(config GitHubPlatformConfig, app *application.App) ports.ForGitHostingPlatform {
 	if config.EventClassification == nil {
-		config.EventClassification = &service.EventClassificationService{}
+		config.EventClassification = &domain_service.EventClassificationService{}
 	}
 
 	return &githubPlatform{

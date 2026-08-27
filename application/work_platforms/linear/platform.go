@@ -24,7 +24,7 @@ import (
 	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/factories"
 	"github.com/workdock-dev/engine/domain/ports"
-	"github.com/workdock-dev/engine/domain/service"
+	domain_service "github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/types"
 )
 
@@ -33,7 +33,7 @@ type Config struct {
 	Client                  LinearClientInterface
 	GitHubAppInstallURL     string
 	IdempotencyKeyFactory  *factories.IdempotencyKeyFactory
-	EventClassification    *service.EventClassificationService
+	EventClassification    *domain_service.EventClassificationService
 }
 
 // linearPlatform adapts AIService to the Linear provider. It normalizes Linear
@@ -48,7 +48,7 @@ func New(config Config, app *application.App) ports.ForWorkPlatform {
 		config.IdempotencyKeyFactory = &factories.IdempotencyKeyFactory{}
 	}
 	if config.EventClassification == nil {
-		config.EventClassification = &service.EventClassificationService{}
+		config.EventClassification = &domain_service.EventClassificationService{}
 	}
 
 	p := &linearPlatform{
