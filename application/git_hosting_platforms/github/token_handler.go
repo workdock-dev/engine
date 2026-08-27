@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/workdock-dev/engine/domain/ports"
-	"github.com/workdock-dev/engine/domain/types"
 )
 
 type tokenHandlerConfig struct {
