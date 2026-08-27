@@ -168,3 +168,19 @@ func GenerateIdempotencyKey(payload any) (string, error) {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:18]), nil // 36 hex chars
 }
+
+func (j EventJob) ShouldRetry(maxAttempts int) bool {
+	return j.Attempts < maxAttempts
+}
+
+func (j EventJob) NextStatus(err error, maxAttempts int) EventJobStatus {
+	if err == nil {
+		return EventJobStatus_Succeeded
+	}
+
+	if j.Attempts >= maxAttempts {
+		return EventJobStatus_Failed
+	}
+
+	return EventJobStatus_Retry
+}

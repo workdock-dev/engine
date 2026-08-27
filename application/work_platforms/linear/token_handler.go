@@ -58,17 +58,20 @@ func (s *tokenHandler) GetLinearAccessToken(ctx context.Context, byName string) 
 		return "", err
 	}
 
-	if time.Until(token.ExpiresAt) > 5*time.Minute {
+	now := time.Now()
+	decision := types.ShouldRenewToken(token.ExpiresAt, token.RefreshToken != "", now, types.DefaultTokenRefreshWindow)
+
+	if decision == types.TokenLifecycleKeep {
 		slog.Debug("Got linear access token", "secret_name", byName)
 		return token.AccessToken, nil
 	}
 
-	slog.Debug("Linear access token is expired or expiring soon, refreshing", "secret_name", byName, "expires_at", token.ExpiresAt)
-
-	if token.RefreshToken == "" {
+	if decision == types.TokenLifecycleExpired {
 		slog.Error("linear access token expired and no refresh token is available", "organization_id", byName)
 		return "", types.ErrLinearTokenExpired
 	}
+
+	slog.Debug("Linear access token is expired or expiring soon, refreshing", "secret_name", byName, "expires_at", token.ExpiresAt)
 
 	refreshed, err := s.config.Client.RefreshToken(ctx, token.RefreshToken)
 
