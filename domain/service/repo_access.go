@@ -31,7 +31,9 @@ func NewRepoAccessPolicy() *RepoAccessPolicy {
 func (p *RepoAccessPolicy) ShouldAllowAccess(
 	repoFullName *string,
 	connection *types.GitHubConnection,
-	tokenResult types.TokenFetchResult,
+	token string,
+	expired bool,
+	fetchErr error,
 ) types.RepoAccessPolicyResult {
 	if repoFullName == nil {
 		return types.RepoAccessPolicyResult{
@@ -47,8 +49,8 @@ func (p *RepoAccessPolicy) ShouldAllowAccess(
 		}
 	}
 
-	if tokenResult.Error != nil {
-		if errors.Is(tokenResult.Error, ErrGitHubInstallationUnavailable) {
+	if fetchErr != nil {
+		if errors.Is(fetchErr, ErrGitHubInstallationUnavailable) {
 			return types.RepoAccessPolicyResult{
 				HasAccess:    false,
 				Token:       "",
@@ -61,7 +63,7 @@ func (p *RepoAccessPolicy) ShouldAllowAccess(
 
 	return types.RepoAccessPolicyResult{
 		HasAccess: true,
-		Token:    tokenResult.Token,
+		Token:    token,
 	}
 }
 
@@ -69,9 +71,9 @@ func (p *RepoAccessPolicy) ShouldRequestConnection(connection *types.GitHubConne
 	return connection == nil || !connection.Connected || connection.InstallationId == nil
 }
 
-func (p *RepoAccessPolicy) ShouldResetConnection(tokenResult types.TokenFetchResult) bool {
-	if tokenResult.Error == nil {
+func (p *RepoAccessPolicy) ShouldResetConnection(fetchErr error) bool {
+	if fetchErr == nil {
 		return false
 	}
-	return errors.Is(tokenResult.Error, ErrGitHubInstallationUnavailable)
+	return errors.Is(fetchErr, ErrGitHubInstallationUnavailable)
 }

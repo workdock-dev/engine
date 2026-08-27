@@ -127,12 +127,6 @@ const (
 	GitHubUrl = "https://github.com/"
 )
 
-type TokenFetchResult struct {
-	Token   string
-	Expired bool
-	Error   error
-}
-
 type RepoAccessPolicyResult struct {
 	HasAccess         bool
 	Token            string

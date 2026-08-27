@@ -68,10 +68,10 @@ func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentif
 		return false, "", nil
 	}
 
-	tokenFetchResult := s.tokenHandler.getGitHubAccessToken(ctx, *connection.InstallationId)
+	token, expired, err := s.tokenHandler.getGitHubAccessToken(ctx, *connection.InstallationId)
 
-	if tokenFetchResult.Error != nil {
-		if errors.Is(tokenFetchResult.Error, types.ErrGitHubInstallationUnavailable) {
+	if err != nil {
+		if errors.Is(err, types.ErrGitHubInstallationUnavailable) {
 			slog.Debug(
 				"GitHub installation unavailable, resetting connection",
 				"installation_id", *connection.InstallationId,
@@ -87,10 +87,10 @@ func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentif
 			return false, "", types.ErrGitHubConnectionReRequested
 		}
 
-		return false, "", tokenFetchResult.Error
+		return false, "", err
 	}
 
-	policyResult := repoAccessPolicy.ShouldAllowAccess(repoFullName, connection, tokenFetchResult)
+	policyResult := repoAccessPolicy.ShouldAllowAccess(repoFullName, connection, token, expired, err)
 
 	if policyResult.NeedsReset {
 		slog.Debug(

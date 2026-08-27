@@ -53,38 +53,39 @@ func (s *TokenHandlerSuite) TestGetAccessToken_ContextCancelled() {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	result := s.handler.getGitHubAccessToken(ctx, "42")
-	s.Error(result.Error)
-	s.ErrorIs(result.Error, context.Canceled)
-	s.Empty(result.Token)
+	token, expired, err := s.handler.getGitHubAccessToken(ctx, "42")
+	s.Error(err)
+	s.ErrorIs(err, context.Canceled)
+	s.Empty(token)
+	s.False(expired)
 }
 
 func (s *TokenHandlerSuite) TestGetAccessToken_SecretsGetError() {
 	s.secrets.On("Get", mock.Anything, GitHub_SecretPath, "42").Return("", errors.New("secrets error"))
 
-	result := s.handler.getGitHubAccessToken(context.Background(), "42")
-	s.Error(result.Error)
-	s.Contains(result.Error.Error(), "failed to get github token")
-	s.Empty(result.Token)
+	token, _, err := s.handler.getGitHubAccessToken(context.Background(), "42")
+	s.Error(err)
+	s.Contains(err.Error(), "failed to get github token")
+	s.Empty(token)
 }
 
 func (s *TokenHandlerSuite) TestGetAccessToken_UnmarshalError() {
 	s.secrets.On("Get", mock.Anything, GitHub_SecretPath, "42").Return("not-json", nil)
 
-	result := s.handler.getGitHubAccessToken(context.Background(), "42")
-	s.Error(result.Error)
-	s.Contains(result.Error.Error(), "failed to unmarshal github token")
-	s.Empty(result.Token)
+	token, _, err := s.handler.getGitHubAccessToken(context.Background(), "42")
+	s.Error(err)
+	s.Contains(err.Error(), "failed to unmarshal github token")
+	s.Empty(token)
 }
 
 func (s *TokenHandlerSuite) TestGetAccessToken_ValidToken() {
 	raw := `{"token":"ghs_valid","expires_at":"2099-01-01T00:00:00Z"}`
 	s.secrets.On("Get", mock.Anything, GitHub_SecretPath, "42").Return(raw, nil)
 
-	result := s.handler.getGitHubAccessToken(context.Background(), "42")
-	s.NoError(result.Error)
-	s.Equal("ghs_valid", result.Token)
-	s.False(result.Expired)
+	token, expired, err := s.handler.getGitHubAccessToken(context.Background(), "42")
+	s.NoError(err)
+	s.Equal("ghs_valid", token)
+	s.False(expired)
 	s.secrets.AssertNotCalled(s.T(), "Set", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	s.client.AssertNotCalled(s.T(), "CreateInstallationAccessToken")
 }
@@ -100,10 +101,10 @@ func (s *TokenHandlerSuite) TestGetAccessToken_ExpiredToken() {
 	s.client.On("CreateInstallationAccessToken", 42).Return(renewed, nil)
 	s.secrets.On("Set", mock.Anything, GitHub_SecretPath, "42", mock.Anything).Return(nil)
 
-	result := s.handler.getGitHubAccessToken(context.Background(), "42")
-	s.NoError(result.Error)
-	s.Equal("ghs_renewed", result.Token)
-	s.True(result.Expired)
+	token, expired, err := s.handler.getGitHubAccessToken(context.Background(), "42")
+	s.NoError(err)
+	s.Equal("ghs_renewed", token)
+	s.True(expired)
 	s.client.AssertCalled(s.T(), "CreateInstallationAccessToken", 42)
 	s.secrets.AssertCalled(s.T(), "Set", mock.Anything, GitHub_SecretPath, "42", mock.Anything)
 }
@@ -119,10 +120,10 @@ func (s *TokenHandlerSuite) TestGetAccessToken_ExpiringSoonToken() {
 	s.client.On("CreateInstallationAccessToken", 42).Return(renewed, nil)
 	s.secrets.On("Set", mock.Anything, GitHub_SecretPath, "42", mock.Anything).Return(nil)
 
-	result := s.handler.getGitHubAccessToken(context.Background(), "42")
-	s.NoError(result.Error)
-	s.Equal("ghs_renewed", result.Token)
-	s.True(result.Expired)
+	token, expired, err := s.handler.getGitHubAccessToken(context.Background(), "42")
+	s.NoError(err)
+	s.Equal("ghs_renewed", token)
+	s.True(expired)
 	s.client.AssertCalled(s.T(), "CreateInstallationAccessToken", 42)
 }
 
@@ -132,10 +133,10 @@ func (s *TokenHandlerSuite) TestGetAccessToken_ExpiredToken_RenewalError() {
 
 	s.client.On("CreateInstallationAccessToken", 42).Return(nil, errors.New("github api error"))
 
-	result := s.handler.getGitHubAccessToken(context.Background(), "42")
-	s.Error(result.Error)
-	s.Contains(result.Error.Error(), "failed to renew github access token")
-	s.Empty(result.Token)
+	token, _, err := s.handler.getGitHubAccessToken(context.Background(), "42")
+	s.Error(err)
+	s.Contains(err.Error(), "failed to renew github access token")
+	s.Empty(token)
 }
 
 func (s *TokenHandlerSuite) TestGetAccessToken_ExpiredToken_SetError() {
@@ -149,20 +150,20 @@ func (s *TokenHandlerSuite) TestGetAccessToken_ExpiredToken_SetError() {
 	s.client.On("CreateInstallationAccessToken", 42).Return(renewed, nil)
 	s.secrets.On("Set", mock.Anything, GitHub_SecretPath, "42", mock.Anything).Return(errors.New("store failed"))
 
-	result := s.handler.getGitHubAccessToken(context.Background(), "42")
-	s.Error(result.Error)
-	s.Contains(result.Error.Error(), "failed to store github token")
-	s.Empty(result.Token)
+	token, _, err := s.handler.getGitHubAccessToken(context.Background(), "42")
+	s.Error(err)
+	s.Contains(err.Error(), "failed to store github token")
+	s.Empty(token)
 }
 
 func (s *TokenHandlerSuite) TestGetAccessToken_InvalidInstallationId() {
 	raw := `{"token":"ghs_expired","expires_at":"2020-01-01T00:00:00Z"}`
 	s.secrets.On("Get", mock.Anything, GitHub_SecretPath, "not-a-number").Return(raw, nil)
 
-	result := s.handler.getGitHubAccessToken(context.Background(), "not-a-number")
-	s.Error(result.Error)
-	s.Contains(result.Error.Error(), "failed to parse installation id")
-	s.Empty(result.Token)
+	token, _, err := s.handler.getGitHubAccessToken(context.Background(), "not-a-number")
+	s.Error(err)
+	s.Contains(err.Error(), "failed to parse installation id")
+	s.Empty(token)
 	s.client.AssertNotCalled(s.T(), "CreateInstallationAccessToken")
 }
 
@@ -177,7 +178,7 @@ func (s *TokenHandlerSuite) TestGetAccessToken_ExpiredToken_MarshalError() {
 	s.client.On("CreateInstallationAccessToken", 42).Return(renewed, nil)
 	s.secrets.On("Set", mock.Anything, GitHub_SecretPath, "42", mock.Anything).Return(nil)
 
-	result := s.handler.getGitHubAccessToken(context.Background(), "42")
-	s.NoError(result.Error)
-	s.Equal("ghs_renewed", result.Token)
+	token, _, err := s.handler.getGitHubAccessToken(context.Background(), "42")
+	s.NoError(err)
+	s.Equal("ghs_renewed", token)
 }

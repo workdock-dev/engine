@@ -30,24 +30,30 @@ func TestRepoAccessPolicy_ShouldAllowAccess(t *testing.T) {
 		name       string
 		repoName   *string
 		connection *types.GitHubConnection
-		tokenResult types.TokenFetchResult
+		token      string
+		expired    bool
+		fetchErr   error
 		want       types.RepoAccessPolicyResult
 	}{
 		{
 			name:       "nil repo returns access",
 			repoName:   nil,
 			connection: nil,
-			tokenResult: types.TokenFetchResult{},
+			token:      "",
+			expired:    false,
+			fetchErr:   nil,
 			want: types.RepoAccessPolicyResult{
 				HasAccess: true,
 				Token:    "",
 			},
 		},
 		{
-			name:     "nil connection returns no access",
-			repoName: strPtr("org/repo"),
+			name:       "nil connection returns no access",
+			repoName:   strPtr("org/repo"),
 			connection: nil,
-			tokenResult: types.TokenFetchResult{},
+			token:      "",
+			expired:    false,
+			fetchErr:   nil,
 			want: types.RepoAccessPolicyResult{
 				HasAccess: false,
 				Token:    "",
@@ -59,7 +65,9 @@ func TestRepoAccessPolicy_ShouldAllowAccess(t *testing.T) {
 			connection: &types.GitHubConnection{
 				Connected: false,
 			},
-			tokenResult: types.TokenFetchResult{},
+			token:    "",
+			expired:  false,
+			fetchErr: nil,
 			want: types.RepoAccessPolicyResult{
 				HasAccess: false,
 				Token:    "",
@@ -72,7 +80,9 @@ func TestRepoAccessPolicy_ShouldAllowAccess(t *testing.T) {
 				Connected:      true,
 				InstallationId: nil,
 			},
-			tokenResult: types.TokenFetchResult{},
+			token:    "",
+			expired:  false,
+			fetchErr: nil,
 			want: types.RepoAccessPolicyResult{
 				HasAccess: false,
 				Token:    "",
@@ -85,10 +95,9 @@ func TestRepoAccessPolicy_ShouldAllowAccess(t *testing.T) {
 				Connected:      true,
 				InstallationId: &installId,
 			},
-			tokenResult: types.TokenFetchResult{
-				Token:  "ghs_valid_token",
-				Expired: false,
-			},
+			token:    "ghs_valid_token",
+			expired:  false,
+			fetchErr: nil,
 			want: types.RepoAccessPolicyResult{
 				HasAccess: true,
 				Token:    "ghs_valid_token",
@@ -101,9 +110,9 @@ func TestRepoAccessPolicy_ShouldAllowAccess(t *testing.T) {
 				Connected:      true,
 				InstallationId: &installId,
 			},
-			tokenResult: types.TokenFetchResult{
-				Error: types.ErrGitHubInstallationUnavailable,
-			},
+			token:    "",
+			expired:  false,
+			fetchErr: types.ErrGitHubInstallationUnavailable,
 			want: types.RepoAccessPolicyResult{
 				HasAccess:    false,
 				Token:       "",
@@ -118,16 +127,16 @@ func TestRepoAccessPolicy_ShouldAllowAccess(t *testing.T) {
 				Connected:      true,
 				InstallationId: &installId,
 			},
-			tokenResult: types.TokenFetchResult{
-				Error: errors.New("some other error"),
-			},
-			want: types.RepoAccessPolicyResult{},
+			token:    "",
+			expired:  false,
+			fetchErr: errors.New("some other error"),
+			want:     types.RepoAccessPolicyResult{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := policy.ShouldAllowAccess(tt.repoName, tt.connection, tt.tokenResult)
+			got := policy.ShouldAllowAccess(tt.repoName, tt.connection, tt.token, tt.expired, tt.fetchErr)
 			assert.Equal(t, tt.want.HasAccess, got.HasAccess)
 			assert.Equal(t, tt.want.Token, got.Token)
 			assert.Equal(t, tt.want.NeedsReset, got.NeedsReset)
@@ -186,36 +195,30 @@ func TestRepoAccessPolicy_ShouldResetConnection(t *testing.T) {
 	policy := NewRepoAccessPolicy()
 
 	tests := []struct {
-		name       string
-		tokenResult types.TokenFetchResult
-		want       bool
+		name     string
+		fetchErr error
+		want     bool
 	}{
 		{
-			name: "no error does not reset",
-			tokenResult: types.TokenFetchResult{
-				Token: "ghs_valid",
-			},
-			want: false,
+			name:     "no error does not reset",
+			fetchErr: nil,
+			want:     false,
 		},
 		{
-			name: "installation unavailable triggers reset",
-			tokenResult: types.TokenFetchResult{
-				Error: types.ErrGitHubInstallationUnavailable,
-			},
-			want: true,
+			name:     "installation unavailable triggers reset",
+			fetchErr: types.ErrGitHubInstallationUnavailable,
+			want:     true,
 		},
 		{
-			name: "other error does not reset",
-			tokenResult: types.TokenFetchResult{
-				Error: errors.New("some error"),
-			},
-			want: false,
+			name:     "other error does not reset",
+			fetchErr: errors.New("some error"),
+			want:     false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := policy.ShouldResetConnection(tt.tokenResult)
+			got := policy.ShouldResetConnection(tt.fetchErr)
 			assert.Equal(t, tt.want, got)
 		})
 	}

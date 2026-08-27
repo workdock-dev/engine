@@ -47,26 +47,26 @@ type tokenResult struct {
 	Error   error
 }
 
-func (h *tokenHandler) getGitHubAccessToken(ctx context.Context, installationId string) types.TokenFetchResult {
+func (h *tokenHandler) getGitHubAccessToken(ctx context.Context, installationId string) (string, bool, error) {
 	if ctx.Err() != nil {
-		return types.TokenFetchResult{Error: ctx.Err()}
+		return "", false, ctx.Err()
 	}
 
 	raw, err := h.config.ForSecrets.Get(ctx, GitHub_SecretPath, installationId)
 
 	if err != nil {
-		return types.TokenFetchResult{Error: fmt.Errorf("failed to get github token: %w", err)}
+		return "", false, fmt.Errorf("failed to get github token: %w", err)
 	}
 
 	var token InstallationAccessToken
 
 	if err := json.Unmarshal([]byte(raw), &token); err != nil {
-		return types.TokenFetchResult{Error: fmt.Errorf("failed to unmarshal github token: %w", err)}
+		return "", false, fmt.Errorf("failed to unmarshal github token: %w", err)
 	}
 
 	if time.Until(token.ExpiresAt) > 5*time.Minute {
 		slog.Debug("Got github access token", "installation_id", installationId)
-		return types.TokenFetchResult{Token: token.Token, Expired: false}
+		return token.Token, false, nil
 	}
 
 	slog.Debug("GitHub access token is expired or expiring soon, renewing", "installation_id", installationId, "expires_at", token.ExpiresAt)
@@ -74,25 +74,25 @@ func (h *tokenHandler) getGitHubAccessToken(ctx context.Context, installationId 
 	id, err := strconv.Atoi(installationId)
 
 	if err != nil {
-		return types.TokenFetchResult{Error: fmt.Errorf("failed to parse installation id: %w", err)}
+		return "", false, fmt.Errorf("failed to parse installation id: %w", err)
 	}
 
 	renewed, err := h.config.Client.CreateInstallationAccessToken(id)
 
 	if err != nil {
-		return types.TokenFetchResult{Error: fmt.Errorf("failed to renew github access token: %w", err)}
+		return "", false, fmt.Errorf("failed to renew github access token: %w", err)
 	}
 
 	data, err := json.Marshal(renewed)
 
 	if err != nil {
-		return types.TokenFetchResult{Error: fmt.Errorf("failed to marshal github token: %w", err)}
+		return "", false, fmt.Errorf("failed to marshal github token: %w", err)
 	}
 
 	if err := h.config.ForSecrets.Set(ctx, GitHub_SecretPath, installationId, string(data)); err != nil {
-		return types.TokenFetchResult{Error: fmt.Errorf("failed to store github token: %w", err)}
+		return "", false, fmt.Errorf("failed to store github token: %w", err)
 	}
 
 	slog.Debug("Renewed github access token", "installation_id", installationId)
-	return types.TokenFetchResult{Token: renewed.Token, Expired: true}
+	return renewed.Token, true, nil
 }
