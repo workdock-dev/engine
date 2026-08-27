@@ -20,7 +20,7 @@ import (
 
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/repositories"
-	"github.com/workdock-dev/engine/domain/service"
+	domainSvc "github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/types"
 )
 
@@ -34,7 +34,7 @@ type githubAccessConfig struct {
 type githubAccess struct {
 	config          githubAccessConfig
 	tokenHandler    tokenHandler
-	repoAccessPolicy *service.RepoAccessPolicy
+	repoAccessPolicy *domainSvc.RepoAccessPolicy
 }
 
 func newGitHubAccess(config githubAccessConfig) *githubAccess {
@@ -44,7 +44,7 @@ func newGitHubAccess(config githubAccessConfig) *githubAccess {
 			ForSecrets: config.ForSecrets,
 			Client:     config.Client,
 		}),
-		repoAccessPolicy: service.NewRepoAccessPolicy(),
+		repoAccessPolicy: domainSvc.NewRepoAccessPolicy(),
 	}
 }
 
