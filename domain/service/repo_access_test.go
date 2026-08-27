@@ -38,7 +38,7 @@ func TestRepoAccessPolicy_ShouldAllowAccess(t *testing.T) {
 			repoName:   nil,
 			connection: nil,
 			tokenResult: types.TokenFetchResult{},
-			want: types.types.RepoAccessPolicyResult{
+			want: types.RepoAccessPolicyResult{
 				HasAccess: true,
 				Token:    "",
 			},
@@ -85,7 +85,7 @@ func TestRepoAccessPolicy_ShouldAllowAccess(t *testing.T) {
 				Connected:      true,
 				InstallationId: &installId,
 			},
-			tokenResult: TokenFetchResult{
+			tokenResult: types.TokenFetchResult{
 				Token:  "ghs_valid_token",
 				Expired: false,
 			},
@@ -101,7 +101,7 @@ func TestRepoAccessPolicy_ShouldAllowAccess(t *testing.T) {
 				Connected:      true,
 				InstallationId: &installId,
 			},
-			tokenResult: TokenFetchResult{
+			tokenResult: types.TokenFetchResult{
 				Error: ErrGitHubInstallationUnavailable,
 			},
 			want: types.RepoAccessPolicyResult{
@@ -118,7 +118,7 @@ func TestRepoAccessPolicy_ShouldAllowAccess(t *testing.T) {
 				Connected:      true,
 				InstallationId: &installId,
 			},
-			tokenResult: TokenFetchResult{
+			tokenResult: types.TokenFetchResult{
 				Error: errors.New("some other error"),
 			},
 			want: types.RepoAccessPolicyResult{},
@@ -192,21 +192,21 @@ func TestRepoAccessPolicy_ShouldResetConnection(t *testing.T) {
 	}{
 		{
 			name: "no error does not reset",
-			tokenResult: TokenFetchResult{
+			tokenResult: types.TokenFetchResult{
 				Token: "ghs_valid",
 			},
 			want: false,
 		},
 		{
 			name: "installation unavailable triggers reset",
-			tokenResult: TokenFetchResult{
+			tokenResult: types.TokenFetchResult{
 				Error: ErrGitHubInstallationUnavailable,
 			},
 			want: true,
 		},
 		{
 			name: "other error does not reset",
-			tokenResult: TokenFetchResult{
+			tokenResult: types.TokenFetchResult{
 				Error: errors.New("some error"),
 			},
 			want: false,
