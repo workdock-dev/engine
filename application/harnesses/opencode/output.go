@@ -58,9 +58,8 @@ type OpenCodeOutput struct {
 	stderr            <-chan string
 	sessionId         string
 
-	livenessTimeout time.Duration
-	maxMisses       int
-	onUnhealthy     func()
+	livenessPolicy *domain_service.LivenessPolicy
+	onUnhealthy    func()
 
 	lastEvent atomic.Int64
 	done      chan struct{}
@@ -101,6 +100,11 @@ func NewOpenCodeOutput(
 		return nil, err
 	}
 
+	var policy *domain_service.LivenessPolicy
+	if livenessTimeout > 0 && maxMisses > 0 {
+		policy = app.NewLivenessPolicy(livenessTimeout, maxMisses)
+	}
+
 	return &OpenCodeOutput{
 		app:               app,
 		model:             model,
@@ -110,8 +114,7 @@ func NewOpenCodeOutput(
 		stdout:            stdout,
 		stderr:            stderr,
 		sessionId:         sessionId,
-		livenessTimeout:   livenessTimeout,
-		maxMisses:         maxMisses,
+		livenessPolicy:   policy,
 		onUnhealthy:       onUnhealthy,
 		tracer:            otel.Tracer("workdock.gen_ai"),
 		metrics:           metrics,
@@ -262,9 +265,8 @@ func (o *OpenCodeOutput) Parse(ctx context.Context) {
 
 	now := time.Now()
 	o.lastEvent.Store(now.UnixNano())
-	if o.livenessTimeout > 0 && o.maxMisses > 0 {
-		policy := o.app.NewLivenessPolicy(o.livenessTimeout, o.maxMisses)
-		policy.OnActivity(now)
+	if o.livenessPolicy != nil {
+		o.livenessPolicy.OnActivity(now)
 	}
 	o.done = make(chan struct{})
 	defer close(o.done)
@@ -313,9 +315,8 @@ func (o *OpenCodeOutput) Parse(ctx context.Context) {
 			}
 
 			o.lastEvent.Store(time.Now().UnixNano())
-			if o.livenessTimeout > 0 && o.maxMisses > 0 {
-				policy := o.app.NewLivenessPolicy(o.livenessTimeout, o.maxMisses)
-				policy.OnActivity(time.Now())
+			if o.livenessPolicy != nil {
+				o.livenessPolicy.OnActivity(time.Now())
 			}
 
 			// We received the first chunk of a new message.
@@ -351,9 +352,8 @@ func (o *OpenCodeOutput) Parse(ctx context.Context) {
 			}
 
 			o.lastEvent.Store(time.Now().UnixNano())
-			if o.livenessTimeout > 0 && o.maxMisses > 0 {
-				policy := o.app.NewLivenessPolicy(o.livenessTimeout, o.maxMisses)
-				policy.OnActivity(time.Now())
+			if o.livenessPolicy != nil {
+				o.livenessPolicy.OnActivity(time.Now())
 			}
 
 			if _, err := stdErrBuilder.Write([]byte(chunk)); err != nil {
@@ -403,21 +403,24 @@ func (o *OpenCodeOutput) StderrError() error {
 	return o.stderrError
 }
 
+func (o *OpenCodeOutput) SetLivenessPolicy(policy *domain_service.LivenessPolicy) {
+	o.livenessPolicy = policy
+}
+
 // startLivenessProbe watches for a stalled harness: when no chunk has been
 // emitted for livenessTimeout, a health check is counted as missed; after
 // maxMisses consecutive missed checks the harness is considered unhealthy and
 // onUnhealthy is invoked. The probe is disabled when no timeout is configured.
 func (o *OpenCodeOutput) startLivenessProbe(ctx context.Context) {
-	if o.livenessTimeout <= 0 || o.maxMisses <= 0 || o.onUnhealthy == nil {
+	if o.livenessPolicy == nil || o.onUnhealthy == nil {
 		slog.Warn("Harness liveness probe disabled", "event_identifier", o.sessionId)
 		return
 	}
 
 	span := trace.SpanFromContext(ctx)
-	policy := o.app.NewLivenessPolicy(o.livenessTimeout, o.maxMisses)
 
 	go func() {
-		ticker := time.NewTicker(policy.Timeout())
+		ticker := time.NewTicker(o.livenessPolicy.Timeout())
 		defer ticker.Stop()
 
 		for {
@@ -430,11 +433,11 @@ func (o *OpenCodeOutput) startLivenessProbe(ctx context.Context) {
 				last := time.Unix(0, o.lastEvent.Load())
 				now := time.Now()
 
-				status := policy.Check(now)
+				status := o.livenessPolicy.Check(now)
 
 				span.AddEvent("opencode.liveness", trace.WithAttributes(
-					attribute.Int("missed", policy.MissedCount()),
-					attribute.Int("max", policy.MaxMisses()),
+					attribute.Int("missed", o.livenessPolicy.MissedCount()),
+					attribute.Int("max", o.livenessPolicy.MaxMisses()),
 				))
 
 				switch status {
@@ -443,18 +446,18 @@ func (o *OpenCodeOutput) startLivenessProbe(ctx context.Context) {
 				case domain_service.HealthStatus_Missed:
 					slog.Warn("harness health check missed",
 						"event_identifier", o.sessionId,
-						"missed", policy.MissedCount(),
-						"max", policy.MaxMisses(),
+						"missed", o.livenessPolicy.MissedCount(),
+						"max", o.livenessPolicy.MaxMisses(),
 						"idle_for", now.Sub(last).Round(time.Second),
 					)
 				case domain_service.HealthStatus_Unhealthy:
 					span.AddEvent("opencode.liveness.unhealthy", trace.WithAttributes(
-						attribute.Int("missed", policy.MissedCount()),
-						attribute.Int("max", policy.MaxMisses()),
+						attribute.Int("missed", o.livenessPolicy.MissedCount()),
+						attribute.Int("max", o.livenessPolicy.MaxMisses()),
 					))
 					slog.Error("harness declared unhealthy",
 						"event_identifier", o.sessionId,
-						"missed_checks", policy.MissedCount(),
+						"missed_checks", o.livenessPolicy.MissedCount(),
 					)
 					o.onUnhealthy()
 					return
