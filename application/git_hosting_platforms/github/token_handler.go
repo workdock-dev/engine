@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/workdock-dev/engine/domain/ports"
-	domainSvc "github.com/workdock-dev/engine/domain/service"
+	domain_service "github.com/workdock-dev/engine/domain/service"
 )
 
 type tokenHandlerConfig struct {
@@ -47,26 +47,26 @@ type tokenResult struct {
 	Error   error
 }
 
-func (h *tokenHandler) getGitHubAccessToken(ctx context.Context, installationId string) domainSvc.TokenFetchResult {
+func (h *tokenHandler) getGitHubAccessToken(ctx context.Context, installationId string) domain_service.TokenFetchResult {
 	if ctx.Err() != nil {
-		return domainSvc.TokenFetchResult{Error: ctx.Err()}
+		return domain_service.TokenFetchResult{Error: ctx.Err()}
 	}
 
 	raw, err := h.config.ForSecrets.Get(ctx, GitHub_SecretPath, installationId)
 
 	if err != nil {
-		return domainSvc.TokenFetchResult{Error: fmt.Errorf("failed to get github token: %w", err)}
+		return domain_service.TokenFetchResult{Error: fmt.Errorf("failed to get github token: %w", err)}
 	}
 
 	var token InstallationAccessToken
 
 	if err := json.Unmarshal([]byte(raw), &token); err != nil {
-		return domainSvc.TokenFetchResult{Error: fmt.Errorf("failed to unmarshal github token: %w", err)}
+		return domain_service.TokenFetchResult{Error: fmt.Errorf("failed to unmarshal github token: %w", err)}
 	}
 
 	if time.Until(token.ExpiresAt) > 5*time.Minute {
 		slog.Debug("Got github access token", "installation_id", installationId)
-		return domainSvc.TokenFetchResult{Token: token.Token, Expired: false}
+		return domain_service.TokenFetchResult{Token: token.Token, Expired: false}
 	}
 
 	slog.Debug("GitHub access token is expired or expiring soon, renewing", "installation_id", installationId, "expires_at", token.ExpiresAt)
@@ -74,25 +74,25 @@ func (h *tokenHandler) getGitHubAccessToken(ctx context.Context, installationId 
 	id, err := strconv.Atoi(installationId)
 
 	if err != nil {
-		return domainSvc.TokenFetchResult{Error: fmt.Errorf("failed to parse installation id: %w", err)}
+		return domain_service.TokenFetchResult{Error: fmt.Errorf("failed to parse installation id: %w", err)}
 	}
 
 	renewed, err := h.config.Client.CreateInstallationAccessToken(id)
 
 	if err != nil {
-		return domainSvc.TokenFetchResult{Error: fmt.Errorf("failed to renew github access token: %w", err)}
+		return domain_service.TokenFetchResult{Error: fmt.Errorf("failed to renew github access token: %w", err)}
 	}
 
 	data, err := json.Marshal(renewed)
 
 	if err != nil {
-		return domainSvc.TokenFetchResult{Error: fmt.Errorf("failed to marshal github token: %w", err)}
+		return domain_service.TokenFetchResult{Error: fmt.Errorf("failed to marshal github token: %w", err)}
 	}
 
 	if err := h.config.ForSecrets.Set(ctx, GitHub_SecretPath, installationId, string(data)); err != nil {
-		return domainSvc.TokenFetchResult{Error: fmt.Errorf("failed to store github token: %w", err)}
+		return domain_service.TokenFetchResult{Error: fmt.Errorf("failed to store github token: %w", err)}
 	}
 
 	slog.Debug("Renewed github access token", "installation_id", installationId)
-	return domainSvc.TokenFetchResult{Token: renewed.Token, Expired: true}
+	return domain_service.TokenFetchResult{Token: renewed.Token, Expired: true}
 }

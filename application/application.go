@@ -42,8 +42,9 @@ type App struct {
 	gitService                 *domain_service.GitService
 	webhookService             *domain_service.WebhookService
 	sessionConfigService       *domain_service.SessionConfigService
-	gitEventFilterService      *domain_service.GitEventFilterService
+	gitEventFilterService     *domain_service.GitEventFilterService
 	sessionResultService       *domain_service.SessionResultService
+	repoAccessPolicyService    *domain_service.RepoAccessPolicy
 	promptFactory              *factories.PromptFactory
 	agentConfigFactory         *factories.AgentConfigFactory
 
@@ -117,6 +118,7 @@ func (app *App) Init() {
 	app.sessionConfigService = &domain_service.SessionConfigService{}
 	app.gitEventFilterService = &domain_service.GitEventFilterService{}
 	app.sessionResultService = &domain_service.SessionResultService{}
+	app.repoAccessPolicyService = domain_service.NewRepoAccessPolicy()
 	app.promptFactory = &factories.PromptFactory{}
 	app.agentConfigFactory = &factories.AgentConfigFactory{}
 }
@@ -146,6 +148,10 @@ func (app *App) GetSessionConfigService() *domain_service.SessionConfigService {
 
 func (app *App) GetGitEventFilterService() *domain_service.GitEventFilterService {
 	return app.gitEventFilterService
+}
+
+func (app *App) GetRepoAccessPolicyService() *domain_service.RepoAccessPolicy {
+	return app.repoAccessPolicyService
 }
 
 func (app *App) GetSessionResultService() *domain_service.SessionResultService {

@@ -19,33 +19,30 @@ import (
 	"errors"
 	"log/slog"
 
+	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/ports"
-	"github.com/workdock-dev/engine/domain/repositories"
-	domainSvc "github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/types"
 )
 
 type githubAccessConfig struct {
-	ForSecrets        ports.ForSecrets
-	ForEvent          ports.ForEventBus
-	GitHubConnections repositories.GitHubConnectionRepository
-	Client            ClientInterface
+	ForSecrets ports.ForSecrets
+	Client    ClientInterface
 }
 
 type githubAccess struct {
-	config          githubAccessConfig
-	tokenHandler    tokenHandler
-	repoAccessPolicy *domainSvc.RepoAccessPolicy
+	app         *application.App
+	config      githubAccessConfig
+	tokenHandler tokenHandler
 }
 
-func newGitHubAccess(config githubAccessConfig) *githubAccess {
+func newGitHubAccess(config githubAccessConfig, app *application.App) *githubAccess {
 	return &githubAccess{
+		app: app,
 		config: config,
 		tokenHandler: *newTokenHandler(tokenHandlerConfig{
 			ForSecrets: config.ForSecrets,
 			Client:     config.Client,
 		}),
-		repoAccessPolicy: domainSvc.NewRepoAccessPolicy(),
 	}
 }
 
@@ -54,12 +51,14 @@ func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentif
 		return true, "", nil
 	}
 
-	connection, err := s.config.GitHubConnections.GetGitHubConnection(ctx, *repoFullName)
+	connection, err := s.app.GetGitHubConnections().GetGitHubConnection(ctx, *repoFullName)
 	if err != nil {
 		return false, "", err
 	}
 
-	if s.repoAccessPolicy.ShouldRequestConnection(connection) {
+	repoAccessPolicy := s.app.GetRepoAccessPolicyService()
+
+	if repoAccessPolicy.ShouldRequestConnection(connection) {
 		public, publicErr := s.config.Client.IsRepositoryPublic(ctx, *repoFullName)
 		if publicErr != nil {
 			return false, "", publicErr
@@ -91,7 +90,7 @@ func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentif
 		return false, "", tokenFetchResult.Error
 	}
 
-	policyResult := s.repoAccessPolicy.ShouldAllowAccess(repoFullName, connection, tokenFetchResult)
+	policyResult := repoAccessPolicy.ShouldAllowAccess(repoFullName, connection, tokenFetchResult)
 
 	if policyResult.NeedsReset {
 		slog.Debug(
@@ -117,11 +116,9 @@ func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentif
 	return false, "", nil
 }
 
-// RequestConnection persists a pending GitHub connection for a repository so
-// that the user is prompted to link it and future sessions can pick it up.
 func (s *githubAccess) RequestConnection(ctx context.Context, sessionEventIdentifier, repoFullName string) error {
 	sessionEventId := sessionEventIdentifier
-	return s.config.GitHubConnections.UpsertGitHubConnection(
+	return s.app.GetGitHubConnections().UpsertGitHubConnection(
 		ctx,
 		&types.GitHubConnection{
 			SessionEventIdentifier: &sessionEventId,
@@ -132,11 +129,8 @@ func (s *githubAccess) RequestConnection(ctx context.Context, sessionEventIdenti
 	)
 }
 
-// ResetInstallation cleans up a GitHub installation that is no longer
-// available: it disconnects the specified repositories linked to it and deletes its
-// stored credentials, so future sessions request a fresh GitHub connection.
 func (s *githubAccess) ResetInstallation(ctx context.Context, installationId string, repos []string) error {
-	if err := s.config.GitHubConnections.ResetGitHubConnection(ctx, installationId, repos); err != nil {
+	if err := s.app.GetGitHubConnections().ResetGitHubConnection(ctx, installationId, repos); err != nil {
 		return err
 	}
 
@@ -147,15 +141,6 @@ func (s *githubAccess) ResetInstallation(ctx context.Context, installationId str
 	return nil
 }
 
-// CompleteConnection links each repository to the given installation once a
-// GitHub installation has been created and its token stored.
-//
-// When a user authorizes the GitHub app for multiple repositories at once,
-// additional repos that weren't part of the original connection request still
-// need a valid session_event_identifier. We resolve this by copying the
-// session_event_identifier from an existing connection belonging to the same
-// authorization flow (i.e., another repo in the same batch that already has a
-// connection record).
 func (s *githubAccess) CompleteConnection(ctx context.Context, installationId string, repos []string) error {
 	for _, repo := range repos {
 		connection := &types.GitHubConnection{
@@ -165,11 +150,11 @@ func (s *githubAccess) CompleteConnection(ctx context.Context, installationId st
 			InstallationId:         &installationId,
 		}
 
-		if err := s.config.GitHubConnections.UpsertGitHubConnection(ctx, connection); err != nil {
+		if err := s.app.GetGitHubConnections().UpsertGitHubConnection(ctx, connection); err != nil {
 			return err
 		}
 
-		s.config.ForEvent.Publish(ctx, types.GitHubConnectedEvent{
+		s.app.GetEventBus().Publish(ctx, types.GitHubConnectedEvent{
 			Connection: *connection,
 		})
 	}
