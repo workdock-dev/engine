@@ -16,6 +16,7 @@ package domain_service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/workdock-dev/engine/domain/ports"
@@ -50,6 +51,8 @@ func (s *WebhookService) On(ctx context.Context, name types.PlatformProvider, re
 	if err != nil {
 		return err
 	}
+
+	slog.Debug("Webhook event parsed", "from", name, "eventType", eventType, "event", fmt.Sprintf("%+v", event))
 
 	s.config.ForEventBus.Publish(context.Background(), types.WebhookEvent{
 		Provider: name,

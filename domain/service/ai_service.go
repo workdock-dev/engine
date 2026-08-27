@@ -78,11 +78,14 @@ func NewAIService(config AIServiceConfig) *AIService {
 
 				isCancel, err := workPlatform.IsCancelSignal(ctx, e.Payload)
 
+				slog.Debug("IsCancelSignal result", "isCancel", isCancel, "err", err)
+
 				if err != nil {
 					return err
 				}
 
 				if isCancel {
+					slog.Debug("Cancel signal detected, calling Cancel")
 					return s.Cancel(ctx, e.Provider, e.Payload)
 				}
 
@@ -281,6 +284,8 @@ func (s *AIService) Session(ctx context.Context, name types.PlatformProvider, ev
 // implementation, cancellation may be performed synchronously or
 // cooperatively.
 func (s *AIService) Cancel(ctx context.Context, name types.PlatformProvider, event any) error {
+	slog.Debug("Cancel called", "provider", name)
+
 	workPlatform, err := s.platform(name)
 
 	if err != nil {
@@ -288,6 +293,7 @@ func (s *AIService) Cancel(ctx context.Context, name types.PlatformProvider, eve
 	}
 
 	session, _, err := workPlatform.Ingest(event, nil, nil)
+	slog.Debug("Ingest result", "session", session, "err", err)
 
 	if err != nil {
 		return err

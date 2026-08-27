@@ -231,10 +231,23 @@ func (p *linearPlatform) IsCancelSignal(ctx context.Context, event any) (bool, e
 	linearEvent, err := p.castAnyToAgentSessionEventData(event)
 
 	if err != nil {
+		slog.Error("IsCancelSignal: failed to cast event", "err", err)
 		return false, err
 	}
 
-	return linearEvent.AgentActivity != nil && linearEvent.AgentActivity.Signal == SignalType_Stop, nil
+	if linearEvent == nil {
+		slog.Error("IsCancelSignal: linearEvent is nil after cast")
+		return false, nil
+	}
+
+	if linearEvent.AgentActivity == nil {
+		slog.Debug("IsCancelSignal: AgentActivity is nil", "eventType", linearEvent.Type)
+		return false, nil
+	}
+
+	slog.Debug("IsCancelSignal check", "signal", linearEvent.AgentActivity.Signal, "expected", SignalType_Stop)
+
+	return linearEvent.AgentActivity.Signal == SignalType_Stop, nil
 }
 
 // Webhook handles an incoming webhook request from the any platform.
