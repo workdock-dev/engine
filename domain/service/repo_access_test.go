@@ -102,7 +102,7 @@ func TestRepoAccessPolicy_ShouldAllowAccess(t *testing.T) {
 				InstallationId: &installId,
 			},
 			tokenResult: types.TokenFetchResult{
-				Error: ErrGitHubInstallationUnavailable,
+				Error: types.ErrGitHubInstallationUnavailable,
 			},
 			want: types.RepoAccessPolicyResult{
 				HasAccess:    false,
@@ -187,7 +187,7 @@ func TestRepoAccessPolicy_ShouldResetConnection(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		tokenResult TokenFetchResult
+		tokenResult types.TokenFetchResult
 		want       bool
 	}{
 		{
@@ -200,7 +200,7 @@ func TestRepoAccessPolicy_ShouldResetConnection(t *testing.T) {
 		{
 			name: "installation unavailable triggers reset",
 			tokenResult: types.TokenFetchResult{
-				Error: ErrGitHubInstallationUnavailable,
+				Error: types.ErrGitHubInstallationUnavailable,
 			},
 			want: true,
 		},
