@@ -30,15 +30,15 @@ func TestRepoAccessPolicy_ShouldAllowAccess(t *testing.T) {
 		name       string
 		repoName   *string
 		connection *types.GitHubConnection
-		tokenResult TokenFetchResult
-		want       RepoAccessPolicyResult
+		tokenResult types.TokenFetchResult
+		want       types.RepoAccessPolicyResult
 	}{
 		{
 			name:       "nil repo returns access",
 			repoName:   nil,
 			connection: nil,
-			tokenResult: TokenFetchResult{},
-			want: RepoAccessPolicyResult{
+			tokenResult: types.TokenFetchResult{},
+			want: types.types.RepoAccessPolicyResult{
 				HasAccess: true,
 				Token:    "",
 			},
@@ -47,8 +47,8 @@ func TestRepoAccessPolicy_ShouldAllowAccess(t *testing.T) {
 			name:     "nil connection returns no access",
 			repoName: strPtr("org/repo"),
 			connection: nil,
-			tokenResult: TokenFetchResult{},
-			want: RepoAccessPolicyResult{
+			tokenResult: types.TokenFetchResult{},
+			want: types.RepoAccessPolicyResult{
 				HasAccess: false,
 				Token:    "",
 			},
@@ -59,8 +59,8 @@ func TestRepoAccessPolicy_ShouldAllowAccess(t *testing.T) {
 			connection: &types.GitHubConnection{
 				Connected: false,
 			},
-			tokenResult: TokenFetchResult{},
-			want: RepoAccessPolicyResult{
+			tokenResult: types.TokenFetchResult{},
+			want: types.RepoAccessPolicyResult{
 				HasAccess: false,
 				Token:    "",
 			},
@@ -72,8 +72,8 @@ func TestRepoAccessPolicy_ShouldAllowAccess(t *testing.T) {
 				Connected:      true,
 				InstallationId: nil,
 			},
-			tokenResult: TokenFetchResult{},
-			want: RepoAccessPolicyResult{
+			tokenResult: types.TokenFetchResult{},
+			want: types.RepoAccessPolicyResult{
 				HasAccess: false,
 				Token:    "",
 			},
@@ -89,7 +89,7 @@ func TestRepoAccessPolicy_ShouldAllowAccess(t *testing.T) {
 				Token:  "ghs_valid_token",
 				Expired: false,
 			},
-			want: RepoAccessPolicyResult{
+			want: types.RepoAccessPolicyResult{
 				HasAccess: true,
 				Token:    "ghs_valid_token",
 			},
@@ -104,7 +104,7 @@ func TestRepoAccessPolicy_ShouldAllowAccess(t *testing.T) {
 			tokenResult: TokenFetchResult{
 				Error: ErrGitHubInstallationUnavailable,
 			},
-			want: RepoAccessPolicyResult{
+			want: types.RepoAccessPolicyResult{
 				HasAccess:    false,
 				Token:       "",
 				NeedsReset:  true,
@@ -121,7 +121,7 @@ func TestRepoAccessPolicy_ShouldAllowAccess(t *testing.T) {
 			tokenResult: TokenFetchResult{
 				Error: errors.New("some other error"),
 			},
-			want: RepoAccessPolicyResult{},
+			want: types.RepoAccessPolicyResult{},
 		},
 	}
 

@@ -22,21 +22,6 @@ import (
 
 var ErrGitHubInstallationUnavailable = types.ErrGitHubInstallationUnavailable
 
-type TokenFetchResult struct {
-	Token   string
-	Expired  bool
-	Error   error
-}
-
-type RepoAccessPolicyResult struct {
-	HasAccess         bool
-	Token            string
-	NeedsReset       bool
-	NeedsReAuth      bool
-	SessionEventID   string
-	RepoFullName     string
-}
-
 type RepoAccessPolicy struct{}
 
 func NewRepoAccessPolicy() *RepoAccessPolicy {
@@ -46,17 +31,17 @@ func NewRepoAccessPolicy() *RepoAccessPolicy {
 func (p *RepoAccessPolicy) ShouldAllowAccess(
 	repoFullName *string,
 	connection *types.GitHubConnection,
-	tokenResult TokenFetchResult,
-) RepoAccessPolicyResult {
+	tokenResult types.TokenFetchResult,
+) types.RepoAccessPolicyResult {
 	if repoFullName == nil {
-		return RepoAccessPolicyResult{
+		return types.RepoAccessPolicyResult{
 			HasAccess: true,
 			Token:    "",
 		}
 	}
 
 	if connection == nil || !connection.Connected || connection.InstallationId == nil {
-		return RepoAccessPolicyResult{
+		return types.RepoAccessPolicyResult{
 			HasAccess: false,
 			Token:    "",
 		}
@@ -64,17 +49,17 @@ func (p *RepoAccessPolicy) ShouldAllowAccess(
 
 	if tokenResult.Error != nil {
 		if errors.Is(tokenResult.Error, ErrGitHubInstallationUnavailable) {
-			return RepoAccessPolicyResult{
+			return types.RepoAccessPolicyResult{
 				HasAccess:    false,
 				Token:       "",
 				NeedsReset:  true,
 				NeedsReAuth: true,
 			}
 		}
-		return RepoAccessPolicyResult{}
+		return types.RepoAccessPolicyResult{}
 	}
 
-	return RepoAccessPolicyResult{
+	return types.RepoAccessPolicyResult{
 		HasAccess: true,
 		Token:    tokenResult.Token,
 	}
@@ -84,7 +69,7 @@ func (p *RepoAccessPolicy) ShouldRequestConnection(connection *types.GitHubConne
 	return connection == nil || !connection.Connected || connection.InstallationId == nil
 }
 
-func (p *RepoAccessPolicy) ShouldResetConnection(tokenResult TokenFetchResult) bool {
+func (p *RepoAccessPolicy) ShouldResetConnection(tokenResult types.TokenFetchResult) bool {
 	if tokenResult.Error == nil {
 		return false
 	}
