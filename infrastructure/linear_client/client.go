@@ -38,6 +38,8 @@ import (
 	"github.com/workdock-dev/engine/domain/types"
 )
 
+var webhookFreshnessRule = types.NewWebhookFreshnessRule()
+
 const (
 	GraphqlEndpoint       = "https://api.linear.app/graphql"
 	AuthorizeEndpoint     = "https://linear.app/oauth/authorize"
@@ -519,10 +521,8 @@ func (s *LinearService) Webhook(ctx context.Context, req types.WebhookRequest) (
 			return nil, types.WebhookEventType_Unknown, types.ErrBadRequest
 		}
 
-		diff := time.Since(time.UnixMilli(issuePayload.WebhookTimestamp))
-
-		if diff < -60*time.Second || diff > 60*time.Second {
-			slog.Error("request is past the 60 seconds expectation from linear")
+		if err := webhookFreshnessRule.Validate(issuePayload.WebhookTimestamp, time.Now()); err != nil {
+			slog.Error("request is past the 60 seconds expectation from linear", "err", err)
 			return nil, types.WebhookEventType_Unknown, types.ErrUnAuthorized
 		}
 
@@ -536,10 +536,8 @@ func (s *LinearService) Webhook(ctx context.Context, req types.WebhookRequest) (
 		return nil, types.WebhookEventType_Unknown, types.ErrBadRequest
 	}
 
-	diff := time.Since(time.UnixMilli(payload.WebhookTimestamp))
-
-	if diff < -60*time.Second || diff > 60*time.Second {
-		slog.Error("request is past the 60 seconds expectation from linear")
+	if err := webhookFreshnessRule.Validate(payload.WebhookTimestamp, time.Now()); err != nil {
+		slog.Error("request is past the 60 seconds expectation from linear", "err", err)
 		return nil, types.WebhookEventType_Unknown, types.ErrUnAuthorized
 	}
 

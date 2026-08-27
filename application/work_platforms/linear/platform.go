@@ -22,14 +22,18 @@ import (
 	"log/slog"
 
 	"github.com/workdock-dev/engine/application"
+	"github.com/workdock-dev/engine/domain/factories"
 	"github.com/workdock-dev/engine/domain/ports"
+	"github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/types"
 )
 
 // Config holds the dependencies required to run Linear sessions.
 type Config struct {
-	Client              LinearClientInterface
-	GitHubAppInstallURL string
+	Client                  LinearClientInterface
+	GitHubAppInstallURL     string
+	IdempotencyKeyFactory  *factories.IdempotencyKeyFactory
+	EventClassification    *service.EventClassificationService
 }
 
 // linearPlatform adapts AIService to the Linear provider. It normalizes Linear
@@ -40,6 +44,13 @@ type linearPlatform struct {
 }
 
 func New(config Config, app *application.App) ports.ForWorkPlatform {
+	if config.IdempotencyKeyFactory == nil {
+		config.IdempotencyKeyFactory = &factories.IdempotencyKeyFactory{}
+	}
+	if config.EventClassification == nil {
+		config.EventClassification = &service.EventClassificationService{}
+	}
+
 	p := &linearPlatform{
 		app:    app,
 		config: config,
@@ -136,10 +147,10 @@ func (p *linearPlatform) Ingest(event any, seed *string, from *types.SessionEven
 
 	slog.Debug("Generated linear agent session event idempotency key from", "id", linearEvent.AgentSession.ID, "timestamp", linearEvent.AgentSession.UpdatedAt, "seed", s)
 
-	key, err := types.GenerateIdempotencyKey(map[string]any{
-		"id":        linearEvent.AgentSession.ID,
-		"timestamp": linearEvent.AgentSession.UpdatedAt,
-		"seed":      seed,
+	key, err := p.config.IdempotencyKeyFactory.NewLinearSessionEventKey(factories.LinearIdempotencyKeyInput{
+		SessionID: linearEvent.AgentSession.ID,
+		Timestamp: linearEvent.AgentSession.UpdatedAt,
+		Seed:      seed,
 	})
 
 	if err != nil {
@@ -234,7 +245,11 @@ func (p *linearPlatform) IsCancelSignal(ctx context.Context, event any) (bool, e
 		return false, err
 	}
 
-	return linearEvent.AgentActivity != nil && linearEvent.AgentActivity.Signal == SignalType_Stop, nil
+	if linearEvent.AgentActivity == nil {
+		return false, nil
+	}
+
+	return p.config.EventClassification.IsCancelSignal(string(linearEvent.AgentActivity.Signal)), nil
 }
 
 // Webhook handles an incoming webhook request from the any platform.

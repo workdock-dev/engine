@@ -23,6 +23,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/types"
 )
 
@@ -1105,8 +1106,7 @@ func (s *OutputSuite) TestLivenessProbe_DisabledOnUnhealthy() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
 	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
-		out.livenessTimeout = time.Millisecond
-		out.maxMisses = 1
+		out.SetLivenessPolicy(service.NewLivenessPolicy(time.Millisecond, 1))
 		out.onUnhealthy = nil
 	})
 
@@ -1120,8 +1120,7 @@ func (s *OutputSuite) TestLivenessProbe_Unhealthy() {
 	stderr := make(chan string)
 	unhealthyCalled := make(chan struct{}, 1)
 	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
-		out.livenessTimeout = 10 * time.Millisecond
-		out.maxMisses = 1
+		out.SetLivenessPolicy(service.NewLivenessPolicy(10*time.Millisecond, 1))
 		out.onUnhealthy = func() {
 			unhealthyCalled <- struct{}{}
 		}
@@ -1147,8 +1146,7 @@ func (s *OutputSuite) TestLivenessProbe_ActivityResets() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
 	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
-		out.livenessTimeout = 20 * time.Millisecond
-		out.maxMisses = 2
+		out.SetLivenessPolicy(service.NewLivenessPolicy(20*time.Millisecond, 2))
 	})
 
 	s.parts.On("Response", mock.Anything, mock.Anything).Maybe()

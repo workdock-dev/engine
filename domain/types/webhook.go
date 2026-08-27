@@ -15,9 +15,13 @@
 package types
 
 import (
+	"errors"
 	"io"
 	"net/textproto"
+	"time"
 )
+
+var ErrWebhookTimestampExpired = errors.New("webhook timestamp is outside the acceptable freshness window")
 
 // WebhookRequest carries the raw incoming webhook payload to a provider
 // adapter for validation and parsing. It deliberately avoids net/http types:
@@ -47,4 +51,36 @@ func (r WebhookRequest) Get(key string) string {
 	}
 
 	return ""
+}
+
+const WebhookFreshnessWindow = 60 * time.Second
+
+type WebhookFreshnessRule struct {
+	window time.Duration
+}
+
+func NewWebhookFreshnessRule() *WebhookFreshnessRule {
+	return &WebhookFreshnessRule{
+		window: WebhookFreshnessWindow,
+	}
+}
+
+func (r *WebhookFreshnessRule) IsFresh(webhookTimestamp int64, now time.Time) bool {
+	if r.window <= 0 {
+		return true
+	}
+	ts := time.UnixMilli(webhookTimestamp)
+	diff := now.Sub(ts)
+	return diff >= -r.window && diff <= r.window
+}
+
+func (r *WebhookFreshnessRule) Validate(webhookTimestamp int64, now time.Time) error {
+	if !r.IsFresh(webhookTimestamp, now) {
+		return ErrWebhookTimestampExpired
+	}
+	return nil
+}
+
+func (r *WebhookFreshnessRule) Window() time.Duration {
+	return r.window
 }

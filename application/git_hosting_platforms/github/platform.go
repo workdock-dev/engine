@@ -24,12 +24,14 @@ import (
 
 	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/ports"
+	"github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/types"
 )
 
 type GitHubPlatformConfig struct {
-	Client       ClientInterface
-	BotLoginName string
+	Client               ClientInterface
+	BotLoginName        string
+	EventClassification *service.EventClassificationService
 }
 
 type githubPlatform struct {
@@ -39,6 +41,10 @@ type githubPlatform struct {
 }
 
 func New(config GitHubPlatformConfig, app *application.App) ports.ForGitHostingPlatform {
+	if config.EventClassification == nil {
+		config.EventClassification = &service.EventClassificationService{}
+	}
+
 	return &githubPlatform{
 		app:    app,
 		config: config,
@@ -109,7 +115,7 @@ func (s *githubPlatform) handleInstallation(ctx context.Context, event *WebhookE
 	slog.Debug("Processing GitHub installation event", "action", event.Action, "installation_id", event.Installation.ID)
 	installationId := strconv.Itoa(event.Installation.ID)
 
-	if event.Action == "deleted" || event.Action == "removed" {
+	if s.config.EventClassification.IsInstallationRevocation(event.Action) {
 		repos := make([]string, 0, len(event.Repositories))
 		for _, repo := range event.Repositories {
 			repos = append(repos, repo.FullName)
@@ -122,7 +128,7 @@ func (s *githubPlatform) handleInstallation(ctx context.Context, event *WebhookE
 		return nil
 	}
 
-	if event.Action != "created" && event.Action != "added" {
+	if !s.config.EventClassification.ShouldProcessInstallation(event.Action) {
 		slog.Debug("ignoring non-created installation event", "action", event.Action)
 		return nil
 	}
