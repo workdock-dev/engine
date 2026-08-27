@@ -1102,7 +1102,8 @@ func (s *OutputSuite) TestLivenessProbe_DisabledOnUnhealthy() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
 	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
-		out.SetLivenessPolicy(domain_service.NewLivenessPolicy(time.Millisecond, 1))
+		out.livenessTimeout = time.Millisecond
+		out.maxMisses = 1
 		out.onUnhealthy = nil
 	})
 
@@ -1116,7 +1117,8 @@ func (s *OutputSuite) TestLivenessProbe_Unhealthy() {
 	stderr := make(chan string)
 	unhealthyCalled := make(chan struct{}, 1)
 	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
-		out.SetLivenessPolicy(domain_service.NewLivenessPolicy(10*time.Millisecond, 1))
+		out.livenessTimeout = 10 * time.Millisecond
+		out.maxMisses = 1
 		out.onUnhealthy = func() {
 			unhealthyCalled <- struct{}{}
 		}
@@ -1142,7 +1144,8 @@ func (s *OutputSuite) TestLivenessProbe_ActivityResets() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
 	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
-		out.SetLivenessPolicy(domain_service.NewLivenessPolicy(20*time.Millisecond, 2))
+		out.livenessTimeout = 20 * time.Millisecond
+		out.maxMisses = 2
 	})
 
 	s.parts.On("Response", mock.Anything, mock.Anything).Maybe()
