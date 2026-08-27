@@ -157,7 +157,7 @@ func (s *TokenHandlerSuite) TestGetAccessToken_ExpiredToken_SetError() {
 
 func (s *TokenHandlerSuite) TestGetAccessToken_InvalidInstallationId() {
 	raw := `{"token":"ghs_expired","expires_at":"2020-01-01T00:00:00Z"}`
-	s.secrets.On("Get", mock.Anything, GitHub_SecretPath, "42").Return(raw, nil)
+	s.secrets.On("Get", mock.Anything, GitHub_SecretPath, "not-a-number").Return(raw, nil)
 
 	result := s.handler.getGitHubAccessToken(context.Background(), "not-a-number")
 	s.Error(result.Error)
