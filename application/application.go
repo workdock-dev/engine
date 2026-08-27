@@ -44,8 +44,10 @@ type App struct {
 	sessionConfigService       *domain_service.SessionConfigService
 	gitEventFilterService      *domain_service.GitEventFilterService
 	sessionResultService       *domain_service.SessionResultService
+	eventClassificationService *domain_service.EventClassificationService
 	promptFactory              *factories.PromptFactory
-	agentConfigFactory         *factories.AgentConfigFactory
+	agentConfigFactory        *factories.AgentConfigFactory
+	idempotencyKeyFactory     *factories.IdempotencyKeyFactory
 
 	// Application
 	forQueue interfaces.Queue
@@ -117,8 +119,10 @@ func (app *App) Init() {
 	app.sessionConfigService = &domain_service.SessionConfigService{}
 	app.gitEventFilterService = &domain_service.GitEventFilterService{}
 	app.sessionResultService = &domain_service.SessionResultService{}
+	app.eventClassificationService = &domain_service.EventClassificationService{}
 	app.promptFactory = &factories.PromptFactory{}
 	app.agentConfigFactory = &factories.AgentConfigFactory{}
+	app.idempotencyKeyFactory = &factories.IdempotencyKeyFactory{}
 }
 
 func (app *App) Run(ctx context.Context, config async.TaskSchedulerConfig) error {
@@ -158,6 +162,18 @@ func (app *App) GetPromptFactory() *factories.PromptFactory {
 
 func (app *App) GetAgentConfigFactory() *factories.AgentConfigFactory {
 	return app.agentConfigFactory
+}
+
+func (app *App) GetEventClassificationService() *domain_service.EventClassificationService {
+	return app.eventClassificationService
+}
+
+func (app *App) GetIdempotencyKeyFactory() *factories.IdempotencyKeyFactory {
+	return app.idempotencyKeyFactory
+}
+
+func (app *App) NewLivenessPolicy(timeout time.Duration, maxMisses int) *domain_service.LivenessPolicy {
+	return domain_service.NewLivenessPolicy(timeout, maxMisses)
 }
 
 func (app *App) GetWorkPlatform(name types.PlatformProvider) (ports.ForWorkPlatform, error) {

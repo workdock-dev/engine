@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/ports"
 	domain_service "github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/telemetry"
@@ -80,6 +81,7 @@ type OpenCodeOutput struct {
 }
 
 func NewOpenCodeOutput(
+	app *application.App,
 	parts ports.ForHarnessParts,
 	provider,
 	model,

@@ -329,6 +329,7 @@ func (h *OpenCode) Run(ctx context.Context) (*types.SessionEventResult, error) {
 		}()
 
 		output, err := NewOpenCodeOutput(
+			h.app,
 			h.config.Parts,
 			provider,
 			model,

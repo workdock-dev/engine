@@ -42,6 +42,7 @@ func (s *OutputSuite) SetupTest() {
 
 func (s *OutputSuite) newOutput(stdout, stderr <-chan string, opts ...func(*OpenCodeOutput)) *OpenCodeOutput {
 	o, err := NewOpenCodeOutput(
+		nil, // app - not needed for tests with disabled liveness
 		s.parts,
 		"anthropic",
 		"claude-3",
@@ -77,7 +78,7 @@ func makeWireEvent(typ string, part any) string {
 func (s *OutputSuite) TestNewOpenCodeOutput_Success() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
-	o, err := NewOpenCodeOutput(s.parts, "anthropic", "claude-3", "lin_at_123", "s1", stdout, stderr, 0, 0, nil)
+	o, err := NewOpenCodeOutput(nil, s.parts, "anthropic", "claude-3", "lin_at_123", "s1", stdout, stderr, 0, 0, nil)
 	s.NoError(err)
 	s.NotNil(o)
 }
