@@ -101,7 +101,7 @@ func NewOpenCodeOutput(
 
 	var policy *domain_service.LivenessPolicy
 	if livenessTimeout > 0 && maxMisses > 0 {
-		policy = domain_service.NewLivenessPolicy(livenessTimeout, maxMisses)
+		policy = app.NewLivenessPolicy(livenessTimeout, maxMisses)
 	}
 
 	return &OpenCodeOutput{
