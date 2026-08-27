@@ -220,7 +220,3 @@ func TestRepoAccessPolicy_ShouldResetConnection(t *testing.T) {
 		})
 	}
 }
-
-func strPtr(s string) *string {
-	return &s
-}
