@@ -16,6 +16,7 @@ package github
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"github.com/workdock-dev/engine/domain/ports"
@@ -69,6 +70,26 @@ func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentif
 	}
 
 	tokenFetchResult := s.tokenHandler.getGitHubAccessToken(ctx, *connection.InstallationId)
+
+	if tokenFetchResult.Error != nil {
+		if errors.Is(tokenFetchResult.Error, types.ErrGitHubInstallationUnavailable) {
+			slog.Debug(
+				"GitHub installation unavailable, resetting connection",
+				"installation_id", *connection.InstallationId,
+				"event_identifier", sessionEventIdentifier,
+			)
+
+			s.ResetInstallation(ctx, *connection.InstallationId, []string{*repoFullName})
+
+			if err := s.RequestConnection(ctx, sessionEventIdentifier, *repoFullName); err != nil {
+				return false, "", err
+			}
+
+			return false, "", types.ErrGitHubConnectionReRequested
+		}
+
+		return false, "", tokenFetchResult.Error
+	}
 
 	policyResult := s.repoAccessPolicy.ShouldAllowAccess(repoFullName, connection, tokenFetchResult)
 
