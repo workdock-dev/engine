@@ -172,22 +172,6 @@ func GenerateIdempotencyKey(payload any) (string, error) {
 	return hex.EncodeToString(sum[:18]), nil // 36 hex chars
 }
 
-func (j EventJob) ShouldRetry(maxAttempts int) bool {
-	return j.Attempts < maxAttempts
-}
-
-func (j EventJob) NextStatus(err error, maxAttempts int) EventJobStatus {
-	if err == nil {
-		return EventJobStatus_Succeeded
-	}
-
-	if j.Attempts >= maxAttempts {
-		return EventJobStatus_Failed
-	}
-
-	return EventJobStatus_Retry
-}
-
 func (j EventJob) WillRetry() bool {
 	return j.willRetry
 }

@@ -18,6 +18,10 @@ import "github.com/workdock-dev/engine/domain/types"
 
 type IssueLifecycleService struct{}
 
+func NewIssueLifecycleService() *IssueLifecycleService {
+	return &IssueLifecycleService{}
+}
+
 func (s *IssueLifecycleService) ShouldArchiveForIssue(stateType string) bool {
 	return stateType == string(types.IssueStateCompleted)
 }

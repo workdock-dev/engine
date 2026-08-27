@@ -301,22 +301,20 @@ func (s *TaskScheduler) execute(ctx context.Context, job *types.EventJob, starte
 	}
 
 	if err != nil {
-		nextStatus := job.NextStatus(err, s.config.MaxAttempts)
-
 		span.SetAttributes(attribute.String("job.result", "failed"))
-		span.SetAttributes(attribute.Bool("job.retry", nextStatus == types.EventJobStatus_Retry))
+		span.SetAttributes(attribute.Bool("job.retry", job.WillRetry()))
 
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 
 		result := ResultFailed
-		if nextStatus == types.EventJobStatus_Retry {
+		if job.WillRetry() {
 			result = ResultRetry
 		}
 
 		s.metrics.recordJob(ctx, result, errorType(err), duration)
 
-		if nextStatus == types.EventJobStatus_Failed {
+		if !job.WillRetry() {
 			telemetry.SpanErr(ctx, s.tracer, "job.fail", func(ctx context.Context) error {
 				return s.extQueue.Fail(ctx, job.SessionEventIdentifier, err)
 			})

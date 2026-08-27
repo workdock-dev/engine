@@ -117,7 +117,7 @@ func (app *App) Init() {
 
 	app.sessionConfigService = &domain_service.SessionConfigService{}
 	app.gitEventFilterService = &domain_service.GitEventFilterService{}
-	app.issueLifecycleService = &domain_service.IssueLifecycleService{}
+	app.issueLifecycleService = domain_service.NewIssueLifecycleService()
 	app.sessionResultService = &domain_service.SessionResultService{}
 	app.promptFactory = &factories.PromptFactory{}
 	app.agentConfigFactory = &factories.AgentConfigFactory{}
