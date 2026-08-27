@@ -75,6 +75,8 @@ type OpenCodeOutput struct {
 	sessionCost                float64
 
 	toolStarts map[string]int64
+
+	stderrError error
 }
 
 func NewOpenCodeOutput(
@@ -346,9 +348,9 @@ func (o *OpenCodeOutput) Parse(ctx context.Context) {
 		}
 	}
 
-	// TODO: Expose the stderr to the user's log
-	// User needs to know when something within the harness breaks
 	if str := stdErrBuilder.String(); str != "" {
+		o.stderrError = fmt.Errorf("%s", str)
+
 		span.AddEvent(
 			"output.stderr",
 			trace.WithAttributes(
@@ -377,6 +379,10 @@ func (o *OpenCodeOutput) Parse(ctx context.Context) {
 		ctx,
 		o.sessionCost,
 	)
+}
+
+func (o *OpenCodeOutput) StderrError() error {
+	return o.stderrError
 }
 
 // startLivenessProbe watches for a stalled harness: when no chunk has been

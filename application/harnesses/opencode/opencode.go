@@ -348,6 +348,10 @@ func (h *OpenCode) Run(ctx context.Context) (*types.SessionEventResult, error) {
 		// .Parse, Blocks until it stdout, stderr are close
 		output.Parse(runCtx)
 
+		if stderrErr := output.StderrError(); stderrErr != nil {
+			return fmt.Errorf("opencode stderr error: %w", stderrErr)
+		}
+
 		if unhealthy.Load() {
 			return types.ErrHarnessUnhealthy
 		}
