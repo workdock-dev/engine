@@ -30,8 +30,8 @@ type githubAccessConfig struct {
 }
 
 type githubAccess struct {
-	app         *application.App
-	config      githubAccessConfig
+	app          *application.App
+	config       githubAccessConfig
 	tokenHandler tokenHandler
 }
 
