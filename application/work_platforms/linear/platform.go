@@ -23,7 +23,7 @@ import (
 
 	"github.com/workdock-dev/engine/application"
 	"github.com/workdock-dev/engine/domain/ports"
-	"github.com/workdock-dev/engine/domain/service/domain_service"
+	domainSvc "github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/types"
 )
 
@@ -306,7 +306,7 @@ func (p *linearPlatform) archiveSandboxForIssue(ctx context.Context, issueId str
 		return err
 	}
 
-	if !domain_service.ShouldArchiveForIssue(issue.StateType) {
+	if !domainSvc.ShouldArchiveForIssue(issue.StateType) {
 		slog.Debug("issue state is not done, skipping archive", "issue_id", issueId, "state_type", issue.StateType)
 		return nil
 	}
