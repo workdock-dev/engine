@@ -141,7 +141,7 @@ type EventJob struct {
 	PreviousState          EventJobStatus
 	Status                 EventJobStatus
 	Attempts               int
-	WillRetry              bool
+	willRetry              bool
 	NextAttemptAt          *time.Time
 	LeaseOwner             *string
 	LeaseExpiresAt         *time.Time
@@ -183,4 +183,12 @@ func (j EventJob) NextStatus(err error, maxAttempts int) EventJobStatus {
 	}
 
 	return EventJobStatus_Retry
+}
+
+func (j EventJob) WillRetry() bool {
+	return j.willRetry
+}
+
+func (j *EventJob) SetMaxAttempts(maxAttempts int) {
+	j.willRetry = j.Attempts < maxAttempts
 }

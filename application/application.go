@@ -43,6 +43,7 @@ type App struct {
 	webhookService             *domain_service.WebhookService
 	sessionConfigService       *domain_service.SessionConfigService
 	gitEventFilterService      *domain_service.GitEventFilterService
+	issueLifecycleService     *domain_service.IssueLifecycleService
 	sessionResultService       *domain_service.SessionResultService
 	promptFactory              *factories.PromptFactory
 	agentConfigFactory         *factories.AgentConfigFactory
@@ -116,6 +117,7 @@ func (app *App) Init() {
 
 	app.sessionConfigService = &domain_service.SessionConfigService{}
 	app.gitEventFilterService = &domain_service.GitEventFilterService{}
+	app.issueLifecycleService = &domain_service.IssueLifecycleService{}
 	app.sessionResultService = &domain_service.SessionResultService{}
 	app.promptFactory = &factories.PromptFactory{}
 	app.agentConfigFactory = &factories.AgentConfigFactory{}
@@ -146,6 +148,10 @@ func (app *App) GetSessionConfigService() *domain_service.SessionConfigService {
 
 func (app *App) GetGitEventFilterService() *domain_service.GitEventFilterService {
 	return app.gitEventFilterService
+}
+
+func (app *App) GetIssueLifecycleService() *domain_service.IssueLifecycleService {
+	return app.issueLifecycleService
 }
 
 func (app *App) GetSessionResultService() *domain_service.SessionResultService {

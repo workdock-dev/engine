@@ -20,6 +20,8 @@ const (
 	IssueStateCompleted IssueState = "completed"
 )
 
-func ShouldArchiveForIssue(stateType string) bool {
+type IssueLifecycleService struct{}
+
+func (s *IssueLifecycleService) ShouldArchiveForIssue(stateType string) bool {
 	return stateType == string(IssueStateCompleted)
 }
