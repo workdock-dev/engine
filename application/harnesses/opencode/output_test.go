@@ -1079,7 +1079,7 @@ func (s *OutputSuite) TestLivenessProbe_DisabledTimeout() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
 	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
-		out.livenessPolicy.GetTimeout() = 0
+		out.livenessPolicy.SetTimeout(0)
 	})
 
 	close(stdout)
@@ -1092,8 +1092,8 @@ func (s *OutputSuite) TestLivenessProbe_DisabledMaxMisses() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
 	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
-		out.livenessPolicy.GetTimeout() = time.Millisecond
-		out.livenessPolicy.MissedCount() = 0
+		out.livenessPolicy.SetTimeout(time.Millisecond)
+		out.livenessPolicy.SetMissedCount(0)
 	})
 
 	close(stdout)
@@ -1105,8 +1105,8 @@ func (s *OutputSuite) TestLivenessProbe_DisabledOnUnhealthy() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
 	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
-		out.livenessPolicy.GetTimeout() = time.Millisecond
-		out.livenessPolicy.MissedCount() = 1
+		out.livenessPolicy.SetTimeout(time.Millisecond)
+		out.livenessPolicy.SetMissedCount(1)
 		out.onUnhealthy = nil
 	})
 
@@ -1120,8 +1120,8 @@ func (s *OutputSuite) TestLivenessProbe_Unhealthy() {
 	stderr := make(chan string)
 	unhealthyCalled := make(chan struct{}, 1)
 	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
-		out.livenessPolicy.GetTimeout() = 10 * time.Millisecond
-		out.livenessPolicy.MissedCount() = 1
+		out.livenessPolicy.SetTimeout(10 * time.Millisecond)
+		out.livenessPolicy.SetMissedCount(1)
 		out.onUnhealthy = func() {
 			unhealthyCalled <- struct{}{}
 		}
@@ -1147,8 +1147,8 @@ func (s *OutputSuite) TestLivenessProbe_ActivityResets() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
 	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
-		out.livenessPolicy.GetTimeout() = 20 * time.Millisecond
-		out.livenessPolicy.MissedCount() = 2
+		out.livenessPolicy.SetTimeout(20 * time.Millisecond)
+		out.livenessPolicy.SetMissedCount(2)
 	})
 
 	s.parts.On("Response", mock.Anything, mock.Anything).Maybe()

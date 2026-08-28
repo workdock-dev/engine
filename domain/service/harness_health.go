@@ -86,3 +86,15 @@ func (p *LivenessPolicy) IsEnabled() bool {
 func (p *LivenessPolicy) GetTimeout() time.Duration {
 	return p.timeout
 }
+
+func (p *LivenessPolicy) SetTimeout(t time.Duration) {
+	p.timeout = t
+}
+
+func (p *LivenessPolicy) SetMaxMisses(m int) {
+	p.maxMisses = m
+}
+
+func (p *LivenessPolicy) SetMissedCount(c int) {
+	p.missed = c
+}
