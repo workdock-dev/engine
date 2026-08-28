@@ -45,14 +45,13 @@ func NewRepoAccessService(config RepoAccessConfig) *RepoAccessService {
 type VerifyRepoAccessInput struct {
 	SessionEventIdentifier string
 	RepoFullName           *string
-	InstallationId         *string
-	Connected              bool
 }
 
 type VerifyRepoAccessResult struct {
-	HasAccess bool
-	Token     string
-	Decision  RepoAccessDecision
+	HasAccess     bool
+	Token         string
+	Decision      RepoAccessDecision
+	InstallationId *string
 }
 
 type RepoAccessDecision string
@@ -92,7 +91,12 @@ func (s *RepoAccessService) VerifyRepoAccess(ctx context.Context, input VerifyRe
 		}, nil
 	}
 
-	if !input.Connected || input.InstallationId == nil {
+	connection, err := s.config.GitHubConnections.GetGitHubConnection(ctx, *input.RepoFullName)
+	if err != nil {
+		return nil, err
+	}
+
+	if connection == nil || !connection.Connected || connection.InstallationId == nil {
 		return &VerifyRepoAccessResult{
 			HasAccess: false,
 			Token:     "",
@@ -100,13 +104,15 @@ func (s *RepoAccessService) VerifyRepoAccess(ctx context.Context, input VerifyRe
 		}, nil
 	}
 
-	tokenData, err := s.config.ForSecrets.Get(ctx, "/github/installations", *input.InstallationId)
+	installationId := connection.InstallationId
+	tokenData, err := s.config.ForSecrets.Get(ctx, "/github/installations", *installationId)
 	if err != nil {
 		if errors.Is(err, types.ErrGitHubInstallationUnavailable) {
 			return &VerifyRepoAccessResult{
-				HasAccess: false,
-				Token:     "",
-				Decision:  RepoAccessResetAndReRequest,
+				HasAccess:     false,
+				Token:         "",
+				Decision:      RepoAccessResetAndReRequest,
+				InstallationId: installationId,
 			}, nil
 		}
 		return nil, err
@@ -122,24 +128,27 @@ func (s *RepoAccessService) VerifyRepoAccess(ctx context.Context, input VerifyRe
 	switch tokenDecision {
 	case TokenKeep:
 		return &VerifyRepoAccessResult{
-			HasAccess: true,
-			Token:     token,
-			Decision:  RepoAccessGranted,
+			HasAccess:     true,
+			Token:         token,
+			Decision:      RepoAccessGranted,
+			InstallationId: installationId,
 		}, nil
 	case TokenExpired:
 		return nil, errors.New("github access token expired and cannot be renewed")
 	case TokenRenew:
 		return &VerifyRepoAccessResult{
-			HasAccess: true,
-			Token:     token,
-			Decision:  RepoAccessGranted,
+			HasAccess:     true,
+			Token:         token,
+			Decision:      RepoAccessGranted,
+			InstallationId: installationId,
 		}, nil
 	}
 
 	return &VerifyRepoAccessResult{
-		HasAccess: false,
-		Token:     "",
-		Decision:  RepoAccessDenied,
+		HasAccess:     false,
+		Token:         "",
+		Decision:      RepoAccessDenied,
+		InstallationId: nil,
 	}, nil
 }
 

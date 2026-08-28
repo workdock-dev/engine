@@ -52,22 +52,9 @@ func newGitHubAccess(config githubAccessConfig) *githubAccess {
 }
 
 func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentifier string, repoFullName *string) (bool, string, error) {
-	connection, err := s.config.app.GetGitHubConnections().GetGitHubConnection(ctx, *repoFullName)
-
-	if err != nil {
-		return false, "", err
-	}
-
 	input := domain_service.VerifyRepoAccessInput{
 		SessionEventIdentifier: sessionEventIdentifier,
 		RepoFullName:           repoFullName,
-		InstallationId:         nil,
-		Connected:              false,
-	}
-
-	if connection != nil && connection.Connected && connection.InstallationId != nil {
-		input.InstallationId = connection.InstallationId
-		input.Connected = connection.Connected
 	}
 
 	result, err := s.domainService.VerifyRepoAccess(ctx, input)
@@ -92,11 +79,11 @@ func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentif
 	case domain_service.RepoAccessResetAndReRequest:
 		slog.Debug(
 			"GitHub installation unavailable, resetting connection",
-			"installation_id", *input.InstallationId,
+			"installation_id", *result.InstallationId,
 			"event_identifier", sessionEventIdentifier,
 		)
 
-		if err := s.ResetInstallation(ctx, *input.InstallationId, []string{*repoFullName}); err != nil {
+		if err := s.ResetInstallation(ctx, *result.InstallationId, []string{*repoFullName}); err != nil {
 			slog.Debug("ResetInstallation failed, but continuing to request connection", "err", err)
 		}
 

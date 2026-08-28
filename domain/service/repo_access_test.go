@@ -116,13 +116,13 @@ func (s *RepoAccessServiceSuite) TestVerifyRepoAccess_NilRepo() {
 	s.Equal(RepoAccessGranted, result.Decision)
 }
 
-func (s *RepoAccessServiceSuite) TestVerifyRepoAccess_NotConnected() {
+func (s *RepoAccessServiceSuite) TestVerifyRepoAccess_NoConnection() {
 	repo := "org/repo"
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(nil, nil)
+
 	result, err := s.service.VerifyRepoAccess(context.Background(), VerifyRepoAccessInput{
 		SessionEventIdentifier: "evt-1",
 		RepoFullName:           &repo,
-		Connected:              false,
-		InstallationId:         nil,
 	})
 
 	s.NoError(err)
@@ -131,13 +131,14 @@ func (s *RepoAccessServiceSuite) TestVerifyRepoAccess_NotConnected() {
 	s.Equal(RepoAccessDenied, result.Decision)
 }
 
-func (s *RepoAccessServiceSuite) TestVerifyRepoAccess_NoInstallationId() {
+func (s *RepoAccessServiceSuite) TestVerifyRepoAccess_NotConnected() {
 	repo := "org/repo"
+	conn := &types.GitHubConnection{Connected: false}
+	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(conn, nil)
+
 	result, err := s.service.VerifyRepoAccess(context.Background(), VerifyRepoAccessInput{
 		SessionEventIdentifier: "evt-1",
 		RepoFullName:           &repo,
-		Connected:              true,
-		InstallationId:         nil,
 	})
 
 	s.NoError(err)
@@ -166,22 +167,17 @@ func (s *RepoAccessServiceSuite) TestVerifyRepoAccess_TokenUnavailable_ResetsAnd
 	s.connections.On("GetGitHubConnection", mock.Anything, "org/repo").Return(conn, nil)
 
 	s.secrets.On("Get", mock.Anything, "/github/installations", "42").Return("", types.ErrGitHubInstallationUnavailable)
-	s.connections.On("ResetGitHubConnection", mock.Anything, "42", mock.Anything).Return(nil)
-	s.secrets.On("Delete", mock.Anything, "/github/installations", "42").Return(nil)
-	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(nil)
 
 	result, err := s.service.VerifyRepoAccess(context.Background(), VerifyRepoAccessInput{
 		SessionEventIdentifier: "evt-1",
 		RepoFullName:           &repo,
-		InstallationId:         &installId,
-		Connected:              true,
 	})
 
-	s.ErrorIs(err, types.ErrGitHubConnectionReRequested)
+	s.NoError(err)
 	s.False(result.HasAccess)
 	s.Empty(result.Token)
-	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42", mock.Anything)
-	s.connections.AssertCalled(s.T(), "UpsertGitHubConnection", mock.Anything, mock.Anything)
+	s.Equal(RepoAccessResetAndReRequest, result.Decision)
+	s.Equal(installId, *result.InstallationId)
 }
 
 func (s *RepoAccessServiceSuite) TestVerifyRepoAccess_ValidToken() {
@@ -196,8 +192,6 @@ func (s *RepoAccessServiceSuite) TestVerifyRepoAccess_ValidToken() {
 	result, err := s.service.VerifyRepoAccess(context.Background(), VerifyRepoAccessInput{
 		SessionEventIdentifier: "evt-1",
 		RepoFullName:           &repo,
-		InstallationId:         &installId,
-		Connected:              true,
 	})
 
 	s.NoError(err)
@@ -218,8 +212,6 @@ func (s *RepoAccessServiceSuite) TestVerifyRepoAccess_TokenExpired_RenewsAndRetu
 	result, err := s.service.VerifyRepoAccess(context.Background(), VerifyRepoAccessInput{
 		SessionEventIdentifier: "evt-1",
 		RepoFullName:           &repo,
-		InstallationId:         &installId,
-		Connected:              true,
 	})
 
 	s.Error(err)
