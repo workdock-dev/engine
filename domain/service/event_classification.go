@@ -59,10 +59,10 @@ func (s *EventClassificationService) ClassifyInstallationEvent(event *GitHubInst
 	}
 
 	switch event.Action {
-	case "deleted", "removed":
+	case "deleted":
 		return InstallationAction_Revoke
-	case "created", "added":
-		if len(event.Repositories) > 0 || len(event.RepositoriesAdded) > 0 {
+	case "created":
+		if len(event.Repositories) > 0 {
 			return InstallationAction_Grant
 		}
 		return InstallationAction_None
@@ -70,10 +70,18 @@ func (s *EventClassificationService) ClassifyInstallationEvent(event *GitHubInst
 		if len(event.RepositoriesAdded) > 0 {
 			return InstallationAction_UpdateRepositories
 		}
+		if len(event.Repositories) > 0 {
+			return InstallationAction_Grant
+		}
+		return InstallationAction_None
 	case "removed":
 		if len(event.RepositoriesRemoved) > 0 {
 			return InstallationAction_UpdateRepositories
 		}
+		if len(event.Repositories) > 0 {
+			return InstallationAction_Revoke
+		}
+		return InstallationAction_None
 	}
 
 	return InstallationAction_None
