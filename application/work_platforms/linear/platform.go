@@ -238,10 +238,14 @@ func (p *linearPlatform) IsCancelSignal(ctx context.Context, event any) (bool, e
 	}
 
 	classificationService := &domain_service.EventClassificationService{}
-	domainEvent := &domain_service.LinearAgentSessionEvent{
-		AgentActivity: &domain_service.LinearAgentActivity{
-			Signal: linearEvent.AgentActivity.Signal,
-		},
+	
+	var domainEvent *domain_service.LinearAgentSessionEvent
+	if linearEvent.AgentActivity != nil {
+		domainEvent = &domain_service.LinearAgentSessionEvent{
+			AgentActivity: &domain_service.LinearAgentActivity{
+				Signal: linearEvent.AgentActivity.Signal,
+			},
+		}
 	}
 
 	return classificationService.IsCancelSignal(domainEvent), nil
