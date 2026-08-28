@@ -43,10 +43,8 @@ func New(config GitHubPlatformConfig, app *application.App) ports.ForGitHostingP
 		app:    app,
 		config: config,
 		access: newGitHubAccess(githubAccessConfig{
-			Client:            config.Client,
-			ForSecrets:        app.GetForSecrets(),
-			ForEvent:          app.GetEventBus(),
-			GitHubConnections: app.GetGitHubConnections(),
+			Client: config.Client,
+			app:    app,
 		}),
 	}
 }

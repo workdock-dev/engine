@@ -22,6 +22,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/types"
 )
 
@@ -60,11 +61,12 @@ type mockEventBus struct {
 	mock.Mock
 }
 
-func (m *mockEventBus) Publish(ctx context.Context, event types.DomainEvent) {
-	m.Called(ctx, event)
+func (m *mockEventBus) Publish(ctx context.Context, event ports.DomainEvent) error {
+	args := m.Called(ctx, event)
+	return args.Error(0)
 }
 
-func (m *mockEventBus) Subscribe(eventType types.PlatformWebhookEvent, handler func(ctx context.Context, event types.DomainEvent) error) {
+func (m *mockEventBus) Subscribe(eventType string, handler func(ctx context.Context, event ports.DomainEvent) error) {
 	m.Called(eventType, handler)
 }
 
