@@ -40,7 +40,6 @@ func TestOutputSuite(t *testing.T) {
 func (s *OutputSuite) SetupTest() {
 	s.parts = new(mockParts)
 	s.mockApp = application.New()
-	s.mockApp.Init()
 }
 
 func (s *OutputSuite) newOutput(stdout, stderr <-chan string, livenessTimeout time.Duration, maxMisses int, onUnhealthy func()) *OpenCodeOutput {
