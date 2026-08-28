@@ -1108,6 +1108,7 @@ func (s *OutputSuite) TestLivenessProbe_DisabledOnUnhealthy() {
 	stderr := make(chan string, 10)
 	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
 		out.livenessPolicy.SetTimeout(time.Millisecond)
+		out.livenessPolicy.SetMaxMisses(0)
 		out.livenessPolicy.SetMissedCount(1)
 		out.onUnhealthy = nil
 	})
