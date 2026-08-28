@@ -60,20 +60,6 @@ func (s *OutputSuite) newOutput(stdout, stderr <-chan string, livenessTimeout ti
 	s.Require().NoError(err)
 	return o
 }
-		"lin_at_123",
-		"session-1",
-		stdout,
-		stderr,
-		0,   // livenessTimeout disabled
-		0,   // maxMisses disabled
-		nil, // onUnhealthy
-	)
-	s.Require().NoError(err)
-	for _, opt := range opts {
-		opt(o)
-	}
-	return o
-}
 
 func makeWireEvent(typ string, part any) string {
 	partJSON, _ := json.Marshal(part)
