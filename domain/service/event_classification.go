@@ -62,7 +62,7 @@ func (s *EventClassificationService) ClassifyInstallationEvent(event *GitHubInst
 	case "deleted":
 		return InstallationAction_Revoke
 	case "created":
-		if len(event.Repositories) > 0 {
+		if len(event.Repositories) > 0 || len(event.RepositoriesAdded) > 0 {
 			return InstallationAction_Grant
 		}
 		return InstallationAction_None
