@@ -65,8 +65,12 @@ func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentif
 
 	switch result.Decision {
 	case domain_service.RepoAccessGranted:
+		token, tokenErr := s.tokenHandler.getGitHubAccessToken(ctx, *result.InstallationId)
+		if tokenErr != nil {
+			return false, "", tokenErr
+		}
 		slog.Debug("Verified repo access", "has_access", true)
-		return true, result.Token, nil
+		return true, token, nil
 	case domain_service.RepoAccessDenied:
 		public, publicErr := s.config.Client.IsRepositoryPublic(ctx, *repoFullName)
 
