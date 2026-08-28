@@ -16,65 +16,71 @@ package github
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 
-	"github.com/workdock-dev/engine/domain/ports"
-	"github.com/workdock-dev/engine/domain/repositories"
+	"github.com/workdock-dev/engine/application"
+	"github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/types"
 )
 
-// GitRepoAccessService owns the git repository access lifecycle: verifying
-// access to a repository and managing its connection and installation state.
-// GitHub is currently the only repository provider it integrates with.
 type githubAccessConfig struct {
-	ForSecrets        ports.ForSecrets
-	ForEvent          ports.ForEventBus
-	GitHubConnections repositories.GitHubConnectionRepository
-	Client            ClientInterface
+	Client ClientInterface
+	app    *application.App
 }
 
 type githubAccess struct {
-	config       githubAccessConfig
-	tokenHandler tokenHandler
+	config         githubAccessConfig
+	domainService  *domain_service.RepoAccessService
+	tokenHandler   *tokenHandler
 }
 
 func newGitHubAccess(config githubAccessConfig) *githubAccess {
+	domainService := domain_service.NewRepoAccessService(domain_service.RepoAccessConfig{
+		GitHubConnections: config.app.GetGitHubConnections(),
+		ForSecrets:        config.app.GetForSecrets(),
+		ForEvent:          config.app.GetEventBus(),
+	})
+
 	return &githubAccess{
-		config: config,
-		tokenHandler: *newTokenHandler(tokenHandlerConfig{
-			ForSecrets: config.ForSecrets,
+		config:        config,
+		domainService: domainService,
+		tokenHandler: newTokenHandler(tokenHandlerConfig{
+			ForSecrets: config.app.GetForSecrets(),
 			Client:     config.Client,
 		}),
 	}
 }
 
-// verifyRepoAccess reports whether the AI agent can access a repository and
-// returns the access token when access is granted through a connected
-// installation. Sessions without a repository are always accessible (no token
-// needed).
-//
-// For both public and private repositories, a GitHub App installation connection
-// is required to obtain an access token with write permissions. Public repos
-// are readable without authentication, but pushing branches, creating PRs, and
-// other write operations require a token — so the engine always requests a
-// connection regardless of visibility.
-//
-// When the installation is no longer available, it resets the installation and
-// requests a fresh connection, returning ErrGitHubConnectionReRequested to
-// signal that the user should be prompted to re-authorize.
 func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentifier string, repoFullName *string) (bool, string, error) {
-	if repoFullName == nil {
-		return true, "", nil
-	}
-
-	connection, err := s.config.GitHubConnections.GetGitHubConnection(ctx, *repoFullName)
+	connection, err := s.config.app.GetGitHubConnections().GetGitHubConnection(ctx, *repoFullName)
 
 	if err != nil {
 		return false, "", err
 	}
 
-	if connection == nil || !connection.Connected || connection.InstallationId == nil {
+	input := domain_service.VerifyRepoAccessInput{
+		SessionEventIdentifier: sessionEventIdentifier,
+		RepoFullName:           repoFullName,
+		InstallationId:         nil,
+		Connected:              false,
+	}
+
+	if connection != nil && connection.Connected && connection.InstallationId != nil {
+		input.InstallationId = connection.InstallationId
+		input.Connected = connection.Connected
+	}
+
+	result, err := s.domainService.VerifyRepoAccess(ctx, input)
+
+	if err != nil {
+		return false, "", err
+	}
+
+	switch result.Decision {
+	case domain_service.RepoAccessGranted:
+		slog.Debug("Verified repo access", "has_access", true)
+		return true, result.Token, nil
+	case domain_service.RepoAccessDenied:
 		public, publicErr := s.config.Client.IsRepositoryPublic(ctx, *repoFullName)
 
 		if publicErr != nil {
@@ -83,88 +89,53 @@ func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentif
 
 		slog.Debug("No GitHub connection found", "public", public, "has_access", false)
 		return false, "", nil
-	}
+	case domain_service.RepoAccessResetAndReRequest:
+		slog.Debug(
+			"GitHub installation unavailable, resetting connection",
+			"installation_id", *input.InstallationId,
+			"event_identifier", sessionEventIdentifier,
+		)
 
-	token, err := s.tokenHandler.getGitHubAccessToken(ctx, *connection.InstallationId)
-
-	if err != nil {
-		if errors.Is(err, types.ErrGitHubInstallationUnavailable) {
-			slog.Debug(
-				"GitHub installation unavailable, resetting connection",
-				"installation_id", *connection.InstallationId,
-				"event_identifier", sessionEventIdentifier,
-			)
-
-			// TODO: Safe to ignore returned error?
-			s.ResetInstallation(ctx, *connection.InstallationId, []string{*repoFullName})
-
-			if err := s.RequestConnection(ctx, sessionEventIdentifier, *repoFullName); err != nil {
-				return false, "", err
-			}
-
-			return false, "", types.ErrGitHubConnectionReRequested
+		if err := s.ResetInstallation(ctx, *input.InstallationId, []string{*repoFullName}); err != nil {
+			slog.Debug("ResetInstallation failed, but continuing to request connection", "err", err)
 		}
 
-		return false, "", err
+		if err := s.RequestConnection(ctx, sessionEventIdentifier, *repoFullName); err != nil {
+			return false, "", err
+		}
+
+		return false, "", types.ErrGitHubConnectionReRequested
+	default:
+		return false, "", nil
 	}
-
-	slog.Debug("Verified repo access", "has_access", true)
-	return true, token, nil
 }
 
-// RequestConnection persists a pending GitHub connection for a repository so
-// that the user is prompted to link it and future sessions can pick it up.
 func (s *githubAccess) RequestConnection(ctx context.Context, sessionEventIdentifier, repoFullName string) error {
-	sessionEventId := sessionEventIdentifier
-	return s.config.GitHubConnections.UpsertGitHubConnection(
-		ctx,
-		&types.GitHubConnection{
-			SessionEventIdentifier: &sessionEventId,
-			RepoFullName:           repoFullName,
-			Connected:              false,
-			InstallationId:         nil,
-		},
-	)
+	connection := s.domainService.BuildConnectionRequest(sessionEventIdentifier, repoFullName)
+	return s.config.app.GetGitHubConnections().UpsertGitHubConnection(ctx, connection)
 }
 
-// ResetInstallation cleans up a GitHub installation that is no longer
-// available: it disconnects the specified repositories linked to it and deletes its
-// stored credentials, so future sessions request a fresh GitHub connection.
 func (s *githubAccess) ResetInstallation(ctx context.Context, installationId string, repos []string) error {
-	if err := s.config.GitHubConnections.ResetGitHubConnection(ctx, installationId, repos); err != nil {
+	if err := s.config.app.GetGitHubConnections().ResetGitHubConnection(ctx, installationId, repos); err != nil {
 		return err
 	}
 
-	if err := s.config.ForSecrets.Delete(ctx, GitHub_SecretPath, installationId); err != nil {
+	if err := s.config.app.GetForSecrets().Delete(ctx, GitHub_SecretPath, installationId); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-// CompleteConnection links each repository to the given installation once a
-// GitHub installation has been created and its token stored.
-//
-// When a user authorizes the GitHub app for multiple repositories at once,
-// additional repos that weren't part of the original connection request still
-// need a valid session_event_identifier. We resolve this by copying the
-// session_event_identifier from an existing connection belonging to the same
-// authorization flow (i.e., another repo in the same batch that already has a
-// connection record).
 func (s *githubAccess) CompleteConnection(ctx context.Context, installationId string, repos []string) error {
 	for _, repo := range repos {
-		connection := &types.GitHubConnection{
-			SessionEventIdentifier: nil,
-			RepoFullName:           repo,
-			Connected:              true,
-			InstallationId:         &installationId,
-		}
+		connection := s.domainService.BuildCompleteConnection(installationId, repo)
 
-		if err := s.config.GitHubConnections.UpsertGitHubConnection(ctx, connection); err != nil {
+		if err := s.config.app.GetGitHubConnections().UpsertGitHubConnection(ctx, connection); err != nil {
 			return err
 		}
 
-		s.config.ForEvent.Publish(ctx, types.GitHubConnectedEvent{
+		s.config.app.GetEventBus().Publish(ctx, types.GitHubConnectedEvent{
 			Connection: *connection,
 		})
 	}
