@@ -88,7 +88,7 @@ func TestEventClassificationService_ClassifyInstallationEvent(t *testing.T) {
 		},
 		{
 			name:     "added action with repos",
-			event:    &GitHubInstallationEvent{Action: "added", RepositoriesAdded: []GitHubRepo{{FullName: "org/repo"}}},
+			event:    &GitHubInstallationEvent{Action: "added", Repositories: []GitHubRepo{{FullName: "org/repo"}}},
 			expected: InstallationAction_Grant,
 		},
 		{
@@ -99,12 +99,12 @@ func TestEventClassificationService_ClassifyInstallationEvent(t *testing.T) {
 		{
 			name:     "added repositories",
 			event:    &GitHubInstallationEvent{Action: "added", RepositoriesAdded: []GitHubRepo{{FullName: "org/repo"}}},
-			expected: InstallationAction_Grant,
+			expected: InstallationAction_UpdateRepositories,
 		},
 		{
 			name:     "removed repositories",
 			event:    &GitHubInstallationEvent{Action: "removed", RepositoriesRemoved: []GitHubRepo{{FullName: "org/repo"}}},
-			expected: InstallationAction_Revoke,
+			expected: InstallationAction_UpdateRepositories,
 		},
 	}
 

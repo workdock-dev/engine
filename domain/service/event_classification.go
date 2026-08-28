@@ -78,10 +78,7 @@ func (s *EventClassificationService) ClassifyInstallationEvent(event *GitHubInst
 		if len(event.RepositoriesRemoved) > 0 {
 			return InstallationAction_UpdateRepositories
 		}
-		if len(event.Repositories) > 0 {
-			return InstallationAction_Revoke
-		}
-		return InstallationAction_None
+		return InstallationAction_Revoke
 	}
 
 	return InstallationAction_None
