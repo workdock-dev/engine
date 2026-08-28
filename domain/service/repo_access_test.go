@@ -216,7 +216,7 @@ func (s *RepoAccessServiceSuite) TestVerifyRepoAccess_TokenExpired_RenewsAndRetu
 
 	s.Error(err)
 	s.Contains(err.Error(), "github access token expired")
-	s.False(result.HasAccess)
+	s.Nil(result)
 }
 
 func (s *RepoAccessServiceSuite) TestBuildConnectionRequest() {
