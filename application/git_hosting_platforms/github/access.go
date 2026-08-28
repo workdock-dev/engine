@@ -46,11 +46,17 @@ func newGitHubAccess(config githubAccessConfig, app *application.App) *githubAcc
 	}
 }
 
+// verifyRepoAccess checks whether the session has access to the given repository.
+// It uses the RepoAccessPolicy domain service to determine access based on the
+// existing GitHub connection state and token fetch result.
+// Returns (hasAccess, token, error).
 func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentifier string, repoFullName *string) (bool, string, error) {
+	// A nil repository name means access is always allowed
 	if repoFullName == nil {
 		return true, "", nil
 	}
 
+	// Look up the existing GitHub connection for this repository
 	connection, err := s.app.GetGitHubConnections().GetGitHubConnection(ctx, *repoFullName)
 	if err != nil {
 		return false, "", err
@@ -58,7 +64,9 @@ func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentif
 
 	repoAccessPolicy := s.app.GetRepoAccessPolicyService()
 
+	// Check if we need to request a new connection
 	if repoAccessPolicy.ShouldRequestConnection(connection) {
+		// Check if the repository is public (public repos may not need installation)
 		public, publicErr := s.config.Client.IsRepositoryPublic(ctx, *repoFullName)
 		if publicErr != nil {
 			return false, "", publicErr
@@ -68,9 +76,11 @@ func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentif
 		return false, "", nil
 	}
 
+	// Fetch the access token for the installation
 	token, expired, err := s.tokenHandler.getGitHubAccessToken(ctx, *connection.InstallationId)
 
 	if err != nil {
+		// If installation is unavailable, reset connection and request re-auth
 		if errors.Is(err, types.ErrGitHubInstallationUnavailable) {
 			slog.Debug(
 				"GitHub installation unavailable, resetting connection",
@@ -90,9 +100,11 @@ func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentif
 		return false, "", err
 	}
 
+	// Ask the domain policy whether to allow access
 	policyResult := repoAccessPolicy.ShouldAllowAccess(repoFullName, connection, token, expired, err)
 
 	if policyResult.NeedsReset {
+		// Policy indicates we need to reset and re-authenticate
 		slog.Debug(
 			"GitHub installation unavailable, resetting connection",
 			"installation_id", *connection.InstallationId,
