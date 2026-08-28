@@ -35,15 +35,9 @@ type githubAccess struct {
 }
 
 func newGitHubAccess(config githubAccessConfig) *githubAccess {
-	domainService := domain_service.NewRepoAccessService(domain_service.RepoAccessConfig{
-		GitHubConnections: config.app.GetGitHubConnections(),
-		ForSecrets:        config.app.GetForSecrets(),
-		ForEvent:          config.app.GetEventBus(),
-	})
-
 	return &githubAccess{
 		config:        config,
-		domainService: domainService,
+		domainService: config.app.GetRepoAccessService(),
 		tokenHandler: newTokenHandler(tokenHandlerConfig{
 			ForSecrets: config.app.GetForSecrets(),
 			Client:     config.Client,

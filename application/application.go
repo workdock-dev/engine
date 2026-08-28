@@ -42,11 +42,12 @@ type App struct {
 	gitService                 *domain_service.GitService
 	webhookService             *domain_service.WebhookService
 	sessionConfigService       *domain_service.SessionConfigService
-	gitEventFilterService      *domain_service.GitEventFilterService
+	gitEventFilterService     *domain_service.GitEventFilterService
 	issueLifecycleService     *domain_service.IssueLifecycleService
 	sessionResultService       *domain_service.SessionResultService
+	repoAccessService         *domain_service.RepoAccessService
 	promptFactory              *factories.PromptFactory
-	agentConfigFactory         *factories.AgentConfigFactory
+	agentConfigFactory        *factories.AgentConfigFactory
 
 	// Application
 	forQueue interfaces.Queue
@@ -119,6 +120,11 @@ func (app *App) Init() {
 	app.gitEventFilterService = &domain_service.GitEventFilterService{}
 	app.issueLifecycleService = domain_service.NewIssueLifecycleService()
 	app.sessionResultService = &domain_service.SessionResultService{}
+	app.repoAccessService = domain_service.NewRepoAccessService(domain_service.RepoAccessConfig{
+		GitHubConnections: app.gitHubConnections,
+		ForSecrets:        app.forSecrets,
+		ForEvent:          app.eventBus,
+	})
 	app.promptFactory = &factories.PromptFactory{}
 	app.agentConfigFactory = &factories.AgentConfigFactory{}
 }
@@ -203,6 +209,10 @@ func (app *App) GetOrganizations() repositories.OrganizationRepository {
 
 func (app *App) GetGitHubConnections() repositories.GitHubConnectionRepository {
 	return app.gitHubConnections
+}
+
+func (app *App) GetRepoAccessService() *domain_service.RepoAccessService {
+	return app.repoAccessService
 }
 
 func (app *App) GetSessions() repositories.SessionRepository {
