@@ -22,6 +22,8 @@ import (
 	"log/slog"
 
 	"github.com/workdock-dev/engine/application"
+	domain_service "github.com/workdock-dev/engine/domain/service"
+	"github.com/workdock-dev/engine/domain/factories"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/types"
 )
@@ -136,10 +138,11 @@ func (p *linearPlatform) Ingest(event any, seed *string, from *types.SessionEven
 
 	slog.Debug("Generated linear agent session event idempotency key from", "id", linearEvent.AgentSession.ID, "timestamp", linearEvent.AgentSession.UpdatedAt, "seed", s)
 
-	key, err := types.GenerateIdempotencyKey(map[string]any{
-		"id":        linearEvent.AgentSession.ID,
-		"timestamp": linearEvent.AgentSession.UpdatedAt,
-		"seed":      seed,
+	keyFactory := &factories.IdempotencyKeyFactory{}
+	key, err := keyFactory.Build(factories.IdempotencyKeyInput{
+		ID:        linearEvent.AgentSession.ID,
+		Timestamp: linearEvent.AgentSession.UpdatedAt,
+		Seed:      seed,
 	})
 
 	if err != nil {
@@ -234,7 +237,14 @@ func (p *linearPlatform) IsCancelSignal(ctx context.Context, event any) (bool, e
 		return false, err
 	}
 
-	return linearEvent.AgentActivity != nil && linearEvent.AgentActivity.Signal == SignalType_Stop, nil
+	classificationService := &domain_service.EventClassificationService{}
+	domainEvent := &domain_service.LinearAgentSessionEvent{
+		AgentActivity: &domain_service.LinearAgentActivity{
+			Signal: linearEvent.AgentActivity.Signal,
+		},
+	}
+
+	return classificationService.IsCancelSignal(domainEvent), nil
 }
 
 // Webhook handles an incoming webhook request from the any platform.

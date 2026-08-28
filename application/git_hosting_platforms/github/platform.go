@@ -23,6 +23,7 @@ import (
 	"strconv"
 
 	"github.com/workdock-dev/engine/application"
+	domain_service "github.com/workdock-dev/engine/domain/service"
 	"github.com/workdock-dev/engine/domain/ports"
 	"github.com/workdock-dev/engine/domain/types"
 )
@@ -109,65 +110,90 @@ func (s *githubPlatform) handleInstallation(ctx context.Context, event *WebhookE
 	slog.Debug("Processing GitHub installation event", "action", event.Action, "installation_id", event.Installation.ID)
 	installationId := strconv.Itoa(event.Installation.ID)
 
-	if event.Action == "deleted" || event.Action == "removed" {
-		repos := make([]string, 0, len(event.Repositories))
-		for _, repo := range event.Repositories {
-			repos = append(repos, repo.FullName)
-		}
+	classificationService := &domain_service.EventClassificationService{}
+	domainEvent := &domain_service.GitHubInstallationEvent{
+		Action:              event.Action,
+		InstallationID:      installationId,
+		Repositories:        convertRepos(event.Repositories),
+		RepositoriesAdded:   convertRepos(event.RepositoriesAdded),
+		RepositoriesRemoved: convertRepos(event.RepositoriesRemoved),
+	}
+
+	action := classificationService.ClassifyInstallationEvent(domainEvent)
+
+	switch action {
+	case domain_service.InstallationAction_Revoke:
+		repos := classificationService.GetRepositoriesForReset(domainEvent)
 		if err := s.access.ResetInstallation(ctx, installationId, repos); err != nil {
 			slog.Error("failed to reset github installation", "installation_id", installationId, "err", err)
 			return err
 		}
+		return nil
+	case domain_service.InstallationAction_Grant:
+		if len(classificationService.GetRepositoriesForGrant(domainEvent)) == 0 {
+			slog.Debug("user didn't grant access to any repo, skipping getting installation token")
+			return nil
+		}
 
+		token, err := s.config.Client.CreateInstallationAccessToken(event.Installation.ID)
+
+		if err != nil {
+			slog.Error("failed to create installation access token", "installation_id", event.Installation.ID, "err", err)
+			return err
+		}
+
+		tokenData, err := json.Marshal(token)
+
+		if err != nil {
+			slog.Error("failed to marshal installation access token", "installation_id", event.Installation.ID, "err", err)
+			return err
+		}
+
+		if ctx.Err() != nil {
+			slog.Error("failed to continue context err", "err", ctx.Err())
+			return ctx.Err()
+		}
+
+		if err := s.app.GetForSecrets().Set(ctx, GitHub_SecretPath, installationId, string(tokenData)); err != nil {
+			slog.Error("failed to store installation access token", "installation_id", event.Installation.ID, "err", err)
+			return err
+		}
+
+		repos := classificationService.GetRepositoriesForGrant(domainEvent)
+
+		if err := s.access.CompleteConnection(ctx, installationId, repos); err != nil {
+			return err
+		}
+
+		slog.Debug("GitHub installation stored", "installation_id", event.Installation.ID, "expires_at", token.ExpiresAt)
+		return nil
+	case domain_service.InstallationAction_UpdateRepositories:
+		if event.Action == "added" && len(event.RepositoriesAdded) > 0 {
+			repos := convertRepos(event.RepositoriesAdded)
+			if err := s.access.CompleteConnection(ctx, installationId, repos); err != nil {
+				return err
+			}
+			slog.Debug("GitHub installation_repositories handled", "installation_id", installationId, "repos_count", len(repos))
+		} else if event.Action == "removed" && len(event.RepositoriesRemoved) > 0 {
+			repos := convertRepos(event.RepositoriesRemoved)
+			if err := s.access.ResetInstallation(ctx, installationId, repos); err != nil {
+				return err
+			}
+			slog.Debug("GitHub installation_repositories removed handled", "installation_id", installationId, "repos_count", len(repos))
+		}
 		return nil
 	}
 
-	if event.Action != "created" && event.Action != "added" {
-		slog.Debug("ignoring non-created installation event", "action", event.Action)
-		return nil
-	}
-
-	if len(event.Repositories) <= 0 && len(event.RepositoriesAdded) <= 0 {
-		slog.Debug("user didn't grant access to any repo, skipping getting installation token")
-		return nil
-	}
-
-	token, err := s.config.Client.CreateInstallationAccessToken(event.Installation.ID)
-
-	if err != nil {
-		slog.Error("failed to create installation access token", "installation_id", event.Installation.ID, "err", err)
-		return err
-	}
-
-	tokenData, err := json.Marshal(token)
-
-	if err != nil {
-		slog.Error("failed to marshal installation access token", "installation_id", event.Installation.ID, "err", err)
-		return err
-	}
-
-	if ctx.Err() != nil {
-		slog.Error("failed to continue context err", "err", ctx.Err())
-		return ctx.Err()
-	}
-
-	if err := s.app.GetForSecrets().Set(ctx, GitHub_SecretPath, installationId, string(tokenData)); err != nil {
-		slog.Error("failed to store installation access token", "installation_id", event.Installation.ID, "err", err)
-		return err
-	}
-
-	repos := make([]string, 0, len(event.Repositories)+len(event.RepositoriesAdded))
-
-	for _, repo := range slices.Concat(event.Repositories, event.RepositoriesAdded) {
-		repos = append(repos, repo.FullName)
-	}
-
-	if err := s.access.CompleteConnection(ctx, installationId, repos); err != nil {
-		return err
-	}
-
-	slog.Debug("GitHub installation stored", "installation_id", event.Installation.ID, "expires_at", token.ExpiresAt)
+	slog.Debug("ignoring non-actionable installation event", "action", event.Action)
 	return nil
+}
+
+func convertRepos(repos []GitHubRepo) []domain_service.GitHubRepo {
+	result := make([]domain_service.GitHubRepo, len(repos))
+	for i, repo := range repos {
+		result[i] = domain_service.GitHubRepo{FullName: repo.FullName}
+	}
+	return result
 }
 
 func (s *githubPlatform) handleInstallationRepositories(ctx context.Context, event *WebhookEvent) error {
@@ -179,41 +205,31 @@ func (s *githubPlatform) handleInstallationRepositories(ctx context.Context, eve
 	slog.Debug("Processing GitHub installation_repositories event", "action", event.Action, "installation_id", event.Installation.ID)
 	installationId := strconv.Itoa(event.Installation.ID)
 
-	if event.Action == "added" {
-		if len(event.RepositoriesAdded) <= 0 {
-			slog.Debug("no repositories added in installation_repositories event")
-			return nil
-		}
-
-		repos := make([]string, 0, len(event.RepositoriesAdded))
-		for _, repo := range event.RepositoriesAdded {
-			repos = append(repos, repo.FullName)
-		}
-
-		if err := s.access.CompleteConnection(ctx, installationId, repos); err != nil {
-			return err
-		}
-
-		slog.Debug("GitHub installation_repositories handled", "installation_id", event.Installation.ID, "repos_count", len(repos))
-		return nil
+	classificationService := &domain_service.EventClassificationService{}
+	domainEvent := &domain_service.GitHubInstallationEvent{
+		Action:              event.Action,
+		InstallationID:      installationId,
+		RepositoriesAdded:   convertRepos(event.RepositoriesAdded),
+		RepositoriesRemoved: convertRepos(event.RepositoriesRemoved),
 	}
 
-	if event.Action == "removed" {
-		if len(event.RepositoriesRemoved) <= 0 {
-			slog.Debug("no repositories removed in installation_repositories event")
-			return nil
-		}
+	action := classificationService.ClassifyInstallationEvent(domainEvent)
 
-		repos := make([]string, 0, len(event.RepositoriesRemoved))
-		for _, repo := range event.RepositoriesRemoved {
-			repos = append(repos, repo.FullName)
+	switch action {
+	case domain_service.InstallationAction_UpdateRepositories:
+		if event.Action == "added" && len(event.RepositoriesAdded) > 0 {
+			repos := classificationService.GetRepositoriesForGrant(domainEvent)
+			if err := s.access.CompleteConnection(ctx, installationId, repos); err != nil {
+				return err
+			}
+			slog.Debug("GitHub installation_repositories handled", "installation_id", installationId, "repos_count", len(repos))
+		} else if event.Action == "removed" && len(event.RepositoriesRemoved) > 0 {
+			repos := classificationService.GetRepositoriesForReset(domainEvent)
+			if err := s.access.ResetInstallation(ctx, installationId, repos); err != nil {
+				return err
+			}
+			slog.Debug("GitHub installation_repositories removed handled", "installation_id", installationId, "repos_count", len(repos))
 		}
-
-		if err := s.access.ResetInstallation(ctx, installationId, repos); err != nil {
-			return err
-		}
-
-		slog.Debug("GitHub installation_repositories removed handled", "installation_id", event.Installation.ID, "repos_count", len(repos))
 		return nil
 	}
 

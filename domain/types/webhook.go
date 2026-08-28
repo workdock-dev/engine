@@ -15,8 +15,10 @@
 package types
 
 import (
+	"errors"
 	"io"
 	"net/textproto"
+	"time"
 )
 
 // WebhookRequest carries the raw incoming webhook payload to a provider
@@ -47,4 +49,18 @@ func (r WebhookRequest) Get(key string) string {
 	}
 
 	return ""
+}
+
+const WebhookFreshnessWindow = 60 * time.Second
+
+var ErrWebhookStale = errors.New("webhook timestamp is outside the freshness window")
+
+func ValidateWebhookFreshness(payloadTimestamp time.Time, now time.Time) error {
+	diff := now.Sub(payloadTimestamp)
+
+	if diff < -WebhookFreshnessWindow || diff > WebhookFreshnessWindow {
+		return ErrWebhookStale
+	}
+
+	return nil
 }
