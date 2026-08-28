@@ -123,7 +123,7 @@ func (s *githubPlatform) handleInstallation(ctx context.Context, event *WebhookE
 
 	switch action {
 	case domain_service.InstallationAction_Revoke:
-		repos := classificationService.GetRepositoriesForReset(domainEvent)
+		repos := convertReposToStrings(classificationService.GetRepositoriesForReset(domainEvent))
 		if err := s.access.ResetInstallation(ctx, installationId, repos); err != nil {
 			slog.Error("failed to reset github installation", "installation_id", installationId, "err", err)
 			return err
@@ -159,7 +159,7 @@ func (s *githubPlatform) handleInstallation(ctx context.Context, event *WebhookE
 			return err
 		}
 
-		repos := classificationService.GetRepositoriesForGrant(domainEvent)
+		repos := convertReposToStrings(classificationService.GetRepositoriesForGrant(domainEvent))
 
 		if err := s.access.CompleteConnection(ctx, installationId, repos); err != nil {
 			return err
@@ -169,13 +169,13 @@ func (s *githubPlatform) handleInstallation(ctx context.Context, event *WebhookE
 		return nil
 	case domain_service.InstallationAction_UpdateRepositories:
 		if event.Action == "added" && len(event.RepositoriesAdded) > 0 {
-			repos := convertRepos(event.RepositoriesAdded)
+			repos := convertReposToStrings(classificationService.GetRepositoriesForGrant(domainEvent))
 			if err := s.access.CompleteConnection(ctx, installationId, repos); err != nil {
 				return err
 			}
 			slog.Debug("GitHub installation_repositories handled", "installation_id", installationId, "repos_count", len(repos))
 		} else if event.Action == "removed" && len(event.RepositoriesRemoved) > 0 {
-			repos := convertRepos(event.RepositoriesRemoved)
+			repos := convertReposToStrings(classificationService.GetRepositoriesForReset(domainEvent))
 			if err := s.access.ResetInstallation(ctx, installationId, repos); err != nil {
 				return err
 			}
@@ -188,10 +188,10 @@ func (s *githubPlatform) handleInstallation(ctx context.Context, event *WebhookE
 	return nil
 }
 
-func convertRepos(repos []GitHubRepo) []domain_service.GitHubRepo {
-	result := make([]domain_service.GitHubRepo, len(repos))
+func convertReposToStrings(repos []domain_service.GitHubRepo) []string {
+	result := make([]string, len(repos))
 	for i, repo := range repos {
-		result[i] = domain_service.GitHubRepo{FullName: repo.FullName}
+		result[i] = repo.FullName
 	}
 	return result
 }

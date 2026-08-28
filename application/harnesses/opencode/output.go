@@ -404,7 +404,7 @@ func (o *OpenCodeOutput) startLivenessProbe(ctx context.Context) {
 	span := trace.SpanFromContext(ctx)
 
 	go func() {
-		ticker := time.NewTicker(o.livenessPolicy.(*domain_service.LivenessPolicy).timeout)
+		ticker := time.NewTicker(o.livenessPolicy.GetTimeout())
 		defer ticker.Stop()
 
 		for {
