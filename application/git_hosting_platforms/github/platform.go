@@ -114,23 +114,24 @@ func (s *githubPlatform) handleInstallation(ctx context.Context, event *WebhookE
 	domainEvent := &domain_service.GitHubInstallationEvent{
 		Action:              event.Action,
 		InstallationID:      installationId,
-		Repositories:        convertRepos(event.Repositories),
-		RepositoriesAdded:   convertRepos(event.RepositoriesAdded),
-		RepositoriesRemoved: convertRepos(event.RepositoriesRemoved),
+		Repositories:        convertReposToDomain(event.Repositories),
+		RepositoriesAdded:   convertReposToDomain(event.RepositoriesAdded),
+		RepositoriesRemoved: convertReposToDomain(event.RepositoriesRemoved),
 	}
 
 	action := classificationService.ClassifyInstallationEvent(domainEvent)
 
 	switch action {
 	case domain_service.InstallationAction_Revoke:
-		repos := convertReposToStrings(classificationService.GetRepositoriesForReset(domainEvent))
+		repos := classificationService.GetRepositoriesForReset(domainEvent)
 		if err := s.access.ResetInstallation(ctx, installationId, repos); err != nil {
 			slog.Error("failed to reset github installation", "installation_id", installationId, "err", err)
 			return err
 		}
 		return nil
 	case domain_service.InstallationAction_Grant:
-		if len(classificationService.GetRepositoriesForGrant(domainEvent)) == 0 {
+		repos := classificationService.GetRepositoriesForGrant(domainEvent)
+		if len(repos) == 0 {
 			slog.Debug("user didn't grant access to any repo, skipping getting installation token")
 			return nil
 		}
@@ -159,8 +160,6 @@ func (s *githubPlatform) handleInstallation(ctx context.Context, event *WebhookE
 			return err
 		}
 
-		repos := convertReposToStrings(classificationService.GetRepositoriesForGrant(domainEvent))
-
 		if err := s.access.CompleteConnection(ctx, installationId, repos); err != nil {
 			return err
 		}
@@ -169,13 +168,13 @@ func (s *githubPlatform) handleInstallation(ctx context.Context, event *WebhookE
 		return nil
 	case domain_service.InstallationAction_UpdateRepositories:
 		if event.Action == "added" && len(event.RepositoriesAdded) > 0 {
-			repos := convertReposToStrings(classificationService.GetRepositoriesForGrant(domainEvent))
+			repos := classificationService.GetRepositoriesForGrant(domainEvent)
 			if err := s.access.CompleteConnection(ctx, installationId, repos); err != nil {
 				return err
 			}
 			slog.Debug("GitHub installation_repositories handled", "installation_id", installationId, "repos_count", len(repos))
 		} else if event.Action == "removed" && len(event.RepositoriesRemoved) > 0 {
-			repos := convertReposToStrings(classificationService.GetRepositoriesForReset(domainEvent))
+			repos := classificationService.GetRepositoriesForReset(domainEvent)
 			if err := s.access.ResetInstallation(ctx, installationId, repos); err != nil {
 				return err
 			}
@@ -188,10 +187,10 @@ func (s *githubPlatform) handleInstallation(ctx context.Context, event *WebhookE
 	return nil
 }
 
-func convertReposToStrings(repos []domain_service.GitHubRepo) []string {
-	result := make([]string, len(repos))
+func convertReposToDomain(repos []GitHubRepo) []domain_service.GitHubRepo {
+	result := make([]domain_service.GitHubRepo, len(repos))
 	for i, repo := range repos {
-		result[i] = repo.FullName
+		result[i] = domain_service.GitHubRepo{FullName: repo.FullName}
 	}
 	return result
 }
@@ -209,8 +208,8 @@ func (s *githubPlatform) handleInstallationRepositories(ctx context.Context, eve
 	domainEvent := &domain_service.GitHubInstallationEvent{
 		Action:              event.Action,
 		InstallationID:      installationId,
-		RepositoriesAdded:   convertRepos(event.RepositoriesAdded),
-		RepositoriesRemoved: convertRepos(event.RepositoriesRemoved),
+		RepositoriesAdded:   convertReposToDomain(event.RepositoriesAdded),
+		RepositoriesRemoved: convertReposToDomain(event.RepositoriesRemoved),
 	}
 
 	action := classificationService.ClassifyInstallationEvent(domainEvent)
