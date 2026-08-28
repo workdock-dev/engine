@@ -22,7 +22,7 @@ import (
 func TestLivenessPolicy_Disabled(t *testing.T) {
 	policy := NewLivenessPolicy(0, 0)
 
-	if !policy.IsEnabled() {
+	if policy.IsEnabled() {
 		t.Fatal("Expected policy to be disabled with zero timeout and maxMisses")
 	}
 
