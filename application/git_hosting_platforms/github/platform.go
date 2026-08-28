@@ -19,7 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"slices"
+	
 	"strconv"
 
 	"github.com/workdock-dev/engine/application"
@@ -187,7 +187,7 @@ func (s *githubPlatform) handleInstallation(ctx context.Context, event *WebhookE
 	return nil
 }
 
-func convertReposToDomain(repos []GitHubRepo) []domain_service.GitHubRepo {
+func convertReposToDomain(repos []Repository) []domain_service.GitHubRepo {
 	result := make([]domain_service.GitHubRepo, len(repos))
 	for i, repo := range repos {
 		result[i] = domain_service.GitHubRepo{FullName: repo.FullName}
