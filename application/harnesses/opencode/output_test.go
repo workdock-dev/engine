@@ -1080,6 +1080,7 @@ func (s *OutputSuite) TestLivenessProbe_DisabledTimeout() {
 	stderr := make(chan string, 10)
 	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
 		out.livenessPolicy.SetTimeout(0)
+		out.livenessPolicy.SetMaxMisses(0)
 	})
 
 	close(stdout)
@@ -1093,6 +1094,7 @@ func (s *OutputSuite) TestLivenessProbe_DisabledMaxMisses() {
 	stderr := make(chan string, 10)
 	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
 		out.livenessPolicy.SetTimeout(time.Millisecond)
+		out.livenessPolicy.SetMaxMisses(0)
 		out.livenessPolicy.SetMissedCount(0)
 	})
 
@@ -1121,6 +1123,7 @@ func (s *OutputSuite) TestLivenessProbe_Unhealthy() {
 	unhealthyCalled := make(chan struct{}, 1)
 	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
 		out.livenessPolicy.SetTimeout(10 * time.Millisecond)
+		out.livenessPolicy.SetMaxMisses(2)
 		out.livenessPolicy.SetMissedCount(1)
 		out.onUnhealthy = func() {
 			unhealthyCalled <- struct{}{}
@@ -1148,6 +1151,7 @@ func (s *OutputSuite) TestLivenessProbe_ActivityResets() {
 	stderr := make(chan string, 10)
 	o := s.newOutput(stdout, stderr, func(out *OpenCodeOutput) {
 		out.livenessPolicy.SetTimeout(20 * time.Millisecond)
+		out.livenessPolicy.SetMaxMisses(3)
 		out.livenessPolicy.SetMissedCount(2)
 	})
 
