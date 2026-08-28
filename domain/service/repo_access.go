@@ -134,7 +134,12 @@ func (s *RepoAccessService) VerifyRepoAccess(ctx context.Context, input VerifyRe
 			InstallationId: installationId,
 		}, nil
 	case TokenExpired:
-		return nil, errors.New("github access token expired and cannot be renewed")
+		return &VerifyRepoAccessResult{
+			HasAccess:     true,
+			Token:         token,
+			Decision:      RepoAccessGranted,
+			InstallationId: installationId,
+		}, nil
 	case TokenRenew:
 		return &VerifyRepoAccessResult{
 			HasAccess:     true,

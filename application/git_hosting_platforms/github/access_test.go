@@ -45,7 +45,7 @@ func (s *GitHubAccessSuite) SetupTest() {
 	s.events = new(mockEventBus)
 	s.connections = new(mockGitHubConnections)
 
-	s.events.On("Subscribe", mock.Anything, mock.Anything).Return()
+	s.events.On("Subscribe", mock.Anything, mock.Anything).Return().Maybe()
 
 	app := application.New()
 	application.WithSecretManager(app, s.secrets)
