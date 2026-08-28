@@ -27,11 +27,14 @@ type PlatformProvider string
 type HarnessProvider string
 type EventJobStatus string
 type SessionEventTriggerReason string
+type IssueState string
 
 const (
 	SessionEventTriggerReason_Unknown   SessionEventTriggerReason = "unknown"
 	SessionEventTriggerReason_PRComment SessionEventTriggerReason = "pr_comment"
 	SessionEventTriggerReason_CheckRun  SessionEventTriggerReason = "check_run"
+
+	IssueStateCompleted IssueState = "completed"
 )
 
 const (
@@ -141,7 +144,7 @@ type EventJob struct {
 	PreviousState          EventJobStatus
 	Status                 EventJobStatus
 	Attempts               int
-	WillRetry              bool
+	willRetry              bool
 	NextAttemptAt          *time.Time
 	LeaseOwner             *string
 	LeaseExpiresAt         *time.Time
@@ -167,4 +170,12 @@ func GenerateIdempotencyKey(payload any) (string, error) {
 
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:18]), nil // 36 hex chars
+}
+
+func (j EventJob) WillRetry() bool {
+	return j.willRetry
+}
+
+func (j *EventJob) SetMaxAttempts(maxAttempts int) {
+	j.willRetry = j.Attempts < maxAttempts
 }

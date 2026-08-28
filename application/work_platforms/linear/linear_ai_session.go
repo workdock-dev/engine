@@ -198,7 +198,7 @@ func (s *linearAISession) Process(ctx context.Context) error {
 			return nil
 		}
 
-		if s.config.Job != nil && s.config.Job.WillRetry {
+		if s.config.Job != nil && s.config.Job.WillRetry() {
 			s.notifyRetryScheduled(ctx)
 		} else {
 			s.reportServerInternalError(ctx)

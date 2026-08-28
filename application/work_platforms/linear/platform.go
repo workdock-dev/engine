@@ -305,7 +305,7 @@ func (p *linearPlatform) archiveSandboxForIssue(ctx context.Context, issueId str
 		return err
 	}
 
-	if issue.StateType != "completed" {
+	if !p.app.GetIssueLifecycleService().ShouldArchiveForIssue(issue.StateType) {
 		slog.Debug("issue state is not done, skipping archive", "issue_id", issueId, "state_type", issue.StateType)
 		return nil
 	}

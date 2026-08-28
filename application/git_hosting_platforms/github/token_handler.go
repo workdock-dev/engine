@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/workdock-dev/engine/domain/ports"
+	"github.com/workdock-dev/engine/domain/types"
 )
 
 type tokenHandlerConfig struct {
@@ -63,9 +64,17 @@ func (h *tokenHandler) getGitHubAccessToken(ctx context.Context, installationId 
 		return "", fmt.Errorf("failed to unmarshal github token: %w", err)
 	}
 
-	if time.Until(token.ExpiresAt) > 5*time.Minute {
+	now := time.Now()
+	decision := types.ShouldRenewToken(token.ExpiresAt, true, now, types.DefaultTokenRefreshWindow)
+
+	if decision == types.TokenLifecycleKeep {
 		slog.Debug("Got github access token", "installation_id", installationId)
 		return token.Token, nil
+	}
+
+	if decision == types.TokenLifecycleExpired {
+		slog.Debug("GitHub access token expired and cannot be renewed", "installation_id", installationId, "expires_at", token.ExpiresAt)
+		return "", fmt.Errorf("github access token expired and cannot be renewed")
 	}
 
 	slog.Debug("GitHub access token is expired or expiring soon, renewing", "installation_id", installationId, "expires_at", token.ExpiresAt)

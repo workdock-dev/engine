@@ -239,7 +239,7 @@ func (s *TaskScheduler) worker(ctx context.Context, workerId int) {
 			s.running.Store(job.SessionEventIdentifier, cancel)
 			slog.Debug("worker claimed job", "worker_id", workerId, "event_identifier", job.SessionEventIdentifier)
 
-			job.WillRetry = job.Attempts < s.config.MaxAttempts
+			job.SetMaxAttempts(s.config.MaxAttempts)
 
 			telemetry.SpanDo(exCtx, s.tracer, "job.handler", func(ctx context.Context) {
 				s.execute(ctx, job, startedAt)
@@ -301,22 +301,20 @@ func (s *TaskScheduler) execute(ctx context.Context, job *types.EventJob, starte
 	}
 
 	if err != nil {
-		maxAttempReached := job.Attempts >= s.config.MaxAttempts
-
 		span.SetAttributes(attribute.String("job.result", "failed"))
-		span.SetAttributes(attribute.Bool("job.retry", !maxAttempReached))
+		span.SetAttributes(attribute.Bool("job.retry", job.WillRetry()))
 
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 
 		result := ResultFailed
-		if !maxAttempReached {
+		if job.WillRetry() {
 			result = ResultRetry
 		}
 
 		s.metrics.recordJob(ctx, result, errorType(err), duration)
 
-		if maxAttempReached {
+		if !job.WillRetry() {
 			telemetry.SpanErr(ctx, s.tracer, "job.fail", func(ctx context.Context) error {
 				return s.extQueue.Fail(ctx, job.SessionEventIdentifier, err)
 			})
