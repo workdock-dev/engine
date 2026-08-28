@@ -66,7 +66,7 @@ func (m *mockEventBus) Publish(ctx context.Context, event ports.DomainEvent) err
 	return args.Error(0)
 }
 
-func (m *mockEventBus) Subscribe(eventType string, handler func(ctx context.Context, event ports.DomainEvent) error) {
+func (m *mockEventBus) Subscribe(eventType string, handler ports.EventHandler) {
 	m.Called(eventType, handler)
 }
 

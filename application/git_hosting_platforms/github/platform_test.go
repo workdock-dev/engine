@@ -161,10 +161,8 @@ func (s *GitHubPlatformSuite) SetupTest() {
 			BotLoginName: "workdock-bot",
 		},
 		access: newGitHubAccess(githubAccessConfig{
-			ForSecrets:        s.secrets,
-			ForEvent:          s.events,
-			GitHubConnections: s.connections,
-			Client:            s.client,
+			Client: s.client,
+			app:    s.mockApp,
 		}),
 	}
 }
