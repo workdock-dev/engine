@@ -15,24 +15,34 @@
 package api
 
 import (
-	"log/slog"
+	"errors"
 	"net/http"
 
-	"github.com/workdock-dev/engine/domain/types"
+	"github.com/workdock-dev/engine/pipelines/linear"
+	"github.com/workdock-dev/engine/pipelines/runners"
 )
 
 func (s *Server) handleLinearWebhook(w http.ResponseWriter, r *http.Request) {
-	if err := s.app.GetWebhookService().On(
-		r.Context(),
-		types.PlatformProvider_Linear,
-		types.WebhookRequest{
-			Headers:    r.Header,
-			RemoteAddr: r.RemoteAddr,
-			Body:       r.Body,
-		},
-	); err != nil {
-		slog.Error("linear webhook rejected", "err", err.Error())
-		w.WriteHeader(s.domainErrToStatusCode(err))
+	if err := runners.NewWebhookRunner(
+		linear.NewWEventTransformer(),
+		linear.NewWEventVerifier(),
+		linear.NewWEventConsumer(),
+	).Execute(r); err != nil {
+		status := http.StatusInternalServerError
+
+		if errors.Is(err, runners.ErrWBadRequest) {
+			status = http.StatusBadRequest
+		}
+
+		if errors.Is(err, runners.ErrWUnAuthorized) {
+			status = http.StatusUnauthorized
+		}
+
+		if errors.Is(err, runners.ErrWForBidden) {
+			status = http.StatusForbidden
+		}
+
+		w.WriteHeader(status)
 		return
 	}
 
