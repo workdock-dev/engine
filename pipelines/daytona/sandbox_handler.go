@@ -38,14 +38,16 @@ func (h *SandboxHandler) Run(
 	config *runners.SandboxConfig,
 	stdout chan<- string,
 	stderr chan<- string,
-) (func(ctx context.Context), error) {
+) (func(ctx context.Context) string, error) {
 	target := h.target
 
 	if target == "" {
 		target = "us"
 	}
 
-	// Create daytona client
+	// *-------------------------------------------------------------------------*
+	// * Create daytona client                                                   *
+	// *-------------------------------------------------------------------------*
 	client, err := daytona.NewClientWithConfig(&types.DaytonaConfig{
 		APIKey:     h.apiKey,
 		APIUrl:     h.apiUrl,
@@ -61,19 +63,38 @@ func (h *SandboxHandler) Run(
 	// Track created secrets
 	secretIds := make([]string, 0)
 
-	// Shutdown function to clean up everything
+	// *-------------------------------------------------------------------------*
+	// * Shutdown function to clean up everything                                *
+	// *-------------------------------------------------------------------------*
 	var sandbox *daytona.Sandbox
 	var created bool
 	var deleting bool
 	var listening bool
 	var execSessionCreated bool
 
-	shutdown := func(ctx context.Context) {
-		for _, id := range secretIds {
-			h.DeleteSecret(ctx, client, config, id)
-		}
+	shutdown := func(ctx context.Context) string {
+		out := ""
 
 		if sandbox != nil && !deleting {
+			// *-------------------------------------------------------------------------*
+			// * Run the provided exit command
+			// *-------------------------------------------------------------------------*
+			exitCode, result, err := h.ExecuteCommand(
+				ctx,
+				sandbox,
+				config,
+				config.ExitCommand,
+				time.Minute*2,
+			)
+
+			if err != nil {
+				slog.Error("failed to run exit command", "event_identifier", config.SessionEvent.Identifier, "err", err)
+			} else if exitCode != 0 {
+				slog.Error("failed to run exit command", "event_identifier", config.SessionEvent.Identifier, "err", errors.New("non-zero exit code"), "exitCode", exitCode)
+			} else if result != "" {
+				out = result
+			}
+
 			if !listening {
 				close(stdout)
 				close(stderr)
@@ -86,13 +107,21 @@ func (h *SandboxHandler) Run(
 			h.Shutdown(context.Background(), sandbox, config)
 		}
 
+		for _, id := range secretIds {
+			h.DeleteSecret(ctx, client, config, id)
+		}
+
 		if err := client.Close(ctx); err != nil {
 			slog.Error("failed to close daytona client", "err", err, "event_identifier", config.SessionEvent.Identifier)
 		}
+
+		return out
 	}
 
-	// Create secrets using daytona's secret API
-	// these secrets are never written into the sandbox
+	// *-------------------------------------------------------------------------*
+	// * Create secrets using daytona's secret API these secrets are never       *
+	// * written into the sandbox                                                *
+	// *-------------------------------------------------------------------------*
 	secrets := make(map[string]string)
 
 	for _, secret := range config.Secrets {
@@ -106,19 +135,25 @@ func (h *SandboxHandler) Run(
 		secretIds = append(secretIds, secretId)
 	}
 
-	// Create or returns the existent sandbox based on the config
+	// *-------------------------------------------------------------------------*
+	// * Create or returns the existent sandbox based on the config              *
+	// *-------------------------------------------------------------------------*
 	sandbox, created, err = h.GetOrCreateSandbox(ctx, client, config, secrets)
 
 	if err != nil {
 		return shutdown, err
 	}
 
-	// Starts the sandbox
+	// *-------------------------------------------------------------------------*
+	// * Starts the sandbox                                                      *
+	// *-------------------------------------------------------------------------*
 	if err := h.Start(ctx, sandbox, config); err != nil {
 		return shutdown, err
 	}
 
-	// If this sandbox was just created, install any additional dependency
+	// *-------------------------------------------------------------------------*
+	// * If this sandbox was just created, install any additional dependency     *
+	// *-------------------------------------------------------------------------*
 	if created {
 		for _, cmd := range config.CommandsWhenCreated {
 			if exitCode, _, err := h.ExecuteCommand(ctx, sandbox, config, cmd, time.Minute*1); err != nil {
@@ -134,19 +169,25 @@ func (h *SandboxHandler) Run(
 		}
 	}
 
-	// Configure the git user, we call it always in case user updated it
+	// *-------------------------------------------------------------------------*
+	// * Configure the git user, we call it always in case user updated it       *
+	// *-------------------------------------------------------------------------*
 	if err := h.ConfigureGitUser(ctx, sandbox, config); err != nil {
 		return shutdown, err
 	}
 
-	// Upload any file required for work
+	// *-------------------------------------------------------------------------*
+	// * Upload any file required for work                                       *
+	// *-------------------------------------------------------------------------*
 	for path, data := range config.FileUploads {
 		if err := h.UploadFile(ctx, sandbox, config, data, path); err != nil {
 			return shutdown, err
 		}
 	}
 
-	// Create an execution process since interacting with the AI takes time
+	// *-------------------------------------------------------------------------*
+	// * Create an execution process since interacting with the AI takes time    *
+	// *-------------------------------------------------------------------------*
 	if err := h.CreateExecutionSession(ctx, sandbox, config); err != nil {
 		return shutdown, err
 	}
@@ -275,17 +316,14 @@ func (h *SandboxHandler) GetOrCreateSandbox(ctx context.Context, client *daytona
 
 			return retryRateLimited(ctx, throttlerSandboxCreate, "create sandbox", func() (*daytona.Sandbox, error) {
 				return client.Create(ctx, types.SnapshotParams{
-					Snapshot: "daytona-small",
-					SandboxBaseParams: types.SandboxBaseParams{
-						Name:             config.Session.Identifier,
-						Public:           false,
-						AutoStopInterval: new(config.AutoStopInterval),
-						Labels: map[string]string{
-							"session_event_identifier": config.SessionEvent.Identifier,
-						},
-						Secrets: secrets,
-						EnvVars: config.EnvVars,
+					Snapshot:         "daytona-small",
+					Name:             config.Session.Identifier,
+					Public:           false,
+					AutoStopInterval: new(config.AutoStopInterval),
+					Labels: map[string]string{
+						"session_event_identifier": config.SessionEvent.Identifier,
 					},
+					Secrets: secrets,
 				})
 			})
 		}()

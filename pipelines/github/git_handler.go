@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"log/slog"
 
@@ -17,10 +18,13 @@ const (
 
 var (
 	//go:embed gh_cli_install.sh
-	GH_CLI_Install string
+	GH_CLI_INSTALL string
 
 	//go:embed gh_git_setup.sh
 	GH_GIT_SETUP string
+
+	//go:emebed get_changes.sh
+	GET_CHANGES string
 )
 
 type GitHandler struct {
@@ -45,7 +49,7 @@ func (h *GitHandler) GetInstallationUrl() string {
 
 func (h *GitHandler) GetConfigurationCommands() []string {
 	return []string{
-		GH_CLI_Install,
+		GH_CLI_INSTALL,
 	}
 }
 
@@ -53,6 +57,25 @@ func (h *GitHandler) GetCommands() []string {
 	return []string{
 		GH_GIT_SETUP,
 	}
+}
+
+func (h *GitHandler) GetLatestChangesComand() string {
+	return GET_CHANGES
+}
+
+func (h *GitHandler) ParseLatestChangesResult(changes string) *types.PullRequest {
+	if changes == "" {
+		return nil
+	}
+
+	var pr types.PullRequest
+
+	if err := json.Unmarshal([]byte(changes), &pr); err != nil {
+		slog.Error("failed to unmarshal pull request metadata", "err", err)
+		return nil
+	}
+
+	return &pr
 }
 
 func (h *GitHandler) VerifyRepoAccess(ctx context.Context, sessionEventIdentifier string, repo *string) (*runners.GitAccess, error) {

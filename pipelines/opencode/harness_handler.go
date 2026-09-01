@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/workdock-dev/engine/domain/types"
 	"github.com/workdock-dev/engine/pipelines/runners"
@@ -141,7 +142,8 @@ func (h *HarnessHandler) RunCommand() string {
 }
 func (h *HarnessHandler) Parse(
 	ctx context.Context,
-	part <-chan string,
+	part <-chan []byte,
+	sessionEventIdentifier string,
 
 	// SendThought sends the thinking state to the provider
 	sendThought func(ctx context.Context, text string) error,
@@ -159,4 +161,276 @@ func (h *HarnessHandler) Parse(
 	sendServerInternalError func(ctx context.Context) error,
 ) {
 
+	for {
+		select {
+		case message, ok := <-part:
+			if !ok {
+				return
+			}
+
+			var event WireEvent
+
+			if err := json.Unmarshal(message, &event); err != nil {
+				// TODO: Report error to span
+				slog.Error("failed to unmarshal opencode output", "err", err, "message", message, "event_identifier", sessionEventIdentifier)
+			} else {
+				partType := event.Type
+
+				if partType == "tool_use" {
+					partType = "tool"
+				}
+
+				slog.Debug("OpenCode received message", "type", partType, "event_identifier", sessionEventIdentifier)
+
+				switch partType {
+				case "retry":
+					fallthrough
+				case "step_start":
+					fallthrough
+				case "file":
+					fallthrough
+				case "subtask":
+					fallthrough
+				case "snapshot":
+					fallthrough
+				case "patch":
+					fallthrough
+				case "agent":
+					fallthrough
+				case "compaction":
+					sendThought(ctx, "compacting")
+				case "reasoning":
+					var p ReasoningPart
+
+					if err := json.Unmarshal(event.Part, &p); err != nil {
+						// TODO: Report error to span
+						slog.Error("unmarshal reasoning", "event_identifier", sessionEventIdentifier, "error", err)
+						return
+					}
+
+					sendThought(ctx, p.Text)
+				case "text":
+					var p TextPart
+
+					if err := json.Unmarshal(event.Part, &p); err != nil {
+						// TODO: Report error to span
+						slog.Error("unmarshal text", "event_identifier", sessionEventIdentifier, "error", err)
+						return
+					}
+
+					sendResponse(ctx, p.Text)
+				case "tool":
+					var p ToolPart
+
+					if err := json.Unmarshal(event.Part, &p); err != nil {
+						// TODO: Report error to span
+						slog.Error("unmarshal tool", "event_identifier", sessionEventIdentifier, "error", err)
+						return
+					}
+
+					if p.Tool == "question" {
+						questions := h.parseQuestions(p.State.Input)
+
+						for _, q := range questions {
+							options := make([]types.AgentOption, 0, len(q.Options))
+
+							for _, opt := range q.Options {
+								options = append(options, types.AgentOption{
+									Label:       opt.Label,
+									Description: opt.Description,
+								})
+							}
+
+							sendElicitation(ctx, types.AgentElicitation{
+								Question: q.Question,
+								Multiple: q.Multiple,
+								Options:  options,
+							})
+						}
+					} else {
+						input, output := h.parseToolPart(p)
+						sendAction(ctx, types.AgentAction{
+							Name:   p.Tool,
+							Input:  input,
+							Output: output,
+						})
+					}
+
+				case "step_finish":
+					var p StepFinishPart
+
+					if err := json.Unmarshal(event.Part, &p); err != nil {
+						// TODO: Report error to span
+						slog.Error("unmarshal step-finish", "event_identifier", sessionEventIdentifier, "error", err)
+						return
+					}
+
+					slog.Debug("OpenCoded finished",
+						"event_identifier", sessionEventIdentifier,
+						"reason", p.Reason,
+						"reasoning", p.Tokens.Reasoning,
+						"tokens_total", p.Tokens.Total,
+						"tokens_input", p.Tokens.Input,
+						"tokens_output", p.Tokens.Output,
+						"cache_read", p.Tokens.Cache.Read,
+						"cache_write", p.Tokens.Cache.Write,
+					)
+
+					sendResponse(ctx, "")
+				default:
+					slog.Warn("opencode received unexpected part type",
+						"event_identifier", sessionEventIdentifier,
+						"part_type", partType,
+					)
+
+					// TODO: Type to pase error message
+					sendResponse(ctx, fmt.Sprintf("An unexpected format has been received by the harness:\n\n%s", message))
+				}
+			}
+
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (h *HarnessHandler) parseToolPart(p ToolPart) (string, string) {
+	var input string
+	var output string
+
+	switch p.Tool {
+	case "bash":
+		input, _ = p.State.Input["command"].(string)
+		output = p.State.Output
+
+	case "glob":
+		pattern, _ := p.State.Input["pattern"].(string)
+		path, _ := p.State.Input["path"].(string)
+
+		if path != "" {
+			input = pattern + " in " + path
+		} else {
+			input = pattern
+		}
+
+		output = p.State.Output
+	case "read":
+		input, _ = p.State.Input["filePath"].(string)
+		output = p.State.Output
+	case "grep":
+		pattern, _ := p.State.Input["pattern"].(string)
+		path, _ := p.State.Input["path"].(string)
+
+		if path != "" {
+			input = pattern + " in " + path
+		} else {
+			input = pattern
+		}
+
+		output = p.State.Output
+	case "webfetch":
+		input, _ = p.State.Input["url"].(string)
+		output = p.State.Output
+	case "websearch":
+		input, _ = p.State.Input["query"].(string)
+		output = p.State.Output
+	case "write":
+		input, _ = p.State.Input["filePath"].(string)
+		output = p.State.Output
+	case "edit":
+		input, _ = p.State.Input["filePath"].(string)
+		output = p.State.Output
+	case "task":
+		input, _ = p.State.Input["description"].(string)
+		output = p.State.Output
+	case "execute":
+		input, _ = p.State.Input["command"].(string)
+		output = p.State.Output
+	case "apply_patch":
+		if files, ok := p.State.Input["files"].([]any); ok {
+			paths := make([]string, 0, len(files))
+
+			for _, f := range files {
+				if m, ok := f.(map[string]any); ok {
+					if fp, ok := m["filePath"].(string); ok {
+						paths = append(paths, fp)
+					}
+				}
+			}
+
+			input = strings.Join(paths, ", ")
+		}
+
+		output = p.State.Output
+	case "todowrite":
+		if todos, ok := p.State.Input["todos"].([]any); ok {
+			items := make([]string, 0, len(todos))
+
+			for _, t := range todos {
+				if m, ok := t.(map[string]any); ok {
+					if content, ok := m["content"].(string); ok {
+						items = append(items, content)
+					}
+				}
+			}
+
+			input = strings.Join(items, ", ")
+		}
+
+		output = p.State.Output
+	case "question":
+		// Expected to be handle outside this function
+		return "", ""
+	case "skill":
+		input, _ = p.State.Input["name"].(string)
+		output = p.State.Output
+	default:
+		input = fmt.Sprintf("%v", p.State.Input)
+		output = p.State.Output
+	}
+
+	return input, output
+}
+
+func (h *HarnessHandler) parseQuestions(input map[string]any) []QuestionInfo {
+	questionsRaw, ok := input["questions"].([]any)
+
+	if !ok {
+		return nil
+	}
+
+	var questions []QuestionInfo
+
+	for _, q := range questionsRaw {
+		m, ok := q.(map[string]any)
+
+		if !ok {
+			continue
+		}
+
+		info := QuestionInfo{}
+		info.Question, _ = m["question"].(string)
+		info.Header, _ = m["header"].(string)
+
+		if mult, ok := m["multiple"].(bool); ok {
+			info.Multiple = mult
+		}
+
+		if opts, ok := m["options"].([]any); ok {
+			for _, o := range opts {
+				om, ok := o.(map[string]any)
+				if !ok {
+					continue
+				}
+				opt := QuestionOption{}
+				opt.Label, _ = om["label"].(string)
+				opt.Description, _ = om["description"].(string)
+				info.Options = append(info.Options, opt)
+			}
+		}
+
+		questions = append(questions, info)
+	}
+
+	return questions
 }

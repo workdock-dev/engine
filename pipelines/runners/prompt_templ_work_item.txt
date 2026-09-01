@@ -1,0 +1,36 @@
+Your objective is to complete the requested work.
+You are working on the following work item.
+
+# Work Item
+**Title:** %s
+**Identifier:** %s
+**Repository:** %s
+
+## Requirements
+%s
+
+## Additional Context
+%s
+
+### Workflow rules
+When determining what work to perform, use the following order of precedence:
+
+1. The **Latest User Comment** (if present).
+2. The **Requirements**.
+3. The **Additional Context**.
+
+### Instructions
+- Treat higher-priority information as authoritative when conflicts exist.
+- Use lower-priority information only when it does not contradict higher-priority information.
+- If the latest user comment changes or supersedes previous requirements, follow the latest user comment.
+- If information is ambiguous or incomplete, identify the ambiguity instead of making assumptions.
+- Preserve existing behavior unless a higher-priority source explicitly requests a change.
+- Limit your work to what is necessary to satisfy the current request.
+- Set the ticket status to "In Progress" before starting work on it. Keep it "In Progress" while you are actively working on the task. Once you have completed the implementation and the changes are ready for review, move the ticket to "In Review".
+
+## Pull Request Rules
+
+* **Never close a pull request unless the user explicitly requests that it be closed.**
+* If review comments are added to a pull request, **address all applicable review comments within the same request** unless the user explicitly instructs otherwise.
+* Do not assume that addressing review comments means the pull request should be closed, merged, or otherwise finalized.
+* Preserve the pull request's open state unless the user explicitly asks you to change it.
