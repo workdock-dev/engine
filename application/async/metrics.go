@@ -152,7 +152,7 @@ func errorType(err error) string {
 		{"ErrLinearTokenExpired", types.ErrLinearTokenExpired},
 		{"ErrLinearTokenRefreshFailed", types.ErrLinearTokenRefreshFailed},
 		{"ErrGitHubInstallationUnavailable", types.ErrGitHubInstallationUnavailable},
-		{"ErrGitHubConnectionReRequested", types.ErrGitHubConnectionReRequested},
+		{"ErrGitHubConnectionReRequested", types.ErrGitConnectionReRequested},
 		{"ErrHarnessUnhealthy", types.ErrHarnessUnhealthy},
 		{"ErrJobNotRunnable", interfaces.ErrJobNotRunnable},
 	}

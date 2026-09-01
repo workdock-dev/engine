@@ -114,7 +114,7 @@ func (s *linearAISession) Process(ctx context.Context) error {
 	s.githubAccessToken = accessToken
 
 	if err != nil {
-		if errors.Is(err, types.ErrGitHubConnectionReRequested) {
+		if errors.Is(err, types.ErrGitConnectionReRequested) {
 			if err := s.notifyGitHubConnectionRequired(ctx); err != nil {
 				s.reportServerInternalError(ctx)
 				return err

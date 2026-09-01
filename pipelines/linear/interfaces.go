@@ -1,12 +1,8 @@
 package linear
 
-import (
-	"context"
-
-	"github.com/workdock-dev/engine/domain/types"
-	"github.com/workdock-dev/engine/pipelines/runners"
-)
+import "context"
 
 type LinearClientInterface interface {
-	Webhook(ctx context.Context, event runners.WEvent) (any, types.WebhookEventType, error)
+	RefreshToken(ctx context.Context, refreshToken string) (*Token, error)
+	CreateAgentActivity(ctx context.Context, accessToken string, input CreateAgentActivityInput) error
 }

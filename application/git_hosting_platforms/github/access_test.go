@@ -170,7 +170,7 @@ func (s *GitHubAccessSuite) TestVerifyRepoAccess_TokenUnavailable_ResetsAndReReq
 	s.connections.On("UpsertGitHubConnection", mock.Anything, mock.Anything).Return(nil)
 
 	ok, token, err := s.access.verifyRepoAccess(context.Background(), "evt-1", strPtr("org/repo"))
-	s.ErrorIs(err, types.ErrGitHubConnectionReRequested)
+	s.ErrorIs(err, types.ErrGitConnectionReRequested)
 	s.False(ok)
 	s.Empty(token)
 	s.connections.AssertCalled(s.T(), "ResetGitHubConnection", mock.Anything, "42", mock.Anything)
@@ -188,7 +188,7 @@ func (s *GitHubAccessSuite) TestVerifyRepoAccess_TokenUnavailable_ResetFails_Sti
 
 	ok, token, err := s.access.verifyRepoAccess(context.Background(), "evt-1", strPtr("org/repo"))
 	// ResetInstallation returns error (ignored), then RequestConnection succeeds → returns ErrGitHubConnectionReRequested
-	s.ErrorIs(err, types.ErrGitHubConnectionReRequested)
+	s.ErrorIs(err, types.ErrGitConnectionReRequested)
 	s.False(ok)
 	s.Empty(token)
 }

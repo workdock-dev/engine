@@ -102,7 +102,7 @@ func (s *githubAccess) verifyRepoAccess(ctx context.Context, sessionEventIdentif
 				return false, "", err
 			}
 
-			return false, "", types.ErrGitHubConnectionReRequested
+			return false, "", types.ErrGitConnectionReRequested
 		}
 
 		return false, "", err

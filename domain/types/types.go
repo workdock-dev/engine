@@ -38,8 +38,9 @@ const (
 )
 
 const (
-	PlatformProvider_Linear PlatformProvider = "linear"
-	PlatformProvider_GitHub PlatformProvider = "github"
+	PlatformProvider_Linear  PlatformProvider = "linear"
+	PlatformProvider_GitHub  PlatformProvider = "github"
+	PlatformProvider_Daytona PlatformProvider = "daytona"
 
 	HarnessProvider_OpenCode HarnessProvider = "opencode"
 

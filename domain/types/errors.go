@@ -36,10 +36,10 @@ var (
 	// to a different app), so its credentials cannot be renewed.
 	ErrGitHubInstallationUnavailable = errors.New("github installation unavailable")
 
-	// ErrGitHubConnectionReRequested is returned when a GitHub installation is
-	// no longer available: the installation has been reset and a fresh
+	// ErrGitConnectionReRequested is returned when a git access is
+	// no longer available: the access has been reset and a fresh
 	// connection requested, so the user should be prompted to re-authorize.
-	ErrGitHubConnectionReRequested = errors.New("github connection re-requested")
+	ErrGitConnectionReRequested = errors.New("git connection re-requested")
 
 	// ErrHarnessUnhealthy is returned when a harness's liveness probe
 	// determines the agent process has stopped emitting output and must be

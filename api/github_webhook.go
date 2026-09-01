@@ -15,12 +15,38 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/workdock-dev/engine/domain/types"
+	"github.com/workdock-dev/engine/pipelines/github"
+	"github.com/workdock-dev/engine/pipelines/runners"
 )
 
 func (s *Server) handleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
+	if err := runners.NewWebhookRunner(
+		github.NewWEventTransformer(),
+		github.NewWEventVerifier(),
+		github.NewWEventConsumer(),
+	).Execute(r); err != nil {
+		status := http.StatusInternalServerError
+
+		if errors.Is(err, runners.ErrWBadRequest) {
+			status = http.StatusBadRequest
+		}
+
+		if errors.Is(err, runners.ErrWUnAuthorized) {
+			status = http.StatusUnauthorized
+		}
+
+		if errors.Is(err, runners.ErrWForBidden) {
+			status = http.StatusForbidden
+		}
+
+		w.WriteHeader(status)
+		return
+	}
+
 	if err := s.app.GetWebhookService().On(r.Context(), types.PlatformProvider_GitHub, types.WebhookRequest{
 		Headers:    r.Header,
 		RemoteAddr: r.RemoteAddr,

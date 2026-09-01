@@ -15,10 +15,12 @@
 package types
 
 const (
-	EventType_GitHubConnected         = "github.connected"
-	EventType_Webhook                 = "webhook"
-	EventType_PullRequestCommented    = "pull_request.comment"
-	EventType_PullRequestChecksFailed = "pull_request.checks_failed"
+	EventType_GitHubConnected    = "github.connected"
+	EventType_LinearIssue        = "linear.issue"
+	EventType_LinearAgentSession = "linear.agent_session"
+	// EventType_Webhook                 = "webhook"
+	// EventType_PullRequestCommented    = "pull_request.comment"
+	// EventType_PullRequestChecksFailed = "pull_request.checks_failed"
 )
 
 // WebhookEventType indicates the kind of domain event a webhook payload
@@ -27,21 +29,21 @@ const (
 type WebhookEventType string
 
 const (
-	// WebhookEventType_Unknown is the default webhook event type when the
-	// specific type cannot be determined or is not relevant.
-	WebhookEventType_Unknown WebhookEventType = "unknown"
+// // WebhookEventType_Unknown is the default webhook event type when the
+// // specific type cannot be determined or is not relevant.
+// WebhookEventType_Unknown WebhookEventType = "unknown"
 
-	// WebhookEventType_AIRequest is returned when a webhook represents an
-	// AI agent session request (e.g. a new comment or agent session event).
-	WebhookEventType_AIRequest WebhookEventType = "ai-request"
+// // WebhookEventType_AIRequest is returned when a webhook represents an
+// // AI agent session request (e.g. a new comment or agent session event).
+// WebhookEventType_AIRequest WebhookEventType = "ai-request"
 
-	// WebhookEventType_IssueStateUpdated is returned when a webhook represents
-	// an issue state change (e.g. a ticket moved to "Done").
-	WebhookEventType_IssueStateUpdated WebhookEventType = "issue-state-updated"
+// // WebhookEventType_IssueStateUpdated is returned when a webhook represents
+// // an issue state change (e.g. a ticket moved to "Done").
+// WebhookEventType_IssueStateUpdated WebhookEventType = "issue-state-updated"
 
-	// WebhookEventType_Git is returned when a webhook represents a Git event
-	// (e.g. a pull request comment).
-	WebhookEventType_Git WebhookEventType = "git"
+// // WebhookEventType_Git is returned when a webhook represents a Git event
+// // (e.g. a pull request comment).
+// WebhookEventType_Git WebhookEventType = "git"
 )
 
 type GitHubConnectedEvent struct {
@@ -52,39 +54,55 @@ func (e GitHubConnectedEvent) EventType() string {
 	return EventType_GitHubConnected
 }
 
-type WebhookEvent struct {
-	Provider PlatformProvider
-	Payload  any
-	Type     WebhookEventType
+type LinearIssueEvent[T any] struct {
+	Payload T
 }
 
-func (e WebhookEvent) EventType() string {
-	return EventType_Webhook + "." + string(e.Provider)
+func (e LinearIssueEvent[T]) EventType() string {
+	return EventType_LinearIssue
 }
 
-func PlatformWebhookEvent(name PlatformProvider) string {
-	return EventType_Webhook + "." + string(name)
+type LinearAgentSession[T any] struct {
+	Payload T
 }
 
-type PullRequestCommentedEvent struct {
-	Provider       PlatformProvider
-	GitRef         string
-	InstallationId string
-	RepoFullName   string
+func (e LinearAgentSession[T]) EventType() string {
+	return EventType_LinearAgentSession
 }
 
-func (e PullRequestCommentedEvent) EventType() string {
-	return EventType_PullRequestCommented
-}
+// type WebhookEvent struct {
+// 	Provider PlatformProvider
+// 	Payload  any
+// 	Type     WebhookEventType
+// }
 
-type PullRequestChecksFailedEvent struct {
-	Provider       PlatformProvider
-	GitRef         string
-	InstallationId string
-	RepoFullName   string
-	ChecksFailed   []string
-}
+// func (e WebhookEvent) EventType() string {
+// 	return EventType_Webhook + "." + string(e.Provider)
+// }
 
-func (e PullRequestChecksFailedEvent) EventType() string {
-	return EventType_PullRequestChecksFailed
-}
+// func PlatformWebhookEvent(name PlatformProvider) string {
+// 	return EventType_Webhook + "." + string(name)
+// }
+
+// type PullRequestCommentedEvent struct {
+// 	Provider       PlatformProvider
+// 	GitRef         string
+// 	InstallationId string
+// 	RepoFullName   string
+// }
+
+// func (e PullRequestCommentedEvent) EventType() string {
+// 	return EventType_PullRequestCommented
+// }
+
+// type PullRequestChecksFailedEvent struct {
+// 	Provider       PlatformProvider
+// 	GitRef         string
+// 	InstallationId string
+// 	RepoFullName   string
+// 	ChecksFailed   []string
+// }
+
+// func (e PullRequestChecksFailedEvent) EventType() string {
+// 	return EventType_PullRequestChecksFailed
+// }

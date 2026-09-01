@@ -532,7 +532,7 @@ func (s *LinearAISessionSuite) TestProcess_VerifyAccessConnectionReRequested() {
 	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
-	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(false, "", types.ErrGitHubConnectionReRequested)
+	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(false, "", types.ErrGitConnectionReRequested)
 	s.client.On("CreateAgentActivity", mock.Anything, "at_valid", mock.Anything).Return(nil)
 
 	err := sess.Process(context.Background())
@@ -552,7 +552,7 @@ func (s *LinearAISessionSuite) TestProcess_VerifyAccessConnectionReRequested_Not
 	})
 
 	s.client.On("GetIssueLabels", mock.Anything, "at_valid", "issue-1").Return([]IssueLabel{}, nil)
-	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(false, "", types.ErrGitHubConnectionReRequested)
+	gitHosting.On("VerifyRepoAccess", mock.Anything, "session-1", (*string)(nil)).Return(false, "", types.ErrGitConnectionReRequested)
 	s.client.On("CreateAgentActivity", mock.Anything, "at_valid", mock.Anything).Return(errors.New("activity error"))
 
 	err := sess.Process(context.Background())

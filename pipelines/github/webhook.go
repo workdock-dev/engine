@@ -13,6 +13,8 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/workdock-dev/engine/domain/ports"
+	"github.com/workdock-dev/engine/domain/types"
 	"github.com/workdock-dev/engine/pipelines/runners"
 )
 
@@ -124,12 +126,27 @@ func (t *WEventVerifier) verifyWebhookSignature(headerSignature string, body []b
 	return subtle.ConstantTimeCompare(mac.Sum(nil), expected) == 1
 }
 
-type WEventConsumer struct{}
+type WEventConsumer struct {
+	client        ClientInterface
+	repository    GitHubConnectionRepository
+	secretManager ports.ForSecrets
+	eventBus      ports.ForEventBus
+}
 
 // NewWEventConsumer creates a webhook consumer for processing verified
 // Linear webhook events.
-func NewWEventConsumer() runners.WEventConsumer {
-	return &WEventConsumer{}
+func NewWEventConsumer(
+	client ClientInterface,
+	repository GitHubConnectionRepository,
+	secretManager ports.ForSecrets,
+	eventBus ports.ForEventBus,
+) runners.WEventConsumer {
+	return &WEventConsumer{
+		client:        client,
+		repository:    repository,
+		secretManager: secretManager,
+		eventBus:      eventBus,
+	}
 }
 
 // Consume decodes and validates a verified webhook before publishing it.
@@ -193,10 +210,18 @@ func (c *WEventConsumer) handleInstallation(ctx context.Context, event *WebhookE
 
 	if event.Action == "deleted" || event.Action == "removed" {
 		repos := make([]string, 0, len(event.Repositories))
+
 		for _, repo := range event.Repositories {
 			repos = append(repos, repo.FullName)
 		}
-		if err := c.access.ResetInstallation(ctx, installationId, repos); err != nil {
+
+		if err := resetInstallation(
+			ctx,
+			c.repository,
+			c.secretManager,
+			installationId,
+			repos,
+		); err != nil {
 			slog.Error("failed to reset github installation", "installation_id", installationId, "err", err)
 			return err
 		}
@@ -214,7 +239,7 @@ func (c *WEventConsumer) handleInstallation(ctx context.Context, event *WebhookE
 		return nil
 	}
 
-	token, err := c.config.Client.CreateInstallationAccessToken(event.Installation.ID)
+	token, err := c.client.CreateInstallationAccessToken(event.Installation.ID)
 
 	if err != nil {
 		slog.Error("failed to create installation access token", "installation_id", event.Installation.ID, "err", err)
@@ -233,7 +258,7 @@ func (c *WEventConsumer) handleInstallation(ctx context.Context, event *WebhookE
 		return ctx.Err()
 	}
 
-	if err := c.app.GetForSecrets().Set(ctx, GitHub_SecretPath, installationId, string(tokenData)); err != nil {
+	if err := c.secretManager.Set(ctx, GitHub_SecretPath, installationId, string(tokenData)); err != nil {
 		slog.Error("failed to store installation access token", "installation_id", event.Installation.ID, "err", err)
 		return err
 	}
@@ -244,8 +269,21 @@ func (c *WEventConsumer) handleInstallation(ctx context.Context, event *WebhookE
 		repos = append(repos, repo.FullName)
 	}
 
-	if err := c.access.CompleteConnection(ctx, installationId, repos); err != nil {
+	connections, err := batchGitHubConnections(
+		ctx,
+		c.repository,
+		installationId,
+		repos,
+	)
+
+	if err != nil {
 		return err
+	}
+
+	for _, connection := range connections {
+		c.eventBus.Publish(context.Background(), types.GitHubConnectedEvent{
+			Connection: connection,
+		})
 	}
 
 	slog.Debug("GitHub installation stored", "installation_id", event.Installation.ID, "expires_at", token.ExpiresAt)

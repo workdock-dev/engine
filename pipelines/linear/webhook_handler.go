@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/workdock-dev/engine/domain/ports"
+	"github.com/workdock-dev/engine/domain/types"
 	"github.com/workdock-dev/engine/pipelines/runners"
 )
 
@@ -156,12 +158,16 @@ func (t *WEventVerifier) verifyWebhookSignature(headerSignature string, body []b
 	return subtle.ConstantTimeCompare(mac.Sum(nil), expected) == 1
 }
 
-type WEventConsumer struct{}
+type WEventConsumer struct {
+	eventBus ports.ForEventBus
+}
 
 // NewWEventConsumer creates a webhook consumer for processing verified
 // Linear webhook events.
-func NewWEventConsumer() runners.WEventConsumer {
-	return &WEventConsumer{}
+func NewWEventConsumer(eventBus ports.ForEventBus) runners.WEventConsumer {
+	return &WEventConsumer{
+		eventBus: eventBus,
+	}
 }
 
 // Consume decodes and validates a verified webhook before publishing it.
@@ -182,7 +188,10 @@ func (c *WEventConsumer) Consume(_ context.Context, event *runners.VerifiedWEven
 			return err
 		}
 
-		// TODO: Publish Payload
+		c.eventBus.Publish(context.Background(), types.LinearIssueEvent[IssueStatusChangePayload]{
+			Payload: payload,
+		})
+
 		return nil
 	}
 
@@ -199,7 +208,10 @@ func (c *WEventConsumer) Consume(_ context.Context, event *runners.VerifiedWEven
 			return err
 		}
 
-		// TOOD: Publish Payload
+		c.eventBus.Publish(context.Background(), types.LinearAgentSession[AgentSessionEventData]{
+			Payload: payload,
+		})
+
 		return nil
 	}
 
