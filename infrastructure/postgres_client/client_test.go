@@ -23,7 +23,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/suite"
-	"github.com/workdock-dev/engine/domain/types"
+	"github.com/workdock-dev/engine/shared"
 )
 
 type PostgresServiceSuite struct {
@@ -51,7 +51,7 @@ func (s *PostgresServiceSuite) TestGetOrganization_Success() {
 		s.Equal("org-1", args[0])
 		return &mockRow{scanFn: func(dest ...any) error {
 			*dest[0].(*string) = "org-1"
-			*dest[1].(*types.PlatformProvider) = types.PlatformProvider_Linear
+			*dest[1].(*shared.PlatformProvider) = shared.PlatformProvider_Linear
 			*dest[2].(*string) = "Test Org"
 			return nil
 		}}
@@ -60,7 +60,7 @@ func (s *PostgresServiceSuite) TestGetOrganization_Success() {
 	s.NoError(err)
 	s.NotNil(org)
 	s.Equal("org-1", org.Identifier)
-	s.Equal(types.PlatformProvider_Linear, org.Provider)
+	s.Equal(shared.PlatformProvider_Linear, org.Provider)
 	s.Equal("Test Org", org.Name)
 }
 
@@ -93,7 +93,7 @@ func (s *PostgresServiceSuite) TestGetAgentSession_Success() {
 		return &mockRow{scanFn: func(dest ...any) error {
 			*dest[0].(*string) = "org-1"
 			*dest[1].(*string) = "session-1"
-			*dest[2].(*types.PlatformProvider) = types.PlatformProvider_GitHub
+			*dest[2].(*shared.PlatformProvider) = shared.PlatformProvider_GitHub
 			*dest[3].(*string) = "issue-1"
 			*dest[4].(*string) = "user-1"
 			*dest[5].(**string) = strPtr("owner/repo")
@@ -105,7 +105,7 @@ func (s *PostgresServiceSuite) TestGetAgentSession_Success() {
 	s.NotNil(session)
 	s.Equal("session-1", session.Identifier)
 	s.Equal("org-1", session.OrganizationIdentifier)
-	s.Equal(types.PlatformProvider_GitHub, session.Provider)
+	s.Equal(shared.PlatformProvider_GitHub, session.Provider)
 	s.Equal("issue-1", session.IssueId)
 	s.Equal("user-1", session.Creator)
 	s.Equal("owner/repo", *session.RepoFullName)
@@ -143,8 +143,8 @@ func (s *PostgresServiceSuite) TestGetAgentSessionEvent_Success() {
 			*dest[2].(*json.RawMessage) = json.RawMessage(`{"type":"test"}`)
 			*dest[3].(**string) = strPtr("seed-1")
 			*dest[4].(**string) = strPtr("main")
-			*dest[5].(**types.SessionEventResult) = nil
-			*dest[6].(*types.SessionEventTriggerReason) = types.SessionEventTriggerReason_Unknown
+			*dest[5].(**shared.SessionEventResult) = nil
+			*dest[6].(*shared.SessionEventTriggerReason) = shared.SessionEventTriggerReason_Unknown
 			return nil
 		}}
 	}
@@ -191,8 +191,8 @@ func (s *PostgresServiceSuite) TestGetAgentSessionEventByGitRef_Success() {
 			*dest[2].(*json.RawMessage) = json.RawMessage(`{}`)
 			*dest[3].(**string) = nil
 			*dest[4].(**string) = strPtr("abc123")
-			*dest[5].(**types.SessionEventResult) = nil
-			*dest[6].(*types.SessionEventTriggerReason) = types.SessionEventTriggerReason_Unknown
+			*dest[5].(**shared.SessionEventResult) = nil
+			*dest[6].(*shared.SessionEventTriggerReason) = shared.SessionEventTriggerReason_Unknown
 			return nil
 		}}
 	}
@@ -276,9 +276,9 @@ func (s *PostgresServiceSuite) TestUpsertOrganization_Success() {
 	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		return pgconn.CommandTag{}, nil
 	}
-	err := s.service.UpsertOrganization(context.Background(), &types.Organization{
+	err := s.service.UpsertOrganization(context.Background(), &shared.Organization{
 		Identifier: "org-1",
-		Provider:   types.PlatformProvider_Linear,
+		Provider:   shared.PlatformProvider_Linear,
 		Name:       "Test Org",
 	})
 	s.NoError(err)
@@ -288,9 +288,9 @@ func (s *PostgresServiceSuite) TestUpsertOrganization_Error() {
 	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		return pgconn.CommandTag{}, fmt.Errorf("constraint violation")
 	}
-	err := s.service.UpsertOrganization(context.Background(), &types.Organization{
+	err := s.service.UpsertOrganization(context.Background(), &shared.Organization{
 		Identifier: "org-1",
-		Provider:   types.PlatformProvider_Linear,
+		Provider:   shared.PlatformProvider_Linear,
 		Name:       "Test Org",
 	})
 	s.Error(err)
@@ -302,10 +302,10 @@ func (s *PostgresServiceSuite) TestUpsertAgentSession_Success() {
 	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		return pgconn.CommandTag{}, nil
 	}
-	err := s.service.UpsertAgentSession(context.Background(), &types.Session{
+	err := s.service.UpsertAgentSession(context.Background(), &shared.Session{
 		OrganizationIdentifier: "org-1",
 		Identifier:             "session-1",
-		Provider:               types.PlatformProvider_GitHub,
+		Provider:               shared.PlatformProvider_GitHub,
 		IssueId:                "issue-1",
 		Creator:                "user-1",
 		RepoFullName:           strPtr("owner/repo"),
@@ -317,7 +317,7 @@ func (s *PostgresServiceSuite) TestUpsertAgentSession_Error() {
 	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		return pgconn.CommandTag{}, fmt.Errorf("db error")
 	}
-	err := s.service.UpsertAgentSession(context.Background(), &types.Session{
+	err := s.service.UpsertAgentSession(context.Background(), &shared.Session{
 		OrganizationIdentifier: "org-1",
 		Identifier:             "session-1",
 	})
@@ -330,10 +330,10 @@ func (s *PostgresServiceSuite) TestUpdateSessionEventResult_Success() {
 	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		return pgconn.CommandTag{}, nil
 	}
-	err := s.service.UpdateSessionEventResult(context.Background(), &types.SessionEvent{
+	err := s.service.UpdateSessionEventResult(context.Background(), &shared.SessionEvent{
 		Identifier: "event-1",
 		GitRef:     strPtr("main"),
-		Result:     &types.SessionEventResult{PullRequest: &types.PullRequest{Number: 1}},
+		Result:     &shared.SessionEventResult{PullRequest: &shared.PullRequest{Number: 1}},
 	})
 	s.NoError(err)
 }
@@ -342,7 +342,7 @@ func (s *PostgresServiceSuite) TestUpdateSessionEventResult_Error() {
 	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		return pgconn.CommandTag{}, fmt.Errorf("db error")
 	}
-	err := s.service.UpdateSessionEventResult(context.Background(), &types.SessionEvent{
+	err := s.service.UpdateSessionEventResult(context.Background(), &shared.SessionEvent{
 		Identifier: "event-1",
 	})
 	s.Error(err)
@@ -357,7 +357,7 @@ func (s *PostgresServiceSuite) TestUpsertGitHubConnection_Success() {
 			return nil
 		}}
 	}
-	conn := &types.GitHubConnection{
+	conn := &shared.GitHubConnection{
 		SessionEventIdentifier: strPtr("event-1"),
 		RepoFullName:           "owner/repo",
 		Connected:              true,
@@ -375,7 +375,7 @@ func (s *PostgresServiceSuite) TestUpsertGitHubConnection_Error() {
 			return fmt.Errorf("db error")
 		}}
 	}
-	err := s.service.UpsertGitHubConnection(context.Background(), &types.GitHubConnection{
+	err := s.service.UpsertGitHubConnection(context.Background(), &shared.GitHubConnection{
 		SessionEventIdentifier: strPtr("event-1"),
 		RepoFullName:           "owner/repo",
 	})
@@ -441,7 +441,7 @@ func (s *PostgresServiceSuite) TestCreateSessionEvent_Success() {
 			},
 		}, nil
 	}
-	err := s.service.CreateSessionEvent(context.Background(), &types.SessionEvent{
+	err := s.service.CreateSessionEvent(context.Background(), &shared.SessionEvent{
 		SessionIdentifier: "session-1",
 		Identifier:        "event-1",
 		Payload:           json.RawMessage(`{"type":"test"}`),
@@ -454,7 +454,7 @@ func (s *PostgresServiceSuite) TestCreateSessionEvent_BeginError() {
 	s.pool.beginFn = func(ctx context.Context) (pgx.Tx, error) {
 		return nil, fmt.Errorf("connection pool exhausted")
 	}
-	err := s.service.CreateSessionEvent(context.Background(), &types.SessionEvent{
+	err := s.service.CreateSessionEvent(context.Background(), &shared.SessionEvent{
 		SessionIdentifier: "session-1",
 		Identifier:        "event-1",
 	})
@@ -479,7 +479,7 @@ func (s *PostgresServiceSuite) TestCreateSessionEvent_InsertEventError() {
 			},
 		}, nil
 	}
-	err := s.service.CreateSessionEvent(context.Background(), &types.SessionEvent{
+	err := s.service.CreateSessionEvent(context.Background(), &shared.SessionEvent{
 		SessionIdentifier: "session-1",
 		Identifier:        "event-1",
 	})
@@ -505,7 +505,7 @@ func (s *PostgresServiceSuite) TestCreateSessionEvent_InsertJobError() {
 			},
 		}, nil
 	}
-	err := s.service.CreateSessionEvent(context.Background(), &types.SessionEvent{
+	err := s.service.CreateSessionEvent(context.Background(), &shared.SessionEvent{
 		SessionIdentifier: "session-1",
 		Identifier:        "event-1",
 	})
@@ -529,7 +529,7 @@ func (s *PostgresServiceSuite) TestCreateSessionEvent_CommitError() {
 			},
 		}, nil
 	}
-	err := s.service.CreateSessionEvent(context.Background(), &types.SessionEvent{
+	err := s.service.CreateSessionEvent(context.Background(), &shared.SessionEvent{
 		SessionIdentifier: "session-1",
 		Identifier:        "event-1",
 	})

@@ -23,14 +23,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/workdock-dev/engine/domain/repositories"
-	"github.com/workdock-dev/engine/domain/types"
-)
-
-var (
-	_ repositories.OrganizationRepository     = (*PostgresService)(nil)
-	_ repositories.SessionRepository          = (*PostgresService)(nil)
-	_ repositories.GitHubConnectionRepository = (*PostgresService)(nil)
+	"github.com/workdock-dev/engine/shared"
 )
 
 var (
@@ -108,8 +101,8 @@ func New(ctx context.Context, config PostgresServiceConfig) (*PostgresService, e
 	}, nil
 }
 
-func (s *PostgresService) GetOrganization(ctx context.Context, identifier string) (*types.Organization, error) {
-	var row types.Organization
+func (s *PostgresService) GetOrganization(ctx context.Context, identifier string) (*shared.Organization, error) {
+	var row shared.Organization
 
 	err := s.client.
 		QueryRow(ctx, GetOrganizationSql, identifier).
@@ -132,8 +125,8 @@ func (s *PostgresService) GetOrganization(ctx context.Context, identifier string
 	return &row, nil
 }
 
-func (s *PostgresService) GetAgentSession(ctx context.Context, identifier string) (*types.Session, error) {
-	var row types.Session
+func (s *PostgresService) GetAgentSession(ctx context.Context, identifier string) (*shared.Session, error) {
+	var row shared.Session
 
 	err := s.client.
 		QueryRow(ctx, GetAgentSessionSql, identifier).
@@ -159,7 +152,7 @@ func (s *PostgresService) GetAgentSession(ctx context.Context, identifier string
 	return &row, nil
 }
 
-func (s *PostgresService) GetAgentSessionsByIssueId(ctx context.Context, issueId string) ([]*types.Session, error) {
+func (s *PostgresService) GetAgentSessionsByIssueId(ctx context.Context, issueId string) ([]*shared.Session, error) {
 	rows, err := s.client.Query(ctx, GetAgentSessionsByIssueIdSql, issueId)
 
 	if err != nil {
@@ -169,10 +162,10 @@ func (s *PostgresService) GetAgentSessionsByIssueId(ctx context.Context, issueId
 
 	defer rows.Close()
 
-	var sessions []*types.Session
+	var sessions []*shared.Session
 
 	for rows.Next() {
-		var row types.Session
+		var row shared.Session
 
 		if err := rows.Scan(
 			&row.OrganizationIdentifier,
@@ -197,8 +190,8 @@ func (s *PostgresService) GetAgentSessionsByIssueId(ctx context.Context, issueId
 	return sessions, nil
 }
 
-func (s *PostgresService) GetAgentSessionEvent(ctx context.Context, identifier string) (*types.SessionEvent, error) {
-	var row types.SessionEvent
+func (s *PostgresService) GetAgentSessionEvent(ctx context.Context, identifier string) (*shared.SessionEvent, error) {
+	var row shared.SessionEvent
 
 	err := s.client.
 		QueryRow(ctx, GetAgentSessionEventSql, identifier).
@@ -225,8 +218,8 @@ func (s *PostgresService) GetAgentSessionEvent(ctx context.Context, identifier s
 	return &row, nil
 }
 
-func (s *PostgresService) GetAgentSessionEventByGitRef(ctx context.Context, ref string, repoFullName string) (*types.SessionEvent, error) {
-	var row types.SessionEvent
+func (s *PostgresService) GetAgentSessionEventByGitRef(ctx context.Context, ref string, repoFullName string) (*shared.SessionEvent, error) {
+	var row shared.SessionEvent
 
 	err := s.client.
 		QueryRow(ctx, GetAgentSessionEventByGitRefSql, ref, repoFullName).
@@ -253,8 +246,8 @@ func (s *PostgresService) GetAgentSessionEventByGitRef(ctx context.Context, ref 
 	return &row, nil
 }
 
-func (s *PostgresService) GetGitHubConnection(ctx context.Context, repoFullName string) (*types.GitHubConnection, error) {
-	var row types.GitHubConnection
+func (s *PostgresService) GetGitHubConnection(ctx context.Context, repoFullName string) (*shared.GitHubConnection, error) {
+	var row shared.GitHubConnection
 
 	err := s.client.
 		QueryRow(ctx, GetGitHubConnectionSql, repoFullName).
@@ -278,7 +271,7 @@ func (s *PostgresService) GetGitHubConnection(ctx context.Context, repoFullName 
 	return &row, nil
 }
 
-func (s *PostgresService) CreateSessionEvent(ctx context.Context, event *types.SessionEvent) error {
+func (s *PostgresService) CreateSessionEvent(ctx context.Context, event *shared.SessionEvent) error {
 	tx, err := s.client.Begin(ctx)
 
 	if err != nil {
@@ -329,7 +322,7 @@ func (s *PostgresService) CreateSessionEvent(ctx context.Context, event *types.S
 	return nil
 }
 
-func (s *PostgresService) UpsertOrganization(ctx context.Context, org *types.Organization) error {
+func (s *PostgresService) UpsertOrganization(ctx context.Context, org *shared.Organization) error {
 	_, err := s.client.Exec(ctx, UpsertOrganizationSql, org.Identifier, org.Provider, org.Name)
 
 	if err != nil {
@@ -340,7 +333,7 @@ func (s *PostgresService) UpsertOrganization(ctx context.Context, org *types.Org
 	return nil
 }
 
-func (s *PostgresService) UpsertAgentSession(ctx context.Context, session *types.Session) error {
+func (s *PostgresService) UpsertAgentSession(ctx context.Context, session *shared.Session) error {
 	_, err := s.client.Exec(
 		ctx,
 		UpsertAgentSessionSql,
@@ -360,7 +353,7 @@ func (s *PostgresService) UpsertAgentSession(ctx context.Context, session *types
 	return nil
 }
 
-func (s *PostgresService) UpdateSessionEventResult(ctx context.Context, event *types.SessionEvent) error {
+func (s *PostgresService) UpdateSessionEventResult(ctx context.Context, event *shared.SessionEvent) error {
 	_, err := s.client.Exec(
 		ctx,
 		UpdateSessionEventResultSql,
@@ -377,7 +370,7 @@ func (s *PostgresService) UpdateSessionEventResult(ctx context.Context, event *t
 	return nil
 }
 
-func (s *PostgresService) UpsertGitHubConnection(ctx context.Context, githubConnection *types.GitHubConnection) error {
+func (s *PostgresService) UpsertGitHubConnection(ctx context.Context, githubConnection *shared.GitHubConnection) error {
 	err := s.client.
 		QueryRow(
 			ctx,

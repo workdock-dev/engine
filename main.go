@@ -26,37 +26,48 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lmittmann/tint"
-	"github.com/workdock-dev/engine/api"
-	"github.com/workdock-dev/engine/application"
-	"github.com/workdock-dev/engine/application/async"
-	"github.com/workdock-dev/engine/application/git_hosting_platforms/github"
-	"github.com/workdock-dev/engine/application/harnesses/opencode"
-	"github.com/workdock-dev/engine/application/work_platforms/linear"
-	"github.com/workdock-dev/engine/domain/ports"
-	"github.com/workdock-dev/engine/domain/types"
-	"github.com/workdock-dev/engine/infrastructure/daytona_client"
-	"github.com/workdock-dev/engine/infrastructure/github_client"
+	"github.com/workdock-dev/engine/features/agent_session"
+	"github.com/workdock-dev/engine/features/webhook"
+	"github.com/workdock-dev/engine/infrastructure/event_bus"
 	"github.com/workdock-dev/engine/infrastructure/in_memory_secrets"
 	"github.com/workdock-dev/engine/infrastructure/infisical_client"
-	"github.com/workdock-dev/engine/infrastructure/linear_client"
 	"github.com/workdock-dev/engine/infrastructure/otlp_client"
 	"github.com/workdock-dev/engine/infrastructure/postgres_client"
+	"github.com/workdock-dev/engine/infrastructure/server"
+	async "github.com/workdock-dev/engine/infrastructure/task_scheduler"
+	"github.com/workdock-dev/engine/shared"
 	"gopkg.in/yaml.v3"
+
+	"github.com/workdock-dev/engine/plug-ings/daytona"
+	"github.com/workdock-dev/engine/plug-ings/github"
+	github_infra "github.com/workdock-dev/engine/plug-ings/github/infrastructure"
+	"github.com/workdock-dev/engine/plug-ings/linear"
+	linear_infra "github.com/workdock-dev/engine/plug-ings/linear/infrastructure"
+	"github.com/workdock-dev/engine/plug-ings/opencode"
+
+	daytona_types "github.com/workdock-dev/engine/plug-ings/daytona/types"
+	github_types "github.com/workdock-dev/engine/plug-ings/github/types"
+	linear_types "github.com/workdock-dev/engine/plug-ings/linear/types"
+	opencode_types "github.com/workdock-dev/engine/plug-ings/opencode/types"
 )
 
 type Config struct {
-	ServiceName        string                                  `yaml:"service_name"`
-	ServerAddress      string                                  `yaml:"server_address"`
-	Workers            int                                     `yaml:"workers"`
-	WorkerLeaseSeconds int                                     `yaml:"worker_lease_seconds"`
-	DaytonaConfig      daytona_client.SandboxConfig            `yaml:"daytona"`
-	Linear             linear_client.LinearServiceConfig       `yaml:"linear"`
-	Opencode           opencode.ConfigExternal                 `yaml:"opencode"`
-	Infisical          infisical_client.InfisicalServiceConfig `yaml:"infisical"`
-	Secrets            SecretsConfig                           `yaml:"secrets"`
-	Postgres           postgres_client.PostgresServiceConfig   `yaml:"postgres"`
-	Github             github_client.GitHubClientConfig        `yaml:"github"`
-	Otlp               *otlp_client.Config                     `yaml:"otlp"`
+	ServiceName        string `yaml:"service_name"`
+	ServerAddress      string `yaml:"server_address"`
+	Workers            int    `yaml:"workers"`
+	WorkerLeaseSeconds int    `yaml:"worker_lease_seconds"`
+
+	// plug-ings configuration
+	Daytona  daytona_types.Config  `yaml:"daytona"`
+	Linear   linear_types.Config   `yaml:"linear"`
+	Opencode opencode_types.Config `yaml:"opencode"`
+	Github   github_types.Config   `yaml:"github"`
+
+	// infrastructure configuration
+	Infisical infisical_client.InfisicalServiceConfig `yaml:"infisical"`
+	Secrets   SecretsConfig                           `yaml:"secrets"`
+	Postgres  postgres_client.PostgresServiceConfig   `yaml:"postgres"`
+	Otlp      *otlp_client.Config                     `yaml:"otlp"`
 }
 
 // SecretsConfig selects the secrets provider the engine wires as
@@ -120,7 +131,7 @@ func main() {
 		slog.SetDefault(logger)
 	}
 
-	var secretManager ports.ForSecrets
+	var secretManager shared.ForSecrets
 
 	switch cfg.Secrets.Mode {
 	case in_memory_secrets.ModeMemory:
@@ -133,10 +144,12 @@ func main() {
 	}
 
 	// Create infrastructure
-	linearClient, err := linear_client.New(cfg.Linear, secretManager)
+	eventBus := event_bus.NewInMemoryEventBus()
+
+	linearClient, err := linear_infra.NewClient(cfg.Linear, secretManager)
 	exit(err)
 
-	githubClient, err := github_client.New(cfg.Github)
+	githubClient, err := github_infra.NewClient(cfg.Github)
 	exit(err)
 
 	postgresClient, err := postgres_client.New(ctx, cfg.Postgres)
@@ -145,88 +158,142 @@ func main() {
 	postgresEventQueue, err := postgres_client.NewEventQueue(ctx, postgresClient)
 	exit(err)
 
-	// Create app
-	app := application.New()
-	application.WithEventBus(app, async.NewInMemoryEventBus())
-	application.WithSecretManager(app, secretManager)
-	application.WithQueue(app, postgresEventQueue)
-	application.WithOrganizationRepository(app, postgresClient)
-	application.WithSessionRepository(app, postgresClient)
-	application.WithGitHubRepository(app, postgresClient)
-
-	// Create application platforms
-	opencodeHarness := func(consturctor ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
-		sessionEventId := "not-set"
-		if consturctor.SessionEvent != nil {
-			sessionEventId = consturctor.SessionEvent.Identifier
-		}
-
-		sandbox, err := daytona_client.NewSandbox(
-			cfg.DaytonaConfig,
-			consturctor.Session.Identifier,
-			sessionEventId,
-		)
-
-		if err != nil {
-			return nil, err
-		}
-
-		return opencode.New(opencode.Config{
-			ConfigExternal: cfg.Opencode,
-			Sandbox:        sandbox,
-			Parts:          consturctor.Parts,
-			Session:        consturctor.Session,
-			SessionEvent:   consturctor.SessionEvent,
-			Prompt:         consturctor.Prompt,
-			Secrets:        consturctor.Secrets,
-		}, app)
-	}
-
-	githubPlatform := github.New(github.GitHubPlatformConfig{
-		Client:       githubClient,
-		BotLoginName: cfg.Github.BotLoginId,
-	}, app)
-
-	linearPlatform := linear.New(linear.Config{
-		Client:              linearClient,
-		GitHubAppInstallURL: cfg.Github.AppInstallURL,
-	}, app)
-
-	// Git hosting registry
-	application.WithGitHostingPlatformRegistry(app, ports.GitHostingPlatformRegistry{
-		types.PlatformProvider_GitHub: githubPlatform,
-	})
-
-	// Webhook registry
-	application.WithWebhooksRegistry(app, ports.WebhooksRegistry{
-		types.PlatformProvider_GitHub: githubPlatform,
-		types.PlatformProvider_Linear: linearPlatform,
-	})
-
-	// Harness registry
-	application.WithHarnessRegistry(app, ports.HarnessPlatformRegistry{
-		types.HarnessProvider_OpenCode: opencodeHarness,
-	})
-
-	// Work platform registry
-	application.WithWorkPlatformRegistry(app, ports.WorkPlatformRegistry{
-		types.PlatformProvider_Linear: linearPlatform,
-	})
-
-	// Complete the application initialization
-	app.Init()
-
-	server, err := api.NewHTTPServer(cfg.ServerAddress, *app)
+	server, err := server.New(cfg.ServerAddress)
 	exit(err)
+
+	// Create and configure features
+	webhook.New(
+		"POST /github/webhook",
+		server.Mux(),
+		github.NewWEventTransformer(),
+		github.NewWEventVerifier(cfg.Github),
+		github.NewWEventConsumer(
+			githubClient,
+			postgresClient,
+			secretManager,
+			eventBus,
+		),
+	)
+
+	webhook.New(
+		"POST /linear/webhook",
+		server.Mux(),
+		linear.NewWEventTransformer(),
+		linear.NewWEventVerifier(cfg.Linear),
+		linear.NewWEventConsumer(eventBus),
+	)
+
+	agentSessionPipeline := agent_session.New(
+		agent_session.AgentHandlerRegistry{
+			string(shared.PlatformProvider_Linear): linear.NewAgentSessionHandler(
+				linearClient,
+				secretManager,
+			),
+		},
+		agent_session.GitHandlerRegistry{
+			string(shared.PlatformProvider_GitHub): github.NewGitHandler(
+				cfg.Github,
+				postgresClient,
+				githubClient,
+				secretManager,
+			),
+		},
+		agent_session.SandboxHandlerRegistry{
+			string(shared.PlatformProvider_Daytona): daytona.NewSandboxHandler(cfg.Daytona),
+		},
+		agent_session.HarnessHandlerRegistry{
+			string(shared.HarnessProvider_OpenCode): opencode.NewHarnessHandler(cfg.Opencode),
+		},
+		eventBus,
+		postgresClient,
+		postgresClient,
+	)
+
+	taskScheduler, err := async.NewTaskScheduler(
+		postgresEventQueue,
+		async.TaskSchedulerConfig{
+			Workers:       cfg.Workers,
+			LeaseDuration: time.Duration(cfg.WorkerLeaseSeconds) * time.Second,
+		},
+		agentSessionPipeline.Execute,
+	)
+	exit(err)
+
+	// Create app
+
+	// app := application.New()
+	// application.WithEventBus(app, async.NewInMemoryEventBus())
+	// application.WithSecretManager(app, secretManager)
+	// application.WithQueue(app, postgresEventQueue)
+	// application.WithOrganizationRepository(app, postgresClient)
+	// application.WithSessionRepository(app, postgresClient)
+	// application.WithGitHubRepository(app, postgresClient)
+
+	// // Create application platforms
+	// opencodeHarness := func(consturctor ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
+	// 	sessionEventId := "not-set"
+	// 	if consturctor.SessionEvent != nil {
+	// 		sessionEventId = consturctor.SessionEvent.Identifier
+	// 	}
+
+	// 	sandbox, err := daytona_client.NewSandbox(
+	// 		cfg.DaytonaConfig,
+	// 		consturctor.Session.Identifier,
+	// 		sessionEventId,
+	// 	)
+
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+
+	// 	return opencode.New(opencode.Config{
+	// 		ConfigExternal: cfg.Opencode,
+	// 		Sandbox:        sandbox,
+	// 		Parts:          consturctor.Parts,
+	// 		Session:        consturctor.Session,
+	// 		SessionEvent:   consturctor.SessionEvent,
+	// 		Prompt:         consturctor.Prompt,
+	// 		Secrets:        consturctor.Secrets,
+	// 	}, app)
+	// }
+
+	// githubPlatform := github.New(github.GitHubPlatformConfig{
+	// 	Client:       githubClient,
+	// 	BotLoginName: cfg.Github.BotLoginId,
+	// }, app)
+
+	// linearPlatform := linear.New(linear.Config{
+	// 	Client:              linearClient,
+	// 	GitHubAppInstallURL: cfg.Github.AppInstallURL,
+	// }, app)
+
+	// // Git hosting registry
+	// application.WithGitHostingPlatformRegistry(app, ports.GitHostingPlatformRegistry{
+	// 	types.PlatformProvider_GitHub: githubPlatform,
+	// })
+
+	// // Webhook registry
+	// application.WithWebhooksRegistry(app, ports.WebhooksRegistry{
+	// 	types.PlatformProvider_GitHub: githubPlatform,
+	// 	types.PlatformProvider_Linear: linearPlatform,
+	// })
+
+	// // Harness registry
+	// application.WithHarnessRegistry(app, ports.HarnessPlatformRegistry{
+	// 	types.HarnessProvider_OpenCode: opencodeHarness,
+	// })
+
+	// // Work platform registry
+	// application.WithWorkPlatformRegistry(app, ports.WorkPlatformRegistry{
+	// 	types.PlatformProvider_Linear: linearPlatform,
+	// })
+
+	// // Complete the application initialization
+	// app.Init()
 
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		if err := app.Run(ctx, async.TaskSchedulerConfig{
-			Workers:       cfg.Workers,
-			LeaseDuration: time.Duration(cfg.WorkerLeaseSeconds) * time.Second,
-		}); err != nil {
-			return
-		}
+		taskScheduler.Run(ctx)
 	})
 
 	if cfg.Otlp != nil && cfg.Otlp.Slog != nil {

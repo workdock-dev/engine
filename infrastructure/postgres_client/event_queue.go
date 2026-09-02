@@ -23,7 +23,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/workdock-dev/engine/domain/types"
+	"github.com/workdock-dev/engine/shared"
 )
 
 const (
@@ -98,9 +98,9 @@ func NewEventQueue(ctx context.Context, service *PostgresService) (*EventQueue, 
 //
 // The entire operation is performed within a transaction, guaranteeing that
 // only one worker can successfully claim the job at a time.
-func (q *EventQueue) Claim(ctx context.Context, owner string) (*types.EventJob, error) {
+func (q *EventQueue) Claim(ctx context.Context, owner string) (*shared.EventJob, error) {
 	now := time.Now().UTC()
-	var row types.EventJob
+	var row shared.EventJob
 
 	err := q.client.
 		QueryRow(
