@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/workdock-dev/engine/features/agent_session/ports"
+	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
 	"github.com/workdock-dev/engine/plug-ings/opencode/types"
 	"github.com/workdock-dev/engine/shared"
 )
@@ -30,7 +30,7 @@ type HarnessHandler struct {
 	permission map[string]any
 }
 
-func NewHarnessHandler(config types.Config) ports.HarnessHandler {
+func NewHarnessHandler(config types.Config) agent_session_interfaces.HarnessHandler {
 	return &HarnessHandler{
 		version:    config.Version,
 		permission: config.Permission,
@@ -51,7 +51,7 @@ func (h *HarnessHandler) GetPromptFile(prompt string) (string, []byte) {
 	return PROMPT_FILE_PATH, []byte(prompt)
 }
 
-func (h *HarnessHandler) GetConfigFile(config ports.HarnessConfig) (string, []byte, error) {
+func (h *HarnessHandler) GetConfigFile(config agent_session_interfaces.HarnessConfig) (string, []byte, error) {
 	permissions := []byte("{\"*\":\"allow\"}")
 	mcps := []byte("{}")
 

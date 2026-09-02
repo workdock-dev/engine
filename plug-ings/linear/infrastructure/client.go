@@ -57,13 +57,7 @@ type graphQLError struct {
 	Message string `json:"message"`
 }
 
-type tokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int    `json:"expires_in"`
-}
-
-type LinearService struct {
+type Client struct {
 	config     types.Config
 	httpClient *http.Client
 	forSecrets shared.ForSecrets
@@ -77,7 +71,7 @@ type LinearService struct {
 //
 // The service does not perform any connectivity or credential validation during
 // initialization.
-func NewClient(config types.Config, forSecrets shared.ForSecrets) (*LinearService, error) {
+func NewClient(config types.Config, forSecrets shared.ForSecrets) (*Client, error) {
 	if config.ApiUrl == "" {
 		config.ApiUrl = GraphqlEndpoint
 	}
@@ -87,74 +81,10 @@ func NewClient(config types.Config, forSecrets shared.ForSecrets) (*LinearServic
 	}
 
 	slog.Debug("linear service created", "api_url", config.ApiUrl, "token_url", config.TokenUrl)
-	return &LinearService{
+	return &Client{
 		config:     config,
 		forSecrets: forSecrets,
 		httpClient: &http.Client{},
-	}, nil
-}
-
-// OauthAuthorize builds the authorization URL used to initiate the Linear OAuth
-// flow.
-//
-//   - Generates the URL that redirects users to Linear's authorization page.
-//   - Requests the application permissions required for interacting with agent
-//     sessions and other Linear resources.
-//
-// Users must complete the authorization flow before the application can access
-// their Linear workspace.
-func (s *LinearService) OauthAuthorize(ctx context.Context) string {
-	scope := "read,write,app:assignable,app:mentionable"
-	return fmt.Sprintf(
-		"%s?client_id=%s&redirect_uri=%s/linear/oauth/callback&response_type=code&scope=%s&actor=app",
-		AuthorizeEndpoint, s.config.ClientId, s.config.ServerUrl, scope,
-	)
-}
-
-// OauthCallback completes the Linear OAuth authorization flow after the user
-// grants access to the application.
-//
-//   - Validates the OAuth callback and exchanges the authorization code for an
-//     access token.
-//   - Retrieves the authorized workspace information associated with the token.
-//   - Returns the workspace details and credentials required to establish a
-//     trusted connection with the Linear organization.
-//
-// The callback is only considered successful if both the token exchange and
-// workspace lookup complete successfully.
-func (s *LinearService) OauthCallback(ctx context.Context, code, error string) (*types.OAuthCallbackEvent, error) {
-	if error != "" {
-		slog.Error("failed to handle linear oauth callback", "err", errors.New(error))
-		return nil, shared.ErrBadRequest
-	}
-
-	if code == "" {
-		slog.Error("failed to handle linear oauth callback", "err", errors.New("missing required oauth parameter: code"))
-		return nil, shared.ErrBadRequest
-	}
-
-	tokenData, err := s.exchangeCode(ctx, code)
-
-	if err != nil {
-		return nil, err
-	}
-
-	info, err := s.getWorkspaceInfo(ctx, tokenData.AccessToken)
-
-	if err != nil {
-		return nil, err
-	}
-
-	token := types.Token{
-		AccessToken:  tokenData.AccessToken,
-		RefreshToken: tokenData.RefreshToken,
-		ExpiresAt:    time.Now().Add(time.Duration(tokenData.ExpiresIn) * time.Second),
-	}
-
-	slog.Debug("oauth authorization successful", "workspace", info.Name)
-	return &types.OAuthCallbackEvent{
-		Workspace: *info,
-		Token:     token,
 	}, nil
 }
 
@@ -168,7 +98,7 @@ func (s *LinearService) OauthCallback(ctx context.Context, code, error string) (
 //
 // The returned token must replace the stored one so subsequent requests keep
 // using valid credentials.
-func (s *LinearService) RefreshToken(ctx context.Context, refreshToken string) (*types.Token, error) {
+func (s *Client) RefreshToken(ctx context.Context, refreshToken string) (*types.Token, error) {
 	tokenData, err := s.exchangeRefreshToken(ctx, refreshToken)
 
 	if err != nil {
@@ -196,7 +126,7 @@ func (s *LinearService) RefreshToken(ctx context.Context, refreshToken string) (
 //     OAuth credentials with the correct organization.
 //
 // The access token must represent a valid authorization for a Linear workspace.
-func (s *LinearService) getWorkspaceInfo(ctx context.Context, accessToken string) (*types.WorkspaceInfo, error) {
+func (s *Client) GetWorkspaceInfo(ctx context.Context, accessToken string) (*types.WorkspaceInfo, error) {
 	query := `query { viewer { organization { id name } } }`
 
 	body, err := s.doRequest(ctx, query, nil, accessToken)
@@ -233,7 +163,7 @@ func (s *LinearService) getWorkspaceInfo(ctx context.Context, accessToken string
 //   - Records the activity as part of the agent session timeline visible to users.
 //
 // The operation succeeds only if Linear accepts and persists the activity.
-func (s *LinearService) CreateAgentActivity(ctx context.Context, accessToken string, input types.CreateAgentActivityInput) error {
+func (s *Client) CreateAgentActivity(ctx context.Context, accessToken string, input types.CreateAgentActivityInput) error {
 	contentMap := map[string]any{
 		"type": input.Content.Type,
 	}
@@ -315,7 +245,7 @@ func (s *LinearService) CreateAgentActivity(ctx context.Context, accessToken str
 //
 // An error is returned if the specified issue cannot be found or the request
 // fails.
-func (s *LinearService) GetIssue(ctx context.Context, accessToken string, issueId string) (*types.IssueStateResult, error) {
+func (s *Client) GetIssue(ctx context.Context, accessToken string, issueId string) (*types.IssueStateResult, error) {
 	query := `query GetIssue($id: String!) {
   issue(id: $id) {
     id
@@ -373,7 +303,7 @@ func (s *LinearService) GetIssue(ctx context.Context, accessToken string, issueI
 //     their identifiers and display information.
 //
 // An error is returned if the specified issue cannot be found.
-func (s *LinearService) GetIssueLabels(ctx context.Context, accessToken string, issueId string) ([]types.IssueLabel, error) {
+func (s *Client) GetIssueLabels(ctx context.Context, accessToken string, issueId string) ([]types.IssueLabel, error) {
 	query := `query GetIssueLabels($id: String!) {
   issue(id: $id) {
     labelIds
@@ -424,51 +354,6 @@ func (s *LinearService) GetIssueLabels(ctx context.Context, accessToken string, 
 	return result.Issue.Labels.Nodes, nil
 }
 
-// SetExternalURLs associates external links with a Linear agent session.
-//
-//   - Updates the agent session with one or more external URLs that reference
-//     resources created or used during execution.
-//   - Makes those resources available from within the Linear agent session for
-//     users to access.
-//
-// Existing external URLs for the session are replaced with the provided set.
-func (s *LinearService) SetExternalURLs(ctx context.Context, accessToken string, input types.SetExternalURLsInput) (*types.AgentSessionUpdatePayload, error) {
-	urls := make([]map[string]string, len(input.ExternalURLs))
-
-	for i, u := range input.ExternalURLs {
-		urls[i] = map[string]string{"label": u.Label, "url": u.URL}
-	}
-
-	query := `mutation AgentSessionUpdate($id: String!, $input: AgentSessionUpdateInput!) {
-  agentSessionUpdate(id: $id, input: $input) {
-    success
-  }
-}`
-
-	vars := map[string]any{
-		"id": input.SessionID,
-		"input": map[string]any{
-			"externalUrls": urls,
-		},
-	}
-
-	body, err := s.doRequest(ctx, query, vars, accessToken)
-
-	if err != nil {
-		return nil, err
-	}
-
-	var result struct {
-		Payload types.AgentSessionUpdatePayload `json:"agentSessionUpdate"`
-	}
-
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-
-	return &result.Payload, nil
-}
-
 // Webhook validates and parses an incoming Linear webhook request.
 //
 //   - Verifies that the request originates from an authorized Linear IP address.
@@ -480,7 +365,7 @@ func (s *LinearService) SetExternalURLs(ctx context.Context, accessToken string,
 //
 // Requests that fail origin, signature, or timestamp validation are rejected
 // before any business logic is executed.
-func (s *LinearService) Webhook(ctx context.Context, req shared.WebhookRequest) (any, shared.WebhookEventType, error) {
+func (s *Client) Webhook(ctx context.Context, req shared.WebhookRequest) (any, shared.WebhookEventType, error) {
 	if !s.isAllowedIP(req) {
 		slog.Error("received request from invalid IP", "ip", s.clientIP(req))
 		return nil, shared.WebhookEventType_Unknown, shared.ErrForbidden
@@ -545,7 +430,7 @@ func (s *LinearService) Webhook(ctx context.Context, req shared.WebhookRequest) 
 //
 // Requests are considered successful only when both the HTTP request succeeds
 // and the GraphQL response contains no errors.
-func (s *LinearService) doRequest(ctx context.Context, query string, variables map[string]any, token string) (json.RawMessage, error) {
+func (s *Client) doRequest(ctx context.Context, query string, variables map[string]any, token string) (json.RawMessage, error) {
 	reqBody, err := json.Marshal(graphQLRequest{Query: query, Variables: variables})
 
 	if err != nil {
@@ -614,7 +499,7 @@ func (s *LinearService) doRequest(ctx context.Context, query string, variables m
 //
 // A successful verification confirms the request originated from a trusted
 // source and that the payload was not modified in transit.
-func (s *LinearService) verifyWebhookSignature(headerSignature string, body []byte) bool {
+func (s *Client) verifyWebhookSignature(headerSignature string, body []byte) bool {
 	if headerSignature == "" {
 		return false
 	}
@@ -636,7 +521,7 @@ func (s *LinearService) verifyWebhookSignature(headerSignature string, body []by
 //
 // Requests originating from untrusted IP addresses should be rejected before
 // processing.
-func (s *LinearService) isAllowedIP(req shared.WebhookRequest) bool {
+func (s *Client) isAllowedIP(req shared.WebhookRequest) bool {
 	ip := s.clientIP(req)
 	return slices.Contains(s.config.IPs, ip)
 }
@@ -649,7 +534,7 @@ func (s *LinearService) isAllowedIP(req shared.WebhookRequest) bool {
 //     is available.
 //
 // The returned IP is intended for request validation and auditing.
-func (s *LinearService) clientIP(req shared.WebhookRequest) string {
+func (s *Client) clientIP(req shared.WebhookRequest) string {
 	if xff := req.Get("X-Forwarded-For"); xff != "" {
 		if ip := strings.TrimSpace(strings.Split(xff, ",")[0]); ip != "" {
 			return ip
@@ -677,7 +562,7 @@ func (s *LinearService) clientIP(req shared.WebhookRequest) string {
 //     requests on behalf of the authorized workspace.
 //
 // The authorization code is single-use and must be exchanged before it expires.
-func (s *LinearService) exchangeCode(ctx context.Context, code string) (*tokenResponse, error) {
+func (s *Client) ExchangeCode(ctx context.Context, code string) (*types.TokenExchanged, error) {
 	data := url.Values{
 		"grant_type":    {"authorization_code"},
 		"client_id":     {s.config.ClientId},
@@ -715,7 +600,7 @@ func (s *LinearService) exchangeCode(ctx context.Context, code string) (*tokenRe
 		return nil, shared.ErrInternalServerError
 	}
 
-	var result tokenResponse
+	var result types.TokenExchanged
 
 	if err := json.Unmarshal(body, &result); err != nil {
 		slog.Error("failed to unmarshal token exchange response", "err", err)
@@ -731,7 +616,7 @@ func (s *LinearService) exchangeCode(ctx context.Context, code string) (*tokenRe
 //   - Uses the refresh_token grant type with the configured client credentials.
 //   - Returns the new access token and, when Linear rotates it, the new refresh
 //     token.
-func (s *LinearService) exchangeRefreshToken(ctx context.Context, refreshToken string) (*tokenResponse, error) {
+func (s *Client) exchangeRefreshToken(ctx context.Context, refreshToken string) (*types.TokenExchanged, error) {
 	data := url.Values{
 		"grant_type":    {"refresh_token"},
 		"client_id":     {s.config.ClientId},
@@ -768,7 +653,7 @@ func (s *LinearService) exchangeRefreshToken(ctx context.Context, refreshToken s
 		return nil, err
 	}
 
-	var result tokenResponse
+	var result types.TokenExchanged
 
 	if err := json.Unmarshal(body, &result); err != nil {
 		slog.Error("failed to unmarshal token refresh response", "err", err)

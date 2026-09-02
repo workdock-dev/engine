@@ -12,7 +12,7 @@ import (
 	sdkerrors "github.com/daytona/clients/sdk-go/pkg/errors"
 	"github.com/daytona/clients/sdk-go/pkg/options"
 	sdktypes "github.com/daytona/clients/sdk-go/pkg/types"
-	"github.com/workdock-dev/engine/features/agent_session/ports"
+	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
 	"github.com/workdock-dev/engine/plug-ings/daytona/helpers"
 	"github.com/workdock-dev/engine/plug-ings/daytona/types"
 )
@@ -23,7 +23,7 @@ type SandboxHandler struct {
 	target string
 }
 
-func NewSandboxHandler(config types.Config) ports.SandboxHandler {
+func NewSandboxHandler(config types.Config) agent_session_interfaces.SandboxHandler {
 	return &SandboxHandler{
 		apiKey: config.ApiKey,
 		apiUrl: config.ApiUrl,
@@ -33,7 +33,7 @@ func NewSandboxHandler(config types.Config) ports.SandboxHandler {
 
 func (h *SandboxHandler) Run(
 	ctx context.Context,
-	config *ports.SandboxConfig,
+	config *agent_session_interfaces.SandboxConfig,
 	stdout chan<- string,
 	stderr chan<- string,
 ) (func(ctx context.Context) string, error) {
@@ -219,7 +219,7 @@ func (h *SandboxHandler) Run(
 	return shutdown, nil
 }
 
-func (h *SandboxHandler) Archive(ctx context.Context, config *ports.SandboxConfig) error {
+func (h *SandboxHandler) Archive(ctx context.Context, config *agent_session_interfaces.SandboxConfig) error {
 	target := h.target
 
 	if target == "" {
@@ -289,7 +289,7 @@ func (h *SandboxHandler) Archive(ctx context.Context, config *ports.SandboxConfi
 	return nil
 }
 
-func (h *SandboxHandler) GetOrCreateSandbox(ctx context.Context, client *daytona.Client, config *ports.SandboxConfig, secrets map[string]string) (*daytona.Sandbox, bool, error) {
+func (h *SandboxHandler) GetOrCreateSandbox(ctx context.Context, client *daytona.Client, config *agent_session_interfaces.SandboxConfig, secrets map[string]string) (*daytona.Sandbox, bool, error) {
 	sandbox, err := helpers.RetryRateLimited(ctx, helpers.ThrottlerAuthenticated, "get sandbox", func() (*daytona.Sandbox, error) {
 		return client.Get(ctx, config.Session.Identifier)
 	})
@@ -340,7 +340,7 @@ func (h *SandboxHandler) GetOrCreateSandbox(ctx context.Context, client *daytona
 }
 
 // SetSecret creates a secret and returns its id and name.
-func (h *SandboxHandler) SetSecret(ctx context.Context, client *daytona.Client, config *ports.SandboxConfig, secretValue string, hosts []string) (string, string, error) {
+func (h *SandboxHandler) SetSecret(ctx context.Context, client *daytona.Client, config *agent_session_interfaces.SandboxConfig, secretValue string, hosts []string) (string, string, error) {
 	secretName := h.newUUIDStartingWithLetter()
 	secret, err := helpers.RetryRateLimited(ctx, helpers.ThrottlerAuthenticated, "create secret", func() (*sdktypes.Secret, error) {
 		return client.Secret.Create(ctx, &sdktypes.CreateSecretParams{
@@ -359,7 +359,7 @@ func (h *SandboxHandler) SetSecret(ctx context.Context, client *daytona.Client, 
 	return secret.ID, secretName, nil
 }
 
-func (h *SandboxHandler) DeleteSecret(ctx context.Context, client *daytona.Client, config *ports.SandboxConfig, secretId string) error {
+func (h *SandboxHandler) DeleteSecret(ctx context.Context, client *daytona.Client, config *agent_session_interfaces.SandboxConfig, secretId string) error {
 	err := helpers.RetryRateLimitedVoid(ctx, helpers.ThrottlerAuthenticated, "delete secret", func() error {
 		return client.Secret.Delete(ctx, secretId)
 	})
@@ -373,7 +373,7 @@ func (h *SandboxHandler) DeleteSecret(ctx context.Context, client *daytona.Clien
 	return err
 }
 
-func (h *SandboxHandler) Start(ctx context.Context, sandbox *daytona.Sandbox, config *ports.SandboxConfig) error {
+func (h *SandboxHandler) Start(ctx context.Context, sandbox *daytona.Sandbox, config *agent_session_interfaces.SandboxConfig) error {
 	if err := helpers.RetryRateLimitedVoid(ctx, helpers.ThrottlerSandboxLifecycle, "start sandbox", func() error {
 		if err := helpers.Preflight(ctx, helpers.ThrottlerSandboxLifecycle, "start sandbox"); err != nil {
 			return err
@@ -397,7 +397,7 @@ func (h *SandboxHandler) Start(ctx context.Context, sandbox *daytona.Sandbox, co
 // existing, running sandbox. This must be called after Start because the
 // Daytona API needs the container's IP address to apply updates, and the IP
 // is only available once the sandbox is running.
-func (h *SandboxHandler) UpdateExistingSandbox(ctx context.Context, sandbox *daytona.Sandbox, config *ports.SandboxConfig, secrets, envVars map[string]string) error {
+func (h *SandboxHandler) UpdateExistingSandbox(ctx context.Context, sandbox *daytona.Sandbox, config *agent_session_interfaces.SandboxConfig, secrets, envVars map[string]string) error {
 	if err := helpers.RetryRateLimitedVoid(ctx, helpers.ThrottlerSandboxLifecycle, "update secrets", func() error {
 		if err := helpers.Preflight(ctx, helpers.ThrottlerSandboxLifecycle, "update secrets"); err != nil {
 			return err
@@ -423,7 +423,7 @@ func (h *SandboxHandler) UpdateExistingSandbox(ctx context.Context, sandbox *day
 	return nil
 }
 
-func (h *SandboxHandler) Shutdown(ctx context.Context, sandbox *daytona.Sandbox, config *ports.SandboxConfig) error {
+func (h *SandboxHandler) Shutdown(ctx context.Context, sandbox *daytona.Sandbox, config *agent_session_interfaces.SandboxConfig) error {
 	if err := helpers.RetryRateLimitedVoid(ctx, helpers.ThrottlerSandboxLifecycle, "stop sandbox", func() error {
 		if err := helpers.Preflight(ctx, helpers.ThrottlerSandboxLifecycle, "stop sandbox"); err != nil {
 			return err
@@ -439,7 +439,7 @@ func (h *SandboxHandler) Shutdown(ctx context.Context, sandbox *daytona.Sandbox,
 	return nil
 }
 
-func (h *SandboxHandler) UploadFile(ctx context.Context, sandbox *daytona.Sandbox, config *ports.SandboxConfig, data []byte, path string) error {
+func (h *SandboxHandler) UploadFile(ctx context.Context, sandbox *daytona.Sandbox, config *agent_session_interfaces.SandboxConfig, data []byte, path string) error {
 	if err := sandbox.FileSystem.UploadFile(ctx, data, path); err != nil {
 		slog.Error("failed to upload file to daytona sandbox", "err", err, "path", path, "event_identifier", config.SessionEvent.Identifier)
 		return err
@@ -449,7 +449,7 @@ func (h *SandboxHandler) UploadFile(ctx context.Context, sandbox *daytona.Sandbo
 	return nil
 }
 
-func (h *SandboxHandler) ConfigureGitUser(ctx context.Context, sandbox *daytona.Sandbox, config *ports.SandboxConfig) error {
+func (h *SandboxHandler) ConfigureGitUser(ctx context.Context, sandbox *daytona.Sandbox, config *agent_session_interfaces.SandboxConfig) error {
 	if err := sandbox.Git.ConfigureUser(ctx, config.GitName, config.GitEmail); err != nil {
 		slog.Error("failed to configure git user in daytona sandbox", "err", err, "event_identifier", config.SessionEvent.Identifier)
 		return err
@@ -464,7 +464,7 @@ func (h *SandboxHandler) ConfigureGitUser(ctx context.Context, sandbox *daytona.
 func (h *SandboxHandler) ExecuteCommand(
 	ctx context.Context,
 	sandbox *daytona.Sandbox,
-	config *ports.SandboxConfig,
+	config *agent_session_interfaces.SandboxConfig,
 	command string,
 	timeout time.Duration,
 ) (int, string, error) {
@@ -490,7 +490,7 @@ func (h *SandboxHandler) ExecuteCommand(
 	return exec.ExitCode, exec.Result, nil
 }
 
-func (h *SandboxHandler) CreateExecutionSession(ctx context.Context, sandbox *daytona.Sandbox, config *ports.SandboxConfig) error {
+func (h *SandboxHandler) CreateExecutionSession(ctx context.Context, sandbox *daytona.Sandbox, config *agent_session_interfaces.SandboxConfig) error {
 	if err := sandbox.Process.CreateSession(ctx, config.Session.Identifier); err != nil {
 		slog.Error("failed to create daytona sandbox session", "err", err)
 		return err
@@ -500,7 +500,7 @@ func (h *SandboxHandler) CreateExecutionSession(ctx context.Context, sandbox *da
 	return nil
 }
 
-func (h *SandboxHandler) DeleteExecutionSession(ctx context.Context, sandbox *daytona.Sandbox, config *ports.SandboxConfig) error {
+func (h *SandboxHandler) DeleteExecutionSession(ctx context.Context, sandbox *daytona.Sandbox, config *agent_session_interfaces.SandboxConfig) error {
 	if err := sandbox.Process.DeleteSession(ctx, config.Session.Identifier); err != nil {
 		slog.Error("failed to delete daytona sandbox session", "err", err, "event_identifier", config.SessionEvent.Identifier)
 		return err
@@ -513,7 +513,7 @@ func (h *SandboxHandler) DeleteExecutionSession(ctx context.Context, sandbox *da
 func (h *SandboxHandler) ExecuteSessionCommand(
 	ctx context.Context,
 	sandbox *daytona.Sandbox,
-	config *ports.SandboxConfig,
+	config *agent_session_interfaces.SandboxConfig,
 ) (map[string]any, error) {
 	result, err := sandbox.Process.ExecuteSessionCommand(ctx, config.Session.Identifier, config.HarnessCommand, true, false)
 
@@ -528,7 +528,7 @@ func (h *SandboxHandler) ExecuteSessionCommand(
 func (h *SandboxHandler) StreamSessionCommandLogs(
 	ctx context.Context,
 	sandbox *daytona.Sandbox,
-	config *ports.SandboxConfig,
+	config *agent_session_interfaces.SandboxConfig,
 	cmdId string,
 	stdout chan<- string,
 	stderr chan<- string,
@@ -536,7 +536,7 @@ func (h *SandboxHandler) StreamSessionCommandLogs(
 	return sandbox.Process.GetSessionCommandLogsStream(ctx, config.Session.Identifier, cmdId, stdout, stderr)
 }
 
-func (h *SandboxHandler) DeleteSandbox(ctx context.Context, sandbox *daytona.Sandbox, config *ports.SandboxConfig) error {
+func (h *SandboxHandler) DeleteSandbox(ctx context.Context, sandbox *daytona.Sandbox, config *agent_session_interfaces.SandboxConfig) error {
 	err := helpers.RetryRateLimitedVoid(ctx, helpers.ThrottlerSandboxLifecycle, "delete sandbox", func() error {
 		if err := helpers.Preflight(ctx, helpers.ThrottlerSandboxLifecycle, "delete sandbox"); err != nil {
 			return err

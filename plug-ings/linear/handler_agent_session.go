@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/workdock-dev/engine/features/agent_session/ports"
+	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
 	"github.com/workdock-dev/engine/plug-ings/linear/helpers"
 	"github.com/workdock-dev/engine/plug-ings/linear/interfaces"
 	"github.com/workdock-dev/engine/plug-ings/linear/types"
@@ -22,7 +22,7 @@ type AgentSessionHandler struct {
 func NewAgentSessionHandler(
 	client interfaces.Client,
 	secretManager shared.ForSecrets,
-) ports.AgentSessionHandler {
+) agent_session_interfaces.AgentSessionHandler {
 	return &AgentSessionHandler{
 		client:       client,
 		tokenHandler: helpers.NewTokenHandler(secretManager, client),
@@ -93,7 +93,7 @@ func (h *AgentSessionHandler) GetCredentials(ctx context.Context, orgId string) 
 	return h.tokenHandler.GetLinearAccessToken(ctx, orgId)
 }
 
-func (h *AgentSessionHandler) GetPromptContext(sessionEvent *shared.SessionEvent) (*ports.PromptContext, error) {
+func (h *AgentSessionHandler) GetPromptContext(sessionEvent *shared.SessionEvent) (*agent_session_interfaces.PromptContext, error) {
 	var linearEvent types.AgentSessionEventData
 
 	if err := json.Unmarshal(sessionEvent.Payload, &linearEvent); err != nil {
@@ -112,7 +112,7 @@ func (h *AgentSessionHandler) GetPromptContext(sessionEvent *shared.SessionEvent
 		context = &linearEvent.AgentActivity.Content.Body
 	}
 
-	return &ports.PromptContext{
+	return &agent_session_interfaces.PromptContext{
 		Prompt:  linearEvent.PromptContext,
 		Context: context,
 		Issue: shared.Issue{

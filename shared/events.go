@@ -18,6 +18,7 @@ const (
 	EventType_GitHubConnected    = "github.connected"
 	EventType_LinearIssue        = "linear.issue"
 	EventType_LinearAgentSession = "linear.agent_session"
+	EventType_OrganizationCreate = "organization.create"
 	// EventType_Webhook                 = "webhook"
 	// EventType_PullRequestCommented    = "pull_request.comment"
 	// EventType_PullRequestChecksFailed = "pull_request.checks_failed"
@@ -46,6 +47,8 @@ const (
 	WebhookEventType_Git WebhookEventType = "git"
 )
 
+// *--------------------------------------------------------------------------*
+
 type GitHubConnectedEvent struct {
 	Connection GitHubConnection
 }
@@ -53,6 +56,8 @@ type GitHubConnectedEvent struct {
 func (e GitHubConnectedEvent) EventType() string {
 	return EventType_GitHubConnected
 }
+
+// *--------------------------------------------------------------------------*
 
 type LinearIssueEvent[T any] struct {
 	Payload T
@@ -62,12 +67,24 @@ func (e LinearIssueEvent[T]) EventType() string {
 	return EventType_LinearIssue
 }
 
+// *--------------------------------------------------------------------------*
+
 type LinearAgentSession[T any] struct {
 	Payload T
 }
 
 func (e LinearAgentSession[T]) EventType() string {
 	return EventType_LinearAgentSession
+}
+
+// *--------------------------------------------------------------------------*
+
+type OrganizationCreateEvent struct {
+	Organization Organization
+}
+
+func (e OrganizationCreateEvent) EventType() string {
+	return EventType_OrganizationCreate
 }
 
 // type WebhookEvent struct {

@@ -25,8 +25,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lmittmann/tint"
 	"github.com/workdock-dev/engine/features/agent_session"
+	agent_session_infrastructure "github.com/workdock-dev/engine/features/agent_session/infrastructure"
+	oauth20 "github.com/workdock-dev/engine/features/oauth2.0"
+	"github.com/workdock-dev/engine/features/organization"
+	organization_infrastructure "github.com/workdock-dev/engine/features/organization/infrastructure"
 	"github.com/workdock-dev/engine/features/webhook"
 	"github.com/workdock-dev/engine/infrastructure/event_bus"
 	"github.com/workdock-dev/engine/infrastructure/in_memory_secrets"
@@ -161,6 +166,9 @@ func main() {
 	server, err := server.New(cfg.ServerAddress)
 	exit(err)
 
+	postgres, err := pgxpool.New(context.Background(), cfg.Postgres.DatabaseUrl)
+	exit(err)
+
 	// Create and configure features
 	webhook.New(
 		"POST /github/webhook",
@@ -175,6 +183,13 @@ func main() {
 		),
 	)
 
+	oauth20.New(
+		"linear",
+		server.Mux(),
+		linear.NewOAuth20Handler(cfg.Linear, linearClient),
+		secretManager,
+		eventBus,
+	)
 	webhook.New(
 		"POST /linear/webhook",
 		server.Mux(),
@@ -183,7 +198,13 @@ func main() {
 		linear.NewWEventConsumer(eventBus),
 	)
 
-	agentSessionPipeline := agent_session.New(
+	organization.New(
+		eventBus,
+		organization_infrastructure.NewPostgres(postgres),
+	)
+
+	agentSessionPostgres := agent_session_infrastructure.NewPostgres(postgres)
+	agentSessionHandler := agent_session.New(
 		agent_session.AgentHandlerRegistry{
 			string(shared.PlatformProvider_Linear): linear.NewAgentSessionHandler(
 				linearClient,
@@ -205,8 +226,8 @@ func main() {
 			string(shared.HarnessProvider_OpenCode): opencode.NewHarnessHandler(cfg.Opencode),
 		},
 		eventBus,
-		postgresClient,
-		postgresClient,
+		agentSessionPostgres,
+		agentSessionPostgres,
 	)
 
 	taskScheduler, err := async.NewTaskScheduler(
@@ -215,81 +236,9 @@ func main() {
 			Workers:       cfg.Workers,
 			LeaseDuration: time.Duration(cfg.WorkerLeaseSeconds) * time.Second,
 		},
-		agentSessionPipeline.Execute,
+		agentSessionHandler,
 	)
 	exit(err)
-
-	// Create app
-
-	// app := application.New()
-	// application.WithEventBus(app, async.NewInMemoryEventBus())
-	// application.WithSecretManager(app, secretManager)
-	// application.WithQueue(app, postgresEventQueue)
-	// application.WithOrganizationRepository(app, postgresClient)
-	// application.WithSessionRepository(app, postgresClient)
-	// application.WithGitHubRepository(app, postgresClient)
-
-	// // Create application platforms
-	// opencodeHarness := func(consturctor ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
-	// 	sessionEventId := "not-set"
-	// 	if consturctor.SessionEvent != nil {
-	// 		sessionEventId = consturctor.SessionEvent.Identifier
-	// 	}
-
-	// 	sandbox, err := daytona_client.NewSandbox(
-	// 		cfg.DaytonaConfig,
-	// 		consturctor.Session.Identifier,
-	// 		sessionEventId,
-	// 	)
-
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-
-	// 	return opencode.New(opencode.Config{
-	// 		ConfigExternal: cfg.Opencode,
-	// 		Sandbox:        sandbox,
-	// 		Parts:          consturctor.Parts,
-	// 		Session:        consturctor.Session,
-	// 		SessionEvent:   consturctor.SessionEvent,
-	// 		Prompt:         consturctor.Prompt,
-	// 		Secrets:        consturctor.Secrets,
-	// 	}, app)
-	// }
-
-	// githubPlatform := github.New(github.GitHubPlatformConfig{
-	// 	Client:       githubClient,
-	// 	BotLoginName: cfg.Github.BotLoginId,
-	// }, app)
-
-	// linearPlatform := linear.New(linear.Config{
-	// 	Client:              linearClient,
-	// 	GitHubAppInstallURL: cfg.Github.AppInstallURL,
-	// }, app)
-
-	// // Git hosting registry
-	// application.WithGitHostingPlatformRegistry(app, ports.GitHostingPlatformRegistry{
-	// 	types.PlatformProvider_GitHub: githubPlatform,
-	// })
-
-	// // Webhook registry
-	// application.WithWebhooksRegistry(app, ports.WebhooksRegistry{
-	// 	types.PlatformProvider_GitHub: githubPlatform,
-	// 	types.PlatformProvider_Linear: linearPlatform,
-	// })
-
-	// // Harness registry
-	// application.WithHarnessRegistry(app, ports.HarnessPlatformRegistry{
-	// 	types.HarnessProvider_OpenCode: opencodeHarness,
-	// })
-
-	// // Work platform registry
-	// application.WithWorkPlatformRegistry(app, ports.WorkPlatformRegistry{
-	// 	types.PlatformProvider_Linear: linearPlatform,
-	// })
-
-	// // Complete the application initialization
-	// app.Init()
 
 	var wg sync.WaitGroup
 	wg.Go(func() {

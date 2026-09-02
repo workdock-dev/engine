@@ -70,11 +70,13 @@ type WEventConsumer interface {
 	Consume(ctx context.Context, event *VerifiedWEvent) error
 }
 
-// Pipeline executes the webhook processing pipeline.
-type Pipeline struct {
+// controller executes the webhook processing pipeline.
+type controller struct {
 	transformer WEventTransformer
 	verifier    WEventVerifier
 	consumer    WEventConsumer
+	mux         *http.ServeMux
+	endpoint    string
 }
 
 // New creates a webhook runner from the components that make up
@@ -86,14 +88,19 @@ func New(
 	verifier WEventVerifier,
 	consumer WEventConsumer,
 ) {
-	r := &Pipeline{
+	c := &controller{
 		transformer: transformer,
 		verifier:    verifier,
 		consumer:    consumer,
+		mux:         mux,
+		endpoint:    endpoint,
 	}
+	c.init()
+}
 
-	mux.HandleFunc(endpoint, func(w http.ResponseWriter, req *http.Request) {
-		if err := r.execute(req); err != nil {
+func (c *controller) init() {
+	c.mux.HandleFunc(c.endpoint, func(w http.ResponseWriter, req *http.Request) {
+		if err := c.execute(req); err != nil {
 			status := http.StatusInternalServerError
 
 			if errors.Is(err, ErrWBadRequest) {
@@ -121,23 +128,23 @@ func New(
 // The pipeline terminates immediately when transformation or verification
 // returns an error. The consumer is only invoked for successfully verified
 // events, and any consumer error is returned to the caller.
-func (r *Pipeline) execute(req *http.Request) error {
+func (c *controller) execute(req *http.Request) error {
 	ctx := req.Context()
-	wevent, err := r.transformer.Transform(ctx, req)
+	wevent, err := c.transformer.Transform(ctx, req)
 
 	if err != nil {
 		slog.Error("failed to transform request to wevent", "err", err)
 		return err
 	}
 
-	result, err := r.verifier.Verify(ctx, wevent)
+	result, err := c.verifier.Verify(ctx, wevent)
 
 	if err != nil {
 		slog.Error("failed verified wevent", "err", err)
 		return err
 	}
 
-	if err := r.consumer.Consume(ctx, result); err != nil {
+	if err := c.consumer.Consume(ctx, result); err != nil {
 		slog.Error("Failed to consume wevent", "err", err)
 		return err
 	}

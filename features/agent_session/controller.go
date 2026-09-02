@@ -11,9 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/workdock-dev/engine/features/agent_session/ports"
+	"github.com/workdock-dev/engine/features/agent_session/interfaces"
 	"github.com/workdock-dev/engine/shared"
-	"github.com/workdock-dev/engine/shared/repositories"
 	"github.com/workdock-dev/engine/shared/telemetry"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
@@ -30,40 +29,44 @@ var (
 	PromptTemplate_PullRequestChecksFailed string
 )
 
-type AgentHandlerRegistry map[string]ports.AgentSessionHandler
+type JobHandler func(ctx context.Context, job *shared.EventJob) error
 
-type GitHandlerRegistry map[string]ports.GitHandler
+type AgentHandlerRegistry map[string]interfaces.AgentSessionHandler
 
-type SandboxHandlerRegistry map[string]ports.SandboxHandler
+type GitHandlerRegistry map[string]interfaces.GitHandler
 
-type HarnessHandlerRegistry map[string]ports.HarnessHandler
+type SandboxHandlerRegistry map[string]interfaces.SandboxHandler
 
-// Pipeline is the pipeline that coordinates the work platform,
+type HarnessHandlerRegistry map[string]interfaces.HarnessHandler
+
+// controller is the pipeline that coordinates the work platform,
 // git hosting platform, harness, and sandbox
-type Pipeline struct {
+type controller struct {
 	eventBus                  shared.ForEventBus
 	agentHandlerRegistry      AgentHandlerRegistry
 	gitHostingHandlerRegistry GitHandlerRegistry
 	sandboxHandlerRegistry    SandboxHandlerRegistry
 	harnessHandlerRegistry    HarnessHandlerRegistry
-	organization              repositories.OrganizationRepository
-	session                   ports.Repository
+	organization              interfaces.RepositoryOrg
+	session                   interfaces.Repository
 	tracer                    trace.Tracer
 }
 
-// New creates a new AgentSessionRunner pipeline
+// New creates a new AgentSessionRunner controller
 // from the given configuration. It subscribes to each one of the
 // agent handlers provider to listen for new agent sessions
+// returns the function to be called to process agent sessions
+// through event jobs
 func New(
 	agentHandlerRegistry AgentHandlerRegistry,
 	gitHostingHandlerRegistry GitHandlerRegistry,
 	sandboxHandlerRegistry SandboxHandlerRegistry,
 	harnessHandlerRegistry HarnessHandlerRegistry,
 	eventBus shared.ForEventBus,
-	organization repositories.OrganizationRepository,
-	session ports.Repository,
-) *Pipeline {
-	r := &Pipeline{
+	organization interfaces.RepositoryOrg,
+	session interfaces.Repository,
+) JobHandler {
+	r := &controller{
 		eventBus:                  eventBus,
 		agentHandlerRegistry:      agentHandlerRegistry,
 		gitHostingHandlerRegistry: gitHostingHandlerRegistry,
@@ -75,10 +78,10 @@ func New(
 	}
 
 	r.init()
-	return r
+	return r.Execute
 }
 
-func (r *Pipeline) init() {
+func (r *controller) init() {
 	for provider, ingestor := range r.agentHandlerRegistry {
 		r.eventBus.Subscribe(provider, func(
 			ctx context.Context,
@@ -135,7 +138,7 @@ func (r *Pipeline) init() {
 
 // Execute provisions and coordinates all the components to successfully run the
 // agent session's request based on a scheduled job
-func (r *Pipeline) Execute(ctx context.Context, job *shared.EventJob) error {
+func (r *controller) Execute(ctx context.Context, job *shared.EventJob) error {
 	sessionEvent, err := telemetry.Span(ctx, r.tracer, "session.get_event", func(ctx context.Context) (*shared.SessionEvent, error) {
 		return r.session.GetAgentSessionEvent(ctx, job.SessionEventIdentifier)
 	})
@@ -251,11 +254,11 @@ func (r *Pipeline) Execute(ctx context.Context, job *shared.EventJob) error {
 	return nil
 }
 
-func (r *Pipeline) getHandlers(session *shared.Session) (
-	ports.AgentSessionHandler,
-	ports.GitHandler,
-	ports.SandboxHandler,
-	ports.HarnessHandler,
+func (r *controller) getHandlers(session *shared.Session) (
+	interfaces.AgentSessionHandler,
+	interfaces.GitHandler,
+	interfaces.SandboxHandler,
+	interfaces.HarnessHandler,
 	error,
 ) {
 	agentHandler, ok := r.agentHandlerRegistry[string(session.Provider)]
@@ -288,14 +291,14 @@ func (r *Pipeline) getHandlers(session *shared.Session) (
 	return agentHandler, gitHandler, sandboxHandler, harnessHandler, nil
 }
 
-func (r *Pipeline) getPrompt(
+func (r *controller) getPrompt(
 	ctx context.Context,
-	agentHandler ports.AgentSessionHandler,
+	agentHandler interfaces.AgentSessionHandler,
 	agentHandlerCrendential string,
 	session *shared.Session,
 	sessionEvent *shared.SessionEvent,
 ) (string, error) {
-	promptContext, err := telemetry.Span(ctx, r.tracer, "session.get_prompt_context", func(ctx context.Context) (*ports.PromptContext, error) {
+	promptContext, err := telemetry.Span(ctx, r.tracer, "session.get_prompt_context", func(ctx context.Context) (*interfaces.PromptContext, error) {
 		return agentHandler.GetPromptContext(sessionEvent)
 	})
 
@@ -316,10 +319,10 @@ func (r *Pipeline) getPrompt(
 	return prompt, nil
 }
 
-func (r *Pipeline) createPrompt(
+func (r *controller) createPrompt(
 	session *shared.Session,
 	sessionEvent *shared.SessionEvent,
-	promptContext *ports.PromptContext,
+	promptContext *interfaces.PromptContext,
 ) (string, error) {
 	repo := ""
 
@@ -355,15 +358,15 @@ func (r *Pipeline) createPrompt(
 	return p, nil
 }
 
-func (r *Pipeline) verifyGitAccess(
+func (r *controller) verifyGitAccess(
 	ctx context.Context,
-	agentHandler ports.AgentSessionHandler,
+	agentHandler interfaces.AgentSessionHandler,
 	agentHandlerCredential string,
-	gitHandler ports.GitHandler,
+	gitHandler interfaces.GitHandler,
 	session *shared.Session,
 	sessionEvent *shared.SessionEvent,
-) (*ports.GitAccess, error) {
-	gitAccess, err := telemetry.Span(ctx, r.tracer, "session.verify_repo_access", func(ctx context.Context) (*ports.GitAccess, error) {
+) (*interfaces.GitAccess, error) {
+	gitAccess, err := telemetry.Span(ctx, r.tracer, "session.verify_repo_access", func(ctx context.Context) (*interfaces.GitAccess, error) {
 		return gitHandler.VerifyRepoAccess(ctx, session.Identifier, session.RepoFullName)
 	})
 
@@ -400,14 +403,14 @@ func (r *Pipeline) verifyGitAccess(
 	return gitAccess, nil
 }
 
-func (r *Pipeline) sandbox(
+func (r *controller) sandbox(
 	ctx context.Context,
-	agentHandler ports.AgentSessionHandler,
+	agentHandler interfaces.AgentSessionHandler,
 	agentHandlerCredential string,
-	gitHandler ports.GitHandler,
-	harnessHandler ports.HarnessHandler,
-	sandboxHandler ports.SandboxHandler,
-	gitAccess *ports.GitAccess,
+	gitHandler interfaces.GitHandler,
+	harnessHandler interfaces.HarnessHandler,
+	sandboxHandler interfaces.SandboxHandler,
+	gitAccess *interfaces.GitAccess,
 	prompt string,
 	session *shared.Session,
 	sessionEvent *shared.SessionEvent,
@@ -419,11 +422,11 @@ func (r *Pipeline) sandbox(
 ) {
 	stdout := make(chan string, 100)
 	stderr := make(chan string, 100)
-	secrets := make([]ports.SandboxSecret, 0)
+	secrets := make([]interfaces.SandboxSecret, 0)
 	fileUploads := make(map[string][]byte)
 
 	if gitAccess != nil && gitAccess.Granted {
-		secrets = append(secrets, ports.SandboxSecret{
+		secrets = append(secrets, interfaces.SandboxSecret{
 			Name:  gitAccess.EnvVarName,
 			Value: gitAccess.Secret,
 			Hosts: gitAccess.Hosts,
@@ -435,7 +438,7 @@ func (r *Pipeline) sandbox(
 	fileUploads[promptFilePath] = promptData
 
 	// Get harness configuration and prepare it for upload
-	if file, data, err := harnessHandler.GetConfigFile(ports.HarnessConfig{}); err != nil {
+	if file, data, err := harnessHandler.GetConfigFile(interfaces.HarnessConfig{}); err != nil {
 		agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
 		return nil, nil, nil, err
 	} else {
@@ -444,7 +447,7 @@ func (r *Pipeline) sandbox(
 
 	shutdown, err := sandboxHandler.Run(
 		ctx,
-		&ports.SandboxConfig{
+		&interfaces.SandboxConfig{
 			AutoStopInterval: int(time.Minute * 5),
 			Session:          session,
 			SessionEvent:     sessionEvent,
@@ -470,13 +473,13 @@ func (r *Pipeline) sandbox(
 	return stdout, stderr, shutdown, err
 }
 
-func (r *Pipeline) harness(
+func (r *controller) harness(
 	ctx context.Context,
 	stdout <-chan string,
 	stderr <-chan string,
-	agentHandler ports.AgentSessionHandler,
+	agentHandler interfaces.AgentSessionHandler,
 	agentHandlerCredential string,
-	harnessHandler ports.HarnessHandler,
+	harnessHandler interfaces.HarnessHandler,
 	session *shared.Session,
 	sessionEvent *shared.SessionEvent,
 ) {

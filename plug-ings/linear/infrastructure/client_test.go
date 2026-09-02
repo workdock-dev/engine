@@ -36,7 +36,7 @@ import (
 
 type LinearServiceSuite struct {
 	suite.Suite
-	service *LinearService
+	service *Client
 	server  *httptest.Server
 }
 
@@ -59,7 +59,7 @@ func (s *LinearServiceSuite) TearDownSuite() {
 }
 
 // newService creates a LinearService backed by the given handler.
-func (s *LinearServiceSuite) newService(handler http.Handler) *LinearService {
+func (s *LinearServiceSuite) newService(handler http.Handler) *Client {
 	s.server = httptest.NewServer(handler)
 	svc, err := NewClient(types.Config{
 		WebhookSecret: "test-secret",
@@ -75,7 +75,7 @@ func (s *LinearServiceSuite) newService(handler http.Handler) *LinearService {
 }
 
 // newServiceNoServer creates a LinearService with custom URLs (no test server).
-func (s *LinearServiceSuite) newServiceNoServer(apiURL, tokenURL string) *LinearService {
+func (s *LinearServiceSuite) newServiceNoServer(apiURL, tokenURL string) *Client {
 	svc, err := NewClient(types.Config{
 		WebhookSecret: "test-secret",
 		ClientId:      "client-id",
@@ -161,96 +161,6 @@ func (s *LinearServiceSuite) TestNew_ConfigPreserved() {
 	s.Equal([]string{"1.2.3.4"}, svc.config.IPs)
 }
 
-// --- OauthAuthorize() ---
-
-func (s *LinearServiceSuite) TestOauthAuthorize_ContainsConfig() {
-	svc := s.newServiceNoServer("", "")
-	url := svc.OauthAuthorize(context.TODO())
-	s.Contains(url, "client_id=client-id")
-	s.Contains(url, "redirect_uri=http://localhost:8080/linear/oauth/callback")
-	s.Contains(url, "response_type=code")
-	s.Contains(url, "actor=app")
-}
-
-func (s *LinearServiceSuite) TestOauthAuthorize_ContainsScope() {
-	svc := s.newServiceNoServer("", "")
-	url := svc.OauthAuthorize(context.TODO())
-	s.Contains(url, "scope=read,write,app:assignable,app:mentionable")
-}
-
-// --- OauthCallback() ---
-
-func (s *LinearServiceSuite) TestOauthCallback_ErrorParam() {
-	svc := s.newServiceNoServer("", "")
-	_, err := svc.OauthCallback(context.Background(), "", "access_denied")
-	s.ErrorIs(err, shared.ErrBadRequest)
-}
-
-func (s *LinearServiceSuite) TestOauthCallback_EmptyCode() {
-	svc := s.newServiceNoServer("", "")
-	_, err := svc.OauthCallback(context.Background(), "", "")
-	s.ErrorIs(err, shared.ErrBadRequest)
-}
-
-func (s *LinearServiceSuite) TestOauthCallback_ExchangeCodeFailure() {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `{"error":"invalid_grant"}`)
-	})
-	svc := s.newService(handler)
-	_, err := svc.OauthCallback(context.Background(), "bad-code", "")
-	s.Error(err)
-}
-
-func (s *LinearServiceSuite) TestOauthCallback_GetWorkspaceInfoFailure() {
-	tokenHandler := okJSONHandler(`{"access_token":"at","refresh_token":"rt","expires_in":3600}`)
-	graphqlHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, `{"data":{"viewer":{"organization":null}}}`)
-	})
-	mux := http.NewServeMux()
-	mux.Handle("/token", tokenHandler)
-	mux.Handle("/graphql", graphqlHandler)
-	s.server = httptest.NewServer(mux)
-	svc, err := NewClient(types.Config{
-		WebhookSecret: "test-secret",
-		ClientId:      "client-id",
-		ClientSecret:  "client-secret",
-		ServerUrl:     "http://localhost:8080",
-		ApiUrl:        s.server.URL + "/graphql",
-		TokenUrl:      s.server.URL + "/token",
-	}, nil)
-	s.Require().NoError(err)
-	_, err = svc.OauthCallback(context.Background(), "valid-code", "")
-	s.Error(err)
-}
-
-func (s *LinearServiceSuite) TestOauthCallback_Success() {
-	workspaceJSON := `{"data":{"viewer":{"organization":{"id":"ws-1","name":"Test Workspace"}}}}`
-	tokenHandler := okJSONHandler(`{"access_token":"at","refresh_token":"rt","expires_in":3600}`)
-	graphqlHandler := okJSONHandler(workspaceJSON)
-	mux := http.NewServeMux()
-	mux.Handle("/token", tokenHandler)
-	mux.Handle("/graphql", graphqlHandler)
-	s.server = httptest.NewServer(mux)
-	svc, err := NewClient(types.Config{
-		WebhookSecret: "test-secret",
-		ClientId:      "client-id",
-		ClientSecret:  "client-secret",
-		ServerUrl:     "http://localhost:8080",
-		ApiUrl:        s.server.URL + "/graphql",
-		TokenUrl:      s.server.URL + "/token",
-	}, nil)
-	s.Require().NoError(err)
-	result, err := svc.OauthCallback(context.Background(), "valid-code", "")
-	s.NoError(err)
-	s.Equal("at", result.Token.AccessToken)
-	s.Equal("rt", result.Token.RefreshToken)
-	s.Equal("ws-1", result.Workspace.ID)
-	s.Equal("Test Workspace", result.Workspace.Name)
-}
-
 // --- RefreshToken() ---
 
 func (s *LinearServiceSuite) TestRefreshToken_ExchangeFailure() {
@@ -294,35 +204,35 @@ func (s *LinearServiceSuite) TestRefreshToken_Success() {
 	s.False(result.ExpiresAt.After(after.Add(7201 * time.Second)))
 }
 
-// --- getWorkspaceInfo() ---
+// --- GetWorkspaceInfo() ---
 
 func (s *LinearServiceSuite) TestGetWorkspaceInfo_DoRequestFailure() {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
 	svc := s.newService(handler)
-	_, err := svc.getWorkspaceInfo(context.Background(), "token")
+	_, err := svc.GetWorkspaceInfo(context.Background(), "token")
 	s.Error(err)
 }
 
 func (s *LinearServiceSuite) TestGetWorkspaceInfo_BadJSON() {
 	handler := okJSONHandler(`{"data": "not-an-object"}`)
 	svc := s.newService(handler)
-	_, err := svc.getWorkspaceInfo(context.Background(), "token")
+	_, err := svc.GetWorkspaceInfo(context.Background(), "token")
 	s.ErrorIs(err, shared.ErrInternalServerError)
 }
 
 func (s *LinearServiceSuite) TestGetWorkspaceInfo_NilOrganization() {
 	handler := okJSONHandler(`{"data":{"viewer":{"organization":null}}}`)
 	svc := s.newService(handler)
-	_, err := svc.getWorkspaceInfo(context.Background(), "token")
+	_, err := svc.GetWorkspaceInfo(context.Background(), "token")
 	s.ErrorIs(err, shared.ErrInternalServerError)
 }
 
 func (s *LinearServiceSuite) TestGetWorkspaceInfo_Success() {
 	handler := okJSONHandler(`{"data":{"viewer":{"organization":{"id":"ws-1","name":"My Org"}}}}`)
 	svc := s.newService(handler)
-	info, err := svc.getWorkspaceInfo(context.Background(), "token")
+	info, err := svc.GetWorkspaceInfo(context.Background(), "token")
 	s.NoError(err)
 	s.Equal("ws-1", info.ID)
 	s.Equal("My Org", info.Name)
@@ -605,66 +515,6 @@ func (s *LinearServiceSuite) TestGetIssueLabels_Success() {
 	s.False(labels[0].IsGroup)
 }
 
-// --- SetExternalURLs() ---
-
-func (s *LinearServiceSuite) TestSetExternalURLs_DoRequestFailure() {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-	})
-	svc := s.newService(handler)
-	_, err := svc.SetExternalURLs(context.Background(), "token", types.SetExternalURLsInput{
-		SessionID: "session-1",
-		ExternalURLs: []types.ExternalURL{
-			{Label: "PR", URL: "http://example.com"},
-		},
-	})
-	s.Error(err)
-}
-
-func (s *LinearServiceSuite) TestSetExternalURLs_BadJSON() {
-	handler := okJSONHandler(`{"data": "not-an-object"}`)
-	svc := s.newService(handler)
-	_, err := svc.SetExternalURLs(context.Background(), "token", types.SetExternalURLsInput{
-		SessionID: "session-1",
-		ExternalURLs: []types.ExternalURL{
-			{Label: "PR", URL: "http://example.com"},
-		},
-	})
-	s.Error(err)
-	s.Contains(err.Error(), "failed to unmarshal response")
-}
-
-func (s *LinearServiceSuite) TestSetExternalURLs_Success() {
-	var receivedVars map[string]any
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, _ := io.ReadAll(r.Body)
-		var req graphQLRequest
-		json.Unmarshal(body, &req)
-		receivedVars = req.Variables
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"data":{"agentSessionUpdate":{"success":true}}}`)
-	})
-	svc := s.newService(handler)
-	result, err := svc.SetExternalURLs(context.Background(), "token", types.SetExternalURLsInput{
-		SessionID: "session-1",
-		ExternalURLs: []types.ExternalURL{
-			{Label: "PR", URL: "http://pr.example.com"},
-			{Label: "Run", URL: "http://run.example.com"},
-		},
-	})
-	s.NoError(err)
-	s.True(result.Success)
-
-	id := receivedVars["id"]
-	s.Equal("session-1", id)
-	input := receivedVars["input"].(map[string]any)
-	urls := input["externalUrls"].([]any)
-	s.Len(urls, 2)
-	u0 := urls[0].(map[string]any)
-	s.Equal("PR", u0["label"])
-	s.Equal("http://pr.example.com", u0["url"])
-}
-
 // --- Webhook() ---
 
 func (s *LinearServiceSuite) TestWebhook_IPDenied() {
@@ -728,13 +578,13 @@ func (s *LinearServiceSuite) TestWebhook_Success() {
 	s.Equal(ts, parsed.WebhookTimestamp)
 }
 
-// --- doRequest() (tested via getWorkspaceInfo which calls doRequest) ---
+// --- doRequest() (tested via GetWorkspaceInfo which calls doRequest) ---
 
 func (s *LinearServiceSuite) TestDoRequest_ContextCanceled() {
 	svc := s.newServiceNoServer("", "")
 	ctx := contextWithCancel()
 	ctx.cancel()
-	_, err := svc.getWorkspaceInfo(ctx.ctx, "token")
+	_, err := svc.GetWorkspaceInfo(ctx.ctx, "token")
 	s.Error(err)
 }
 
@@ -750,7 +600,7 @@ func (s *LinearServiceSuite) TestDoRequest_BodyReadFailure() {
 		conn.Close()
 	})
 	svc := s.newService(handler)
-	_, err := svc.getWorkspaceInfo(context.Background(), "token")
+	_, err := svc.GetWorkspaceInfo(context.Background(), "token")
 	s.Error(err)
 }
 
@@ -760,7 +610,7 @@ func (s *LinearServiceSuite) TestDoRequest_Non200Status() {
 		fmt.Fprint(w, `{"message":"unauthorized"}`)
 	})
 	svc := s.newService(handler)
-	_, err := svc.getWorkspaceInfo(context.Background(), "token")
+	_, err := svc.GetWorkspaceInfo(context.Background(), "token")
 	s.Error(err)
 	s.Contains(err.Error(), "unexpected linear request status code")
 }
@@ -768,7 +618,7 @@ func (s *LinearServiceSuite) TestDoRequest_Non200Status() {
 func (s *LinearServiceSuite) TestDoRequest_GraphQLErrors() {
 	handler := okJSONHandler(`{"data":null,"errors":[{"message":"Not authenticated"}]}`)
 	svc := s.newService(handler)
-	_, err := svc.getWorkspaceInfo(context.Background(), "token")
+	_, err := svc.GetWorkspaceInfo(context.Background(), "token")
 	s.Error(err)
 	s.Contains(err.Error(), "linear graphql returned errors")
 }
@@ -776,14 +626,14 @@ func (s *LinearServiceSuite) TestDoRequest_GraphQLErrors() {
 func (s *LinearServiceSuite) TestDoRequest_BadResponseJSON() {
 	handler := okJSONHandler(`{not json`)
 	svc := s.newService(handler)
-	_, err := svc.getWorkspaceInfo(context.Background(), "token")
+	_, err := svc.GetWorkspaceInfo(context.Background(), "token")
 	s.Error(err)
 }
 
 func (s *LinearServiceSuite) TestDoRequest_Success() {
 	handler := okJSONHandler(`{"data":{"viewer":{"organization":{"id":"ws-1","name":"Org"}}}}`)
 	svc := s.newService(handler)
-	info, err := svc.getWorkspaceInfo(context.Background(), "token")
+	info, err := svc.GetWorkspaceInfo(context.Background(), "token")
 	s.NoError(err)
 	s.Equal("ws-1", info.ID)
 }
@@ -880,7 +730,7 @@ func (s *LinearServiceSuite) TestClientIP_RemoteAddrWithoutPort() {
 	s.Equal("192.168.1.1", svc.clientIP(req))
 }
 
-// --- exchangeCode() ---
+// --- ExchangeCode() ---
 
 func (s *LinearServiceSuite) TestExchangeCode_HTTPFailure() {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -888,7 +738,7 @@ func (s *LinearServiceSuite) TestExchangeCode_HTTPFailure() {
 		fmt.Fprint(w, `{"error":"invalid_grant"}`)
 	})
 	svc := s.newService(handler)
-	_, err := svc.exchangeCode(context.Background(), "bad-code")
+	_, err := svc.ExchangeCode(context.Background(), "bad-code")
 	s.ErrorIs(err, shared.ErrInternalServerError)
 }
 
@@ -898,21 +748,21 @@ func (s *LinearServiceSuite) TestExchangeCode_Non200Status() {
 		fmt.Fprint(w, `{"error":"invalid_client"}`)
 	})
 	svc := s.newService(handler)
-	_, err := svc.exchangeCode(context.Background(), "code")
+	_, err := svc.ExchangeCode(context.Background(), "code")
 	s.ErrorIs(err, shared.ErrInternalServerError)
 }
 
 func (s *LinearServiceSuite) TestExchangeCode_BadJSON() {
 	handler := okJSONHandler(`{not json`)
 	svc := s.newService(handler)
-	_, err := svc.exchangeCode(context.Background(), "code")
+	_, err := svc.ExchangeCode(context.Background(), "code")
 	s.ErrorIs(err, shared.ErrInternalServerError)
 }
 
 func (s *LinearServiceSuite) TestExchangeCode_Success() {
 	handler := okJSONHandler(`{"access_token":"at","refresh_token":"rt","expires_in":3600}`)
 	svc := s.newService(handler)
-	result, err := svc.exchangeCode(context.Background(), "valid-code")
+	result, err := svc.ExchangeCode(context.Background(), "valid-code")
 	s.NoError(err)
 	s.Equal("at", result.AccessToken)
 	s.Equal("rt", result.RefreshToken)
@@ -984,7 +834,7 @@ func (s *LinearServiceSuite) TestDoRequest_MarshalFailure() {
 
 func (s *LinearServiceSuite) TestDoRequest_NewRequestFailure() {
 	svc := s.newServiceNoServer("://bad-url", "")
-	_, err := svc.getWorkspaceInfo(context.Background(), "token")
+	_, err := svc.GetWorkspaceInfo(context.Background(), "token")
 	s.Error(err)
 }
 
@@ -999,7 +849,7 @@ func (s *LinearServiceSuite) TestDoRequest_TransportErrorNotContext() {
 		conn.Close()
 	})
 	svc := s.newService(handler)
-	_, err := svc.getWorkspaceInfo(context.Background(), "token")
+	_, err := svc.GetWorkspaceInfo(context.Background(), "token")
 	s.Error(err)
 }
 
@@ -1023,19 +873,19 @@ func hijackCloseAfterHeaders() http.Handler {
 
 func (s *LinearServiceSuite) TestExchangeCode_NewRequestFailure() {
 	svc := s.newServiceNoServer("", "://bad-url")
-	_, err := svc.exchangeCode(context.Background(), "code")
+	_, err := svc.ExchangeCode(context.Background(), "code")
 	s.ErrorIs(err, shared.ErrInternalServerError)
 }
 
 func (s *LinearServiceSuite) TestExchangeCode_DoFailure() {
 	svc := s.newServiceNoServer("", "http://127.0.0.1:1/token")
-	_, err := svc.exchangeCode(context.Background(), "code")
+	_, err := svc.ExchangeCode(context.Background(), "code")
 	s.ErrorIs(err, shared.ErrInternalServerError)
 }
 
 func (s *LinearServiceSuite) TestExchangeCode_ReadBodyFailure() {
 	svc := s.newService(hijackCloseAfterHeaders())
-	_, err := svc.exchangeCode(context.Background(), "code")
+	_, err := svc.ExchangeCode(context.Background(), "code")
 	s.ErrorIs(err, shared.ErrInternalServerError)
 }
 

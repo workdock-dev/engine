@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package repositories
+package interfaces
 
 import (
 	"context"
@@ -20,8 +20,6 @@ import (
 	"github.com/workdock-dev/engine/shared"
 )
 
-// OrganizationRepository persists organizations that the agent system serves.
-type OrganizationRepository interface {
-	GetOrganization(ctx context.Context, identifier string) (*shared.Organization, error)
+type Repository interface {
 	UpsertOrganization(ctx context.Context, org *shared.Organization) error
 }

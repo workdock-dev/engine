@@ -7,7 +7,7 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/workdock-dev/engine/features/agent_session/ports"
+	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
 	"github.com/workdock-dev/engine/plug-ings/github/interfaces"
 	"github.com/workdock-dev/engine/plug-ings/github/types"
 	"github.com/workdock-dev/engine/shared"
@@ -40,7 +40,7 @@ func NewGitHandler(
 	repository interfaces.Repository,
 	client interfaces.Client,
 	secretManager shared.ForSecrets,
-) ports.GitHandler {
+) agent_session_interfaces.GitHandler {
 	return &GitHandler{
 		installationUrl: config.AppInstallURL,
 		repository:      repository,
@@ -84,7 +84,7 @@ func (h *GitHandler) ParseLatestChangesResult(changes string) *shared.PullReques
 	return &pr
 }
 
-func (h *GitHandler) VerifyRepoAccess(ctx context.Context, sessionEventIdentifier string, repo *string) (*ports.GitAccess, error) {
+func (h *GitHandler) VerifyRepoAccess(ctx context.Context, sessionEventIdentifier string, repo *string) (*agent_session_interfaces.GitAccess, error) {
 	if repo == nil {
 		return nil, nil
 	}
@@ -97,7 +97,7 @@ func (h *GitHandler) VerifyRepoAccess(ctx context.Context, sessionEventIdentifie
 
 	// Requires connection
 	if connection == nil || !connection.Connected || connection.InstallationId == nil {
-		return &ports.GitAccess{
+		return &agent_session_interfaces.GitAccess{
 			Granted: false,
 		}, nil
 	}
@@ -114,7 +114,7 @@ func (h *GitHandler) VerifyRepoAccess(ctx context.Context, sessionEventIdentifie
 
 			// TODO: Safe to ignore returned error?
 			resetInstallation(ctx, h.repository, h.secretManager, *connection.InstallationId, []string{*repo})
-			return &ports.GitAccess{
+			return &agent_session_interfaces.GitAccess{
 				Granted: false,
 			}, nil
 		}
@@ -123,7 +123,7 @@ func (h *GitHandler) VerifyRepoAccess(ctx context.Context, sessionEventIdentifie
 	}
 
 	slog.Debug("Verified repo access", "has_access", true)
-	return &ports.GitAccess{
+	return &agent_session_interfaces.GitAccess{
 		EnvVarName: GITHUB_ACCESS_TOKEN_ENV_VAR,
 		Secret:     token,
 		Hosts:      []string{"api.github.com", "github.com"},

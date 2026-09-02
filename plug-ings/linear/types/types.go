@@ -209,6 +209,12 @@ type Token struct {
 	ExpiresAt    time.Time `json:"expires_at"`
 }
 
+type TokenExchanged struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int    `json:"expires_in"`
+}
+
 // IssueStatusChangePayload represents a Linear webhook payload for an Issue
 // data change event. The action field is "update" when an issue's state
 // changes, and UpdatedFrom contains the previous field values.
