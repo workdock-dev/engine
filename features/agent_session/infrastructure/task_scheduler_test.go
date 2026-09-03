@@ -509,7 +509,7 @@ func (s *TaskSchedulerSuite) TestRun_ExecuteHeartbeatSuccess() {
 		return nil
 	}
 
-	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2, HeartbeatInterval: 10 * time.Millisecond}, handler)
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -555,7 +555,7 @@ func (s *TaskSchedulerSuite) TestRun_ExecuteHeartbeatError() {
 		return nil
 	}
 
-	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2, HeartbeatInterval: 10 * time.Millisecond}, handler)
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -706,14 +706,14 @@ func (m *mockQueue) Listen(ctx context.Context) (<-chan struct{}, <-chan string,
 	return m.runnable, m.cancellable, nil
 }
 
-func (m *mockQueue) Claim(ctx context.Context, owner string) (*types.EventJob, error) {
+func (m *mockQueue) Claim(ctx context.Context, owner string, nextAttemptAt time.Time) (*types.EventJob, error) {
 	if m.claimErr != nil {
 		return nil, m.claimErr
 	}
 	return m.claimJob, nil
 }
 
-func (m *mockQueue) Heartbeat(ctx context.Context, id string) error {
+func (m *mockQueue) Heartbeat(ctx context.Context, id string, leaseDuration time.Duration) error {
 	m.mu.Lock()
 	m.heartbeatCalls++
 	err := m.heartbeatErr
@@ -750,7 +750,7 @@ func (m *mockQueue) Complete(ctx context.Context, id string) error {
 	return err
 }
 
-func (m *mockQueue) Retry(ctx context.Context, id string, cause error) error {
+func (m *mockQueue) Retry(ctx context.Context, id string, cause error, retryGracePeriod time.Duration) error {
 	m.mu.Lock()
 	m.retriedIds = append(m.retriedIds, id)
 	m.retryCauses = append(m.retryCauses, cause)

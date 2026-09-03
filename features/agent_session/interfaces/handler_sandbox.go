@@ -42,9 +42,9 @@ type SandboxConfig struct {
 	GitEmail            string
 }
 
-// SandboxHandler is the interfaces through which the sandbox will be
+// HandlerSandbox is the interfaces through which the sandbox will be
 // executed or Archive
-type SandboxHandler interface {
+type HandlerSandbox interface {
 	// Run the sandbox with all it's related configuration. Receives channel
 	// to listen to the harness output. The sandbox implementation is responsible
 	// of closing the channels

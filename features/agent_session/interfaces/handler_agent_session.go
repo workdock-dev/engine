@@ -26,9 +26,9 @@ type PromptContext struct {
 	Issue   shared.Issue
 }
 
-// AgentSessionHandler is the interfaces required to be implemented
+// HandlerAgentSession is the interfaces required to be implemented
 // by work platforms that provides agent assignment to tickets
-type AgentSessionHandler interface {
+type HandlerAgentSession interface {
 	// Ingest transform the work platform agent session payload into the domain session
 	Ingest(event shared.DomainEvent) (*shared.Session, *shared.SessionEvent, error)
 

@@ -14,8 +14,15 @@
 
 package types
 
+type Secret struct {
+	Name  string   `yaml:"name"`
+	Value string   `yaml:"value"`
+	Hosts []string `yaml:"hosts"`
+}
+
 type Config struct {
-	ApiUrl string `yaml:"api_url"`
-	ApiKey string `yaml:"api_key"`
-	Target string `yaml:"target"`
+	ApiUrl  string   `yaml:"api_url"`
+	ApiKey  string   `yaml:"api_key"`
+	Target  string   `yaml:"target"`
+	Secrets []Secret `yaml:"secrets"`
 }

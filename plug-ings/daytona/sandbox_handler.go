@@ -32,16 +32,12 @@ import (
 )
 
 type SandboxHandler struct {
-	apiKey string
-	apiUrl string
-	target string
+	config types.Config
 }
 
-func NewSandboxHandler(config types.Config) agent_session_interfaces.SandboxHandler {
+func NewSandboxHandler(config types.Config) agent_session_interfaces.HandlerSandbox {
 	return &SandboxHandler{
-		apiKey: config.ApiKey,
-		apiUrl: config.ApiUrl,
-		target: config.Target,
+		config: config,
 	}
 }
 
@@ -51,7 +47,7 @@ func (h *SandboxHandler) Run(
 	stdout chan<- string,
 	stderr chan<- string,
 ) (func(ctx context.Context) string, error) {
-	target := h.target
+	target := h.config.Target
 
 	if target == "" {
 		target = "us"
@@ -61,8 +57,8 @@ func (h *SandboxHandler) Run(
 	// * Create daytona client                                                   *
 	// *-------------------------------------------------------------------------*
 	client, err := daytona.NewClientWithConfig(&sdktypes.DaytonaConfig{
-		APIKey:     h.apiKey,
-		APIUrl:     h.apiUrl,
+		APIKey:     h.config.ApiKey,
+		APIUrl:     h.config.ApiUrl,
 		Target:     target,
 		HTTPClient: helpers.HTTPClient,
 	})
@@ -137,6 +133,17 @@ func (h *SandboxHandler) Run(
 	secrets := make(map[string]string)
 
 	for _, secret := range config.Secrets {
+		secretId, secretName, err := h.SetSecret(ctx, client, config, secret.Value, secret.Hosts)
+
+		if err != nil {
+			return shutdown, err
+		}
+
+		secrets[secret.Name] = secretName
+		secretIds = append(secretIds, secretId)
+	}
+
+	for _, secret := range h.config.Secrets {
 		secretId, secretName, err := h.SetSecret(ctx, client, config, secret.Value, secret.Hosts)
 
 		if err != nil {
@@ -234,15 +241,15 @@ func (h *SandboxHandler) Run(
 }
 
 func (h *SandboxHandler) Archive(ctx context.Context, config *agent_session_interfaces.SandboxConfig) error {
-	target := h.target
+	target := h.config.Target
 
 	if target == "" {
 		target = "us"
 	}
 
 	client, err := daytona.NewClientWithConfig(&sdktypes.DaytonaConfig{
-		APIKey:     h.apiKey,
-		APIUrl:     h.apiUrl,
+		APIKey:     h.config.ApiKey,
+		APIUrl:     h.config.ApiUrl,
 		Target:     target,
 		HTTPClient: helpers.HTTPClient,
 	})

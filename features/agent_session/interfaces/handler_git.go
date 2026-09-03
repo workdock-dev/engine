@@ -27,9 +27,9 @@ type GitAccess struct {
 	Granted    bool
 }
 
-// GitHandler is the interface to interact with the git hosting provider
+// HandlerGit is the interface to interact with the git hosting provider
 // for the intial setup of the sandbox
-type GitHandler interface {
+type HandlerGit interface {
 	// GetInstallationUrl returns the installation URL where user can
 	// grant access
 	GetInstallationUrl() string

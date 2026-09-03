@@ -47,13 +47,13 @@ var (
 	PromptTemplate_PullRequestChecksFailed string
 )
 
-type AgentHandlerRegistry map[string]interfaces.AgentSessionHandler
+type AgentHandlerRegistry map[string]interfaces.HandlerAgentSession
 
-type GitHandlerRegistry map[string]interfaces.GitHandler
+type GitHandlerRegistry map[string]interfaces.HandlerGit
 
-type SandboxHandlerRegistry map[string]interfaces.SandboxHandler
+type SandboxHandlerRegistry map[string]interfaces.HandlerSandbox
 
-type HarnessHandlerRegistry map[string]interfaces.HarnessHandler
+type HarnessHandlerRegistry map[string]interfaces.HandlerHarness
 
 // controller is the pipeline that coordinates the work platform,
 // git hosting platform, harness, and sandbox
@@ -65,6 +65,7 @@ type controller struct {
 	gitHostingHandlerRegistry GitHandlerRegistry
 	sandboxHandlerRegistry    SandboxHandlerRegistry
 	harnessHandlerRegistry    HarnessHandlerRegistry
+	mcpHandler                interfaces.HandlerMCP
 	organization              interfaces.RepositoryOrg
 	git                       interfaces.RepositoryGit
 	session                   interfaces.Repository
@@ -85,6 +86,7 @@ func New(
 	gitHostingHandlerRegistry GitHandlerRegistry,
 	sandboxHandlerRegistry SandboxHandlerRegistry,
 	harnessHandlerRegistry HarnessHandlerRegistry,
+	mcpHandler interfaces.HandlerMCP,
 	eventBus shared.ForEventBus,
 	secretManager shared.ForSecrets,
 	organization interfaces.RepositoryOrg,
@@ -100,6 +102,7 @@ func New(
 		gitHostingHandlerRegistry: gitHostingHandlerRegistry,
 		sandboxHandlerRegistry:    sandboxHandlerRegistry,
 		harnessHandlerRegistry:    harnessHandlerRegistry,
+		mcpHandler:                mcpHandler,
 		organization:              organization,
 		session:                   session,
 		queue:                     queue,
@@ -411,10 +414,10 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) error {
 }
 
 func (c *controller) getHandlers(session *shared.Session) (
-	interfaces.AgentSessionHandler,
-	interfaces.GitHandler,
-	interfaces.SandboxHandler,
-	interfaces.HarnessHandler,
+	interfaces.HandlerAgentSession,
+	interfaces.HandlerGit,
+	interfaces.HandlerSandbox,
+	interfaces.HandlerHarness,
 	error,
 ) {
 	agentHandler, ok := c.agentHandlerRegistry[string(session.Provider)]
@@ -449,7 +452,7 @@ func (c *controller) getHandlers(session *shared.Session) (
 
 func (c *controller) getPrompt(
 	ctx context.Context,
-	agentHandler interfaces.AgentSessionHandler,
+	agentHandler interfaces.HandlerAgentSession,
 	agentHandlerCrendential string,
 	session *shared.Session,
 	sessionEvent *shared.SessionEvent,
@@ -516,9 +519,9 @@ func (c *controller) createPrompt(
 
 func (c *controller) verifyGitAccess(
 	ctx context.Context,
-	agentHandler interfaces.AgentSessionHandler,
+	agentHandler interfaces.HandlerAgentSession,
 	agentHandlerCredential string,
-	gitHandler interfaces.GitHandler,
+	gitHandler interfaces.HandlerGit,
 	session *shared.Session,
 ) (*interfaces.GitAccess, error) {
 	// no repo, no access required
@@ -601,11 +604,11 @@ func (c *controller) verifyGitAccess(
 
 func (c *controller) sandbox(
 	ctx context.Context,
-	agentHandler interfaces.AgentSessionHandler,
+	agentHandler interfaces.HandlerAgentSession,
 	agentHandlerCredential string,
-	gitHandler interfaces.GitHandler,
-	harnessHandler interfaces.HarnessHandler,
-	sandboxHandler interfaces.SandboxHandler,
+	gitHandler interfaces.HandlerGit,
+	harnessHandler interfaces.HandlerHarness,
+	sandboxHandler interfaces.HandlerSandbox,
 	gitAccess *interfaces.GitAccess,
 	prompt string,
 	session *shared.Session,
@@ -620,8 +623,21 @@ func (c *controller) sandbox(
 	stderr := make(chan string, 100)
 	secrets := make([]interfaces.SandboxSecret, 0)
 	fileUploads := make(map[string][]byte)
+	harnessConfig := interfaces.HarnessConfig{}
 
-	// TODO: Implement/work platform mcp+credentials
+	// TODO: dynamicly inject harness configuration
+
+	if c.mcpHandler != nil {
+		harnessConfig.Mcps = c.mcpHandler.GetMCPList()
+
+		for _, mcp := range harnessConfig.Mcps {
+			secrets = append(secrets, interfaces.SandboxSecret{
+				Name:  mcp.AuthKey,
+				Value: mcp.AuthSecret,
+				Hosts: mcp.Hosts,
+			})
+		}
+	}
 
 	if gitAccess != nil && gitAccess.Granted {
 		secrets = append(secrets, interfaces.SandboxSecret{
@@ -636,7 +652,7 @@ func (c *controller) sandbox(
 	fileUploads[promptFilePath] = promptData
 
 	// Get harness configuration and prepare it for upload
-	if file, data, err := harnessHandler.GetConfigFile(interfaces.HarnessConfig{}); err != nil {
+	if file, data, err := harnessHandler.GetConfigFile(harnessConfig); err != nil {
 		agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
 		return nil, nil, nil, err
 	} else {
@@ -675,9 +691,9 @@ func (c *controller) harness(
 	ctx context.Context,
 	stdout <-chan string,
 	stderr <-chan string,
-	agentHandler interfaces.AgentSessionHandler,
+	agentHandler interfaces.HandlerAgentSession,
 	agentHandlerCredential string,
-	harnessHandler interfaces.HarnessHandler,
+	harnessHandler interfaces.HandlerHarness,
 	session *shared.Session,
 	sessionEvent *shared.SessionEvent,
 ) {

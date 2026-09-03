@@ -27,6 +27,10 @@ import (
 // ModeMemory is the secrets provider mode value that selects this store.
 const ModeMemory = "memory"
 
+type Config struct {
+	Secrets map[string]map[string]string `yaml:"secrets"`
+}
+
 // Store is a thread-safe, process-local secret store keyed by (path, name).
 type Store struct {
 	mu      sync.RWMutex

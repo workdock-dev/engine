@@ -53,7 +53,7 @@ func NewGitHandler(
 	// repository interfaces.Repository,
 	client interfaces.Client,
 	secretManager shared.ForSecrets,
-) agent_session_interfaces.GitHandler {
+) agent_session_interfaces.HandlerGit {
 	return &GitHandler{
 		installationUrl: config.AppInstallURL,
 		// repository:      repository,

@@ -66,7 +66,7 @@ func (s *EventQueueSuite) TestClaim_Success() {
 			return nil
 		}}
 	}
-	job, err := s.queue.Claim(context.Background(), "worker-1")
+	job, err := s.queue.Claim(context.Background(), "worker-1", time.Now())
 	s.NoError(err)
 	s.NotNil(job)
 	s.Equal("event-1", job.SessionEventIdentifier)
@@ -80,7 +80,7 @@ func (s *EventQueueSuite) TestClaim_NoJobs() {
 			return pgx.ErrNoRows
 		}}
 	}
-	job, err := s.queue.Claim(context.Background(), "worker-1")
+	job, err := s.queue.Claim(context.Background(), "worker-1", time.Now())
 	s.NoError(err)
 	s.Nil(job)
 }
@@ -91,7 +91,7 @@ func (s *EventQueueSuite) TestClaim_Error() {
 			return fmt.Errorf("db error")
 		}}
 	}
-	job, err := s.queue.Claim(context.Background(), "worker-1")
+	job, err := s.queue.Claim(context.Background(), "worker-1", time.Now())
 	s.Error(err)
 	s.Nil(job)
 }
@@ -103,7 +103,7 @@ func (s *EventQueueSuite) TestHeartbeat_Success() {
 		s.Equal("event-1", args[0])
 		return pgconn.NewCommandTag("UPDATE 1"), nil
 	}
-	err := s.queue.Heartbeat(context.Background(), "event-1")
+	err := s.queue.Heartbeat(context.Background(), "event-1", time.Minute)
 	s.NoError(err)
 }
 
@@ -111,7 +111,7 @@ func (s *EventQueueSuite) TestHeartbeat_Error() {
 	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		return pgconn.CommandTag{}, fmt.Errorf("db error")
 	}
-	err := s.queue.Heartbeat(context.Background(), "event-1")
+	err := s.queue.Heartbeat(context.Background(), "event-1", time.Minute)
 	s.Error(err)
 }
 
@@ -119,7 +119,7 @@ func (s *EventQueueSuite) TestHeartbeat_ZeroRowsAffected() {
 	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		return pgconn.NewCommandTag("UPDATE 0"), nil
 	}
-	err := s.queue.Heartbeat(context.Background(), "event-1")
+	err := s.queue.Heartbeat(context.Background(), "event-1", time.Minute)
 	s.NoError(err)
 }
 
@@ -158,7 +158,7 @@ func (s *EventQueueSuite) TestRetry_Success() {
 		s.Equal("timeout", args[1])
 		return pgconn.NewCommandTag("UPDATE 1"), nil
 	}
-	err := s.queue.Retry(context.Background(), "event-1", fmt.Errorf("timeout"))
+	err := s.queue.Retry(context.Background(), "event-1", fmt.Errorf("timeout"), time.Minute)
 	s.NoError(err)
 }
 
@@ -166,7 +166,7 @@ func (s *EventQueueSuite) TestRetry_Error() {
 	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		return pgconn.CommandTag{}, fmt.Errorf("db error")
 	}
-	err := s.queue.Retry(context.Background(), "event-1", fmt.Errorf("timeout"))
+	err := s.queue.Retry(context.Background(), "event-1", fmt.Errorf("timeout"), time.Minute)
 	s.Error(err)
 }
 
@@ -174,7 +174,7 @@ func (s *EventQueueSuite) TestRetry_ZeroRowsAffected() {
 	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		return pgconn.NewCommandTag("UPDATE 0"), nil
 	}
-	err := s.queue.Retry(context.Background(), "event-1", fmt.Errorf("timeout"))
+	err := s.queue.Retry(context.Background(), "event-1", fmt.Errorf("timeout"), time.Minute)
 	s.NoError(err)
 }
 

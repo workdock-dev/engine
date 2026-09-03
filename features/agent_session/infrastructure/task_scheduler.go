@@ -33,9 +33,11 @@ import (
 )
 
 const (
-	DefaultWorkers     = 3
-	DefaultMaxAttempts = 2
-	HeartbeatInterval  = time.Minute
+	DefaultWorkers           = 3
+	DefaultMaxAttempts       = 2
+	DefaultHeartbeatInterval = time.Minute
+	DefaultLeaseDuration     = time.Minute * 5
+	DefaultRetryGracePeriod  = time.Minute
 )
 
 type TaskScheduler struct {
@@ -62,10 +64,6 @@ func NewTaskScheduler(queue interfaces.Queue, config types.TaskSchedulerConfig, 
 
 	if config.MaxAttempts <= 0 {
 		config.MaxAttempts = DefaultMaxAttempts
-	}
-
-	if config.HeartbeatInterval <= 0 {
-		config.HeartbeatInterval = HeartbeatInterval
 	}
 
 	s := &TaskScheduler{
@@ -208,7 +206,7 @@ func (s *TaskScheduler) worker(ctx context.Context, workerId int) {
 			}()
 
 			cCtx, cSpan := s.tracer.Start(exCtx, "job.claim")
-			if job, err = s.extQueue.Claim(cCtx, s.serviceId); err != nil {
+			if job, err = s.extQueue.Claim(cCtx, s.serviceId, time.Now().Add(DefaultLeaseDuration)); err != nil {
 				if errors.Is(err, interfaces.ErrJobNotRunnable) {
 					slog.Debug("worker failed to claimed job", "worker_id", workerId)
 				} else {
@@ -252,7 +250,7 @@ func (s *TaskScheduler) execute(ctx context.Context, job *types.EventJob, starte
 	hCtx, cancel := context.WithCancel(ctx)
 
 	go func() {
-		t := time.NewTicker(s.config.HeartbeatInterval)
+		t := time.NewTicker(time.Duration(DefaultHeartbeatInterval))
 		defer t.Stop()
 
 		for {
@@ -261,7 +259,7 @@ func (s *TaskScheduler) execute(ctx context.Context, job *types.EventJob, starte
 				slog.Debug("Job heartbeat stopped", "event_identifier", job.SessionEventIdentifier)
 				return
 			case <-t.C:
-				if err := s.extQueue.Heartbeat(hCtx, job.SessionEventIdentifier); err != nil {
+				if err := s.extQueue.Heartbeat(hCtx, job.SessionEventIdentifier, time.Duration(DefaultHeartbeatInterval)); err != nil {
 					span.AddEvent(
 						"job.heartbeat.failed",
 						trace.WithAttributes(
@@ -311,7 +309,7 @@ func (s *TaskScheduler) execute(ctx context.Context, job *types.EventJob, starte
 			})
 		} else {
 			telemetry.SpanErr(ctx, s.tracer, "job.retry", func(ctx context.Context) error {
-				return s.extQueue.Retry(ctx, job.SessionEventIdentifier, err)
+				return s.extQueue.Retry(ctx, job.SessionEventIdentifier, err, DefaultRetryGracePeriod)
 			})
 		}
 

@@ -12,9 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package types
+package interfaces
 
-type TaskSchedulerConfig struct {
-	Workers     int `yaml:"workers"`
-	MaxAttempts int `yaml:"max_attempts"`
+type MCPConfig struct {
+	Name       string
+	Url        string
+	AuthKey    string
+	AuthSecret string
+	Hosts      []string
+}
+
+type HandlerMCP interface {
+	GetMCPList() []MCPConfig
 }

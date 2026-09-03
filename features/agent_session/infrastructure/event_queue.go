@@ -27,12 +27,6 @@ import (
 	"github.com/workdock-dev/engine/shared"
 )
 
-const (
-	LeaseDuration    = time.Minute * 5
-	RetryGracePeriod = 1 * time.Minute
-	NextAttemptAt    = LeaseDuration + RetryGracePeriod
-)
-
 var (
 	//go:embed sql/claim.sql
 	ClaimSql string
@@ -92,17 +86,16 @@ func NewEventQueue(client shared.PostgresPool, conn DBConn) *EventQueue {
 //
 // The entire operation is performed within a transaction, guaranteeing that
 // only one worker can successfully claim the job at a time.
-func (q *EventQueue) Claim(ctx context.Context, owner string) (*types.EventJob, error) {
-	now := time.Now().UTC()
+func (q *EventQueue) Claim(ctx context.Context, owner string, nextAttemptAt time.Time) (*types.EventJob, error) {
 	var row types.EventJob
 
 	err := q.client.
 		QueryRow(
 			ctx,
 			ClaimSql,
-			new(now.Add(NextAttemptAt)),
-			new(owner),
-			new(now.Add(LeaseDuration)),
+			nextAttemptAt,
+			owner,
+			nextAttemptAt,
 		).
 		Scan(
 			&row.SessionEventIdentifier,
@@ -138,8 +131,8 @@ func (q *EventQueue) Claim(ctx context.Context, owner string) (*types.EventJob, 
 //
 // The lease is only renewed if the job is currently owned by the specified
 // worker.
-func (q *EventQueue) Heartbeat(ctx context.Context, id string) error {
-	tags, err := q.client.Exec(ctx, HeartbeatSql, id, time.Now().Add(LeaseDuration))
+func (q *EventQueue) Heartbeat(ctx context.Context, id string, leaseDuration time.Duration) error {
+	tags, err := q.client.Exec(ctx, HeartbeatSql, id, time.Now().Add(leaseDuration))
 
 	if err != nil {
 		slog.Error("failed to send jobs heartbeat", "event_identifier", id, "err", err)
@@ -185,8 +178,8 @@ func (q *EventQueue) Complete(ctx context.Context, id string) error {
 //     retry time is reached.
 //
 // Only the worker that currently owns the job may schedule a retry.
-func (q *EventQueue) Retry(ctx context.Context, id string, cause error) error {
-	tags, err := q.client.Exec(ctx, RetrySql, id, cause.Error(), time.Now().Add(RetryGracePeriod))
+func (q *EventQueue) Retry(ctx context.Context, id string, cause error, retryGracePeriod time.Duration) error {
+	tags, err := q.client.Exec(ctx, RetrySql, id, cause.Error(), time.Now().Add(retryGracePeriod))
 
 	if err != nil {
 		slog.Error("failed to send job for retry", "event_identifier", id, "err", err)

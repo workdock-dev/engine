@@ -16,5 +16,7 @@ package types
 
 type Config struct {
 	Version    string         `yaml:"version"`
+	Model      string         `yaml:"model"`
 	Permission map[string]any `yaml:"permission"`
+	Provider   map[string]any `yaml:"provider"`
 }

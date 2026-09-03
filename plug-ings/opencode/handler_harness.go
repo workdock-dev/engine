@@ -40,20 +40,18 @@ var (
 )
 
 type HarnessHandler struct {
-	version    string
-	permission map[string]any
+	config types.Config
 }
 
-func NewHarnessHandler(config types.Config) agent_session_interfaces.HarnessHandler {
+func NewHarnessHandler(config types.Config) agent_session_interfaces.HandlerHarness {
 	return &HarnessHandler{
-		version:    config.Version,
-		permission: config.Permission,
+		config: config,
 	}
 }
 
 func (h *HarnessHandler) GetConfigurationCommands() []string {
 	return []string{
-		fmt.Sprintf("%s %s", OPENCODE_INSTALL, h.version),
+		fmt.Sprintf("%s %s", OPENCODE_INSTALL, h.config.Version),
 	}
 }
 
@@ -68,25 +66,11 @@ func (h *HarnessHandler) GetPromptFile(prompt string) (string, []byte) {
 func (h *HarnessHandler) GetConfigFile(config agent_session_interfaces.HarnessConfig) (string, []byte, error) {
 	permissions := []byte("{\"*\":\"allow\"}")
 	mcps := []byte("{}")
+	provider := []byte("{}")
+	model := h.config.Model
 
-	provider, err := json.Marshal(map[string]any{
-		config.Provider.Name: map[string]any{
-			"options": map[string]any{
-				"apiKey": fmt.Sprintf("{env:%s}", config.Provider.AuthEnvVar),
-			},
-			"models": map[string]any{
-				config.Provider.Model: config.Provider.ModelOptions,
-			},
-		},
-	})
-
-	if err != nil {
-		slog.Error("failed to marshal opencode model provider", "err", err)
-		return "", nil, err
-	}
-
-	if h.permission != nil {
-		data, err := json.Marshal(h.permission)
+	if h.config.Permission != nil {
+		data, err := json.Marshal(h.config.Permission)
 
 		if err != nil {
 			slog.Error("failed to marshal opencode config permissions", "err", err)
@@ -96,17 +80,53 @@ func (h *HarnessHandler) GetConfigFile(config agent_session_interfaces.HarnessCo
 		permissions = data
 	}
 
+	if h.config.Provider != nil {
+		data, err := json.Marshal(h.config.Provider)
+
+		if err != nil {
+			slog.Error("failed to marshal opencode config provider", "err", err)
+			return "", nil, err
+		}
+
+		provider = data
+	}
+
+	// *-------------------------------------------------------------------------*
+	// * config through params overrides handler default config
+	// *-------------------------------------------------------------------------*
+
+	if config.Provider != nil {
+		data, err := json.Marshal(map[string]any{
+			config.Provider.Name: map[string]any{
+				"options": map[string]any{
+					"apiKey": fmt.Sprintf("{env:%s}", config.Provider.AuthEnvVar),
+				},
+				"models": map[string]any{
+					config.Provider.Model: config.Provider.ModelOptions,
+				},
+			},
+		})
+
+		if err != nil {
+			slog.Error("failed to marshal opencode model provider", "err", err)
+			return "", nil, err
+		}
+
+		provider = data
+		model = fmt.Sprintf("%s/%s", config.Provider.Name, config.Provider.Model)
+	}
+
 	if config.Mcps != nil {
 		mcp := make(map[string]any)
 
-		for key, value := range config.Mcps {
-			mcp[key] = map[string]any{
+		for _, value := range config.Mcps {
+			mcp[value.Name] = map[string]any{
 				"type":    "remote",
 				"url":     value.Url,
 				"enabled": true,
 				"oauth":   false,
 				"headers": map[string]string{
-					"Authorization": fmt.Sprintf("Bearer {env:%s}", value.AuthEnvVar),
+					"Authorization": fmt.Sprintf("Bearer {env:%s}", value.AuthKey),
 				},
 			}
 		}
@@ -138,10 +158,11 @@ func (h *HarnessHandler) GetConfigFile(config agent_session_interfaces.HarnessCo
   "share": "disabled",
   "autoupdate": false,
   "permission": %s,
+  "model": %s,
   "provider": %s,
   "mcp": %s
 }
-	`, string(permissions), string(provider), string(mcps))
+	`, string(permissions), model, string(provider), string(mcps))
 
 	return CONFIG_FILE_PATH, openCodeConfig, nil
 }

@@ -20,21 +20,20 @@ import (
 	"github.com/workdock-dev/engine/shared"
 )
 
+type Provider struct {
+	Name         string
+	Model        string
+	ModelOptions string
+	AuthEnvVar   string
+}
+
 type HarnessConfig struct {
-	Provider struct {
-		Name         string
-		Model        string
-		ModelOptions string
-		AuthEnvVar   string
-	}
-	Mcps map[string]struct {
-		Url        string
-		AuthEnvVar string
-	}
+	Provider    *Provider
+	Mcps        []MCPConfig
 	Permissions map[string]any
 }
 
-type HarnessHandler interface {
+type HandlerHarness interface {
 	// GetConfigurationCommands may return a list of commands the harness handler
 	// provider requires to be install in the sandbox
 	GetConfigurationCommands() []string

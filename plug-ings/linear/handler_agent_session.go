@@ -37,7 +37,7 @@ type AgentSessionHandler struct {
 func NewAgentSessionHandler(
 	client interfaces.Client,
 	secretManager shared.ForSecrets,
-) agent_session_interfaces.AgentSessionHandler {
+) agent_session_interfaces.HandlerAgentSession {
 	return &AgentSessionHandler{
 		client:       client,
 		tokenHandler: helpers.NewTokenHandler(secretManager, client),

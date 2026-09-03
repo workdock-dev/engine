@@ -30,6 +30,7 @@ import (
 	"github.com/lmittmann/tint"
 	"github.com/workdock-dev/engine/features/agent_session"
 	agent_session_infrastructure "github.com/workdock-dev/engine/features/agent_session/infrastructure"
+	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
 	agent_session_types "github.com/workdock-dev/engine/features/agent_session/types"
 	oauth20 "github.com/workdock-dev/engine/features/oauth2.0"
 	"github.com/workdock-dev/engine/features/organization"
@@ -54,34 +55,59 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type PostgresConfig struct {
+	DatabaseUrl string `yaml:"database_url"`
+}
+
+type MCPConfig struct {
+	Name       string   `yaml:"name"`
+	Url        string   `yaml:"url"`
+	AuthKey    string   `yaml:"auth_key"`
+	AuthSecret string   `yaml:"auth_secret"`
+	Hosts      []string `yaml:"hosts"`
+}
+
 type Config struct {
-	ServiceName        string `yaml:"service_name"`
-	ServerAddress      string `yaml:"server_address"`
-	Workers            int    `yaml:"workers"`
-	WorkerLeaseSeconds int    `yaml:"worker_lease_seconds"`
+	ServiceName   string                                  `yaml:"service_name"`
+	ServerAddress string                                  `yaml:"server_address"`
+	TaskScheduler agent_session_types.TaskSchedulerConfig `yaml:"task_scheduler"`
+	MCPs          []MCPConfig                             `yaml:"mcps"`
 
 	// plug-ings configuration
-	Daytona  daytona_types.Config  `yaml:"daytona"`
 	Linear   linear_types.Config   `yaml:"linear"`
+	Daytona  daytona_types.Config  `yaml:"daytona"`
 	Opencode opencode_types.Config `yaml:"opencode"`
 	Github   github_types.Config   `yaml:"github"`
 
 	// infrastructure configuration
-	Infisical infisical_client.InfisicalServiceConfig `yaml:"infisical"`
-	Secrets   SecretsConfig                           `yaml:"secrets"`
-	Postgres  struct {
-		DatabaseUrl string `yaml:"database_url"`
-	} `yaml:"postgres"`
-	Otlp *otlp_client.Config `yaml:"otlp"`
+	Postgres        PostgresConfig                           `yaml:"postgres"`
+	Infisical       *infisical_client.InfisicalServiceConfig `yaml:"infisical"`
+	InMemorySecrets *in_memory_secrets.Config                `yaml:"in_memory_secrets"`
+	Otlp            *otlp_client.Config                      `yaml:"otlp"`
 }
 
-// SecretsConfig selects the secrets provider the engine wires as
-// ports.ForSecrets. An empty Mode (or "infisical") uses Infisical;
-// Mode == in_memory_secrets.ModeMemory uses an in-process store seeded from
-// MemorySecrets, which is keyed by secret path and then by secret name.
-type SecretsConfig struct {
-	Mode          string                       `yaml:"mode"`
-	MemorySecrets map[string]map[string]string `yaml:"memory_secrets"`
+type MCPFromConfigFile struct {
+	config *Config
+}
+
+func (m *MCPFromConfigFile) GetMCPList() []agent_session_interfaces.MCPConfig {
+	if m.config.MCPs == nil {
+		return nil
+	}
+
+	list := make([]agent_session_interfaces.MCPConfig, len(m.config.MCPs))
+
+	for i, mcp := range m.config.MCPs {
+		list[i] = agent_session_interfaces.MCPConfig{
+			Name:       mcp.Name,
+			Url:        mcp.Url,
+			AuthKey:    mcp.AuthKey,
+			AuthSecret: mcp.AuthSecret,
+			Hosts:      mcp.Hosts,
+		}
+	}
+
+	return list
 }
 
 func loadConfig(path string) (*Config, error) {
@@ -110,10 +136,6 @@ func main() {
 	if err != nil {
 		slog.Error("failed to load config", "err", err)
 		os.Exit(1)
-	}
-
-	if cfg.Workers <= 0 {
-		cfg.Workers = 3
 	}
 
 	serviceName := fmt.Sprintf("workdock-%s", uuid.NewString())
@@ -150,14 +172,13 @@ func main() {
 
 	var secretManager shared.ForSecrets
 
-	switch cfg.Secrets.Mode {
-	case in_memory_secrets.ModeMemory:
-		secretManager = in_memory_secrets.NewWithSeeds(cfg.Secrets.MemorySecrets)
-		slog.Info("using in-memory secrets provider")
-	default:
-		infisicalClient, err := infisical_client.New(ctx, cfg.Infisical)
+	if cfg.Infisical != nil {
+		infisicalClient, err := infisical_client.New(ctx, *cfg.Infisical)
 		exit(err)
 		secretManager = infisicalClient
+	} else if cfg.InMemorySecrets != nil {
+		secretManager = in_memory_secrets.NewWithSeeds(cfg.InMemorySecrets.Secrets)
+		slog.Info("using in-memory secrets provider")
 	}
 
 	// *-------------------------------------------------------------------------*
@@ -238,10 +259,7 @@ func main() {
 
 		err := agent_session.New(
 			ctx,
-			agent_session_types.TaskSchedulerConfig{
-				Workers:       cfg.Workers,
-				LeaseDuration: time.Duration(cfg.WorkerLeaseSeconds) * time.Second,
-			},
+			cfg.TaskScheduler,
 			agent_session.AgentHandlerRegistry{
 				string(shared.PlatformProvider_Linear): linearAgentSessionHandler,
 			},
@@ -254,6 +272,7 @@ func main() {
 			agent_session.HarnessHandlerRegistry{
 				string(shared.HarnessProvider_OpenCode): opencodeHarnessHandler,
 			},
+			&MCPFromConfigFile{config: cfg},
 			eventBus,
 			secretManager,
 			agentSessionPostgres,
