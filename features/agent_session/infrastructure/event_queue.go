@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package postgres_client
+package infrastructure
 
 import (
 	"context"
@@ -23,6 +23,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/workdock-dev/engine/features/agent_session/types"
 	"github.com/workdock-dev/engine/shared"
 )
 
@@ -33,23 +34,23 @@ const (
 )
 
 var (
-	//go:embed claim.sql
+	//go:embed sql/claim.sql
 	ClaimSql string
 
-	//go:embed heartbeat.sql
+	//go:embed sql/heartbeat.sql
 	HeartbeatSql string
 
-	//go:embed complete.sql
+	//go:embed sql/complete.sql
 	CompleteSql string
 
-	//go:embed retry.sql
+	//go:embed sql/retry.sql
 	RetrySql string
 
-	//go:embed fail.sql
+	//go:embed sql/fail.sql
 	FailSql string
 )
 
-type dbConn interface {
+type DBConn interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	WaitForNotification(ctx context.Context) (*pgconn.Notification, error)
 	Close(ctx context.Context) error
@@ -58,22 +59,15 @@ type dbConn interface {
 // EventQueue is deliberately backed by the same postgres pool as storage so
 // webhook acceptance and workflow state remain durable across VM restarts.
 type EventQueue struct {
-	client dbPool
-	conn   dbConn
+	client shared.PostgresPool
+	conn   DBConn
 }
 
-func NewEventQueue(ctx context.Context, service *PostgresService) (*EventQueue, error) {
-	conn, err := pgx.Connect(ctx, service.config.DatabaseUrl)
-
-	if err != nil {
-		slog.Error("failed to create postgresql connection for event queue", "err", err)
-		return nil, err
-	}
-
+func NewEventQueue(client shared.PostgresPool, conn DBConn) *EventQueue {
 	return &EventQueue{
 		conn:   conn,
-		client: service.client,
-	}, nil
+		client: client,
+	}
 }
 
 // Claim atomically acquires the execution lease for an event job.
@@ -98,9 +92,9 @@ func NewEventQueue(ctx context.Context, service *PostgresService) (*EventQueue, 
 //
 // The entire operation is performed within a transaction, guaranteeing that
 // only one worker can successfully claim the job at a time.
-func (q *EventQueue) Claim(ctx context.Context, owner string) (*shared.EventJob, error) {
+func (q *EventQueue) Claim(ctx context.Context, owner string) (*types.EventJob, error) {
 	now := time.Now().UTC()
-	var row shared.EventJob
+	var row types.EventJob
 
 	err := q.client.
 		QueryRow(

@@ -128,25 +128,19 @@ func (t *WEventVerifier) verifyWebhookSignature(headerSignature string, body []b
 }
 
 type WEventConsumer struct {
-	client        interfaces.Client
-	repository    interfaces.Repository
-	secretManager shared.ForSecrets
-	eventBus      shared.ForEventBus
+	client   interfaces.Client
+	eventBus shared.ForEventBus
 }
 
 // NewWEventConsumer creates a webhook consumer for processing verified
 // Linear webhook events.
 func NewWEventConsumer(
 	client interfaces.Client,
-	repository interfaces.Repository,
-	secretManager shared.ForSecrets,
 	eventBus shared.ForEventBus,
 ) webhook.WEventConsumer {
 	return &WEventConsumer{
-		client:        client,
-		repository:    repository,
-		secretManager: secretManager,
-		eventBus:      eventBus,
+		client:   client,
+		eventBus: eventBus,
 	}
 }
 
@@ -216,16 +210,10 @@ func (c *WEventConsumer) handleInstallation(ctx context.Context, event *types.We
 			repos = append(repos, repo.FullName)
 		}
 
-		if err := resetInstallation(
-			ctx,
-			c.repository,
-			c.secretManager,
-			installationId,
-			repos,
-		); err != nil {
-			slog.Error("failed to reset github installation", "installation_id", installationId, "err", err)
-			return err
-		}
+		c.eventBus.Publish(ctx, shared.GitResetConnectionEvent{
+			Repos:          repos,
+			InstallationId: installationId,
+		})
 
 		return nil
 	}
@@ -254,39 +242,17 @@ func (c *WEventConsumer) handleInstallation(ctx context.Context, event *types.We
 		return err
 	}
 
-	if ctx.Err() != nil {
-		slog.Error("failed to continue context err", "err", ctx.Err())
-		return ctx.Err()
-	}
-
-	if err := c.secretManager.Set(ctx, types.GitHub_SecretPath, installationId, string(tokenData)); err != nil {
-		slog.Error("failed to store installation access token", "installation_id", event.Installation.ID, "err", err)
-		return err
-	}
-
 	repos := make([]string, 0, len(event.Repositories)+len(event.RepositoriesAdded))
 
 	for _, repo := range slices.Concat(event.Repositories, event.RepositoriesAdded) {
 		repos = append(repos, repo.FullName)
 	}
 
-	connections, err := batchGitHubConnections(
-		ctx,
-		c.repository,
-		installationId,
-		repos,
-	)
+	c.eventBus.Publish(ctx, shared.GitCompleteConnectionEvent{
+		Repos:          repos,
+		InstallationId: installationId,
+		Token:          tokenData,
+	})
 
-	if err != nil {
-		return err
-	}
-
-	for _, connection := range connections {
-		c.eventBus.Publish(context.Background(), shared.GitHubConnectedEvent{
-			Connection: connection,
-		})
-	}
-
-	slog.Debug("GitHub installation stored", "installation_id", event.Installation.ID, "expires_at", token.ExpiresAt)
 	return nil
 }

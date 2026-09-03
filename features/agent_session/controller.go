@@ -5,13 +5,16 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/workdock-dev/engine/features/agent_session/infrastructure"
 	"github.com/workdock-dev/engine/features/agent_session/interfaces"
+	"github.com/workdock-dev/engine/features/agent_session/types"
 	"github.com/workdock-dev/engine/shared"
 	"github.com/workdock-dev/engine/shared/telemetry"
 	"go.opentelemetry.io/otel"
@@ -29,8 +32,6 @@ var (
 	PromptTemplate_PullRequestChecksFailed string
 )
 
-type JobHandler func(ctx context.Context, job *shared.EventJob) error
-
 type AgentHandlerRegistry map[string]interfaces.AgentSessionHandler
 
 type GitHandlerRegistry map[string]interfaces.GitHandler
@@ -42,46 +43,74 @@ type HarnessHandlerRegistry map[string]interfaces.HarnessHandler
 // controller is the pipeline that coordinates the work platform,
 // git hosting platform, harness, and sandbox
 type controller struct {
+	taskSchedulerConfig       types.TaskSchedulerConfig
 	eventBus                  shared.ForEventBus
+	secretManager             shared.ForSecrets
 	agentHandlerRegistry      AgentHandlerRegistry
 	gitHostingHandlerRegistry GitHandlerRegistry
 	sandboxHandlerRegistry    SandboxHandlerRegistry
 	harnessHandlerRegistry    HarnessHandlerRegistry
 	organization              interfaces.RepositoryOrg
+	git                       interfaces.RepositoryGit
 	session                   interfaces.Repository
+	queue                     interfaces.Queue
+	taskScheduler             *infrastructure.TaskScheduler
 	tracer                    trace.Tracer
 }
 
 // New creates a new AgentSessionRunner controller
 // from the given configuration. It subscribes to each one of the
 // agent handlers provider to listen for new agent sessions
-// returns the function to be called to process agent sessions
-// through event jobs
+// and it will run a task scheduler to work the agent session
+// asynchronously. Calling this function will block the goroutine
 func New(
+	ctx context.Context,
+	taskSchedulerConfig types.TaskSchedulerConfig,
 	agentHandlerRegistry AgentHandlerRegistry,
 	gitHostingHandlerRegistry GitHandlerRegistry,
 	sandboxHandlerRegistry SandboxHandlerRegistry,
 	harnessHandlerRegistry HarnessHandlerRegistry,
 	eventBus shared.ForEventBus,
+	secretManager shared.ForSecrets,
 	organization interfaces.RepositoryOrg,
 	session interfaces.Repository,
-) JobHandler {
+	git interfaces.RepositoryGit,
+	queue interfaces.Queue,
+) error {
 	r := &controller{
+		taskSchedulerConfig:       taskSchedulerConfig,
 		eventBus:                  eventBus,
+		secretManager:             secretManager,
 		agentHandlerRegistry:      agentHandlerRegistry,
 		gitHostingHandlerRegistry: gitHostingHandlerRegistry,
 		sandboxHandlerRegistry:    sandboxHandlerRegistry,
 		harnessHandlerRegistry:    harnessHandlerRegistry,
 		organization:              organization,
 		session:                   session,
+		queue:                     queue,
 		tracer:                    otel.Tracer("workdock.agent_session_runner"),
 	}
 
-	r.init()
-	return r.Execute
+	if err := r.init(); err != nil {
+		return err
+	}
+
+	return r.taskScheduler.Run(ctx)
 }
 
-func (r *controller) init() {
+func (r *controller) init() error {
+	taskScheduler, err := infrastructure.NewTaskScheduler(
+		r.queue,
+		r.taskSchedulerConfig,
+		r.execute,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	r.taskScheduler = taskScheduler
+
 	for provider, ingestor := range r.agentHandlerRegistry {
 		r.eventBus.Subscribe(provider, func(
 			ctx context.Context,
@@ -134,11 +163,54 @@ func (r *controller) init() {
 			return nil
 		})
 	}
+
+	r.eventBus.Subscribe(shared.EventType_GitResetConnection, func(ctx context.Context, event shared.DomainEvent) error {
+		payload, ok := event.(shared.GitResetConnectionEvent)
+
+		if !ok {
+			return fmt.Errorf("expected event type %s got %s", shared.EventType_GitResetConnection, event.EventType())
+		}
+
+		if err := r.secretManager.Delete(ctx, "/github/installations", payload.InstallationId); err != nil {
+			return err
+		}
+
+		return r.git.ResetGitHubConnection(ctx, payload.InstallationId, payload.Repos)
+	})
+
+	r.eventBus.Subscribe(shared.EventType_GitCompleteConnection, func(ctx context.Context, event shared.DomainEvent) error {
+		payload, ok := event.(shared.GitCompleteConnectionEvent)
+
+		if !ok {
+			return fmt.Errorf("expected event type %s got %s", shared.EventType_GitCompleteConnection, event.EventType())
+		}
+
+		if err := r.secretManager.Set(ctx, "/github/installations", payload.InstallationId, string(payload.Token)); err != nil {
+			slog.Error("failed to store installation access token", "installation_id", payload.InstallationId, "err", err)
+			return err
+		}
+
+		for _, repo := range payload.Repos {
+			connection := &shared.GitHubConnection{
+				RepoFullName:   repo,
+				Connected:      true,
+				InstallationId: &payload.InstallationId,
+			}
+
+			if err := r.git.UpsertGitHubConnection(ctx, connection); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	return nil
 }
 
-// Execute provisions and coordinates all the components to successfully run the
+// execute provisions and coordinates all the components to successfully run the
 // agent session's request based on a scheduled job
-func (r *controller) Execute(ctx context.Context, job *shared.EventJob) error {
+func (r *controller) execute(ctx context.Context, job *types.EventJob) error {
 	sessionEvent, err := telemetry.Span(ctx, r.tracer, "session.get_event", func(ctx context.Context) (*shared.SessionEvent, error) {
 		return r.session.GetAgentSessionEvent(ctx, job.SessionEventIdentifier)
 	})
@@ -366,21 +438,32 @@ func (r *controller) verifyGitAccess(
 	session *shared.Session,
 	sessionEvent *shared.SessionEvent,
 ) (*interfaces.GitAccess, error) {
-	gitAccess, err := telemetry.Span(ctx, r.tracer, "session.verify_repo_access", func(ctx context.Context) (*interfaces.GitAccess, error) {
-		return gitHandler.VerifyRepoAccess(ctx, session.Identifier, session.RepoFullName)
+	// no repo, no access required
+	if session.RepoFullName == nil {
+		return nil, nil
+	}
+
+	connection, err := telemetry.Span(ctx, r.tracer, "session.get_git_connection", func(ctx context.Context) (*shared.GitHubConnection, error) {
+		return r.git.GetGitHubConnection(ctx, *session.RepoFullName)
 	})
 
 	if err != nil {
-		agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
 		return nil, err
 	}
 
 	// Request Git installation when repo access is not yet granted.
 	// This applies to both public and private repositories — write operations
 	// (push branches, create PRs) require an authenticated Git.
-	if session.RepoFullName != nil && gitAccess != nil && !gitAccess.Granted {
-		if err := telemetry.SpanErr(ctx, r.tracer, "session.request_repo_access", func(ctx context.Context) error {
-			return gitHandler.RequestConnection(ctx, sessionEvent.Identifier, *session.RepoFullName)
+	if connection == nil || !connection.Connected || connection.InstallationId == nil {
+		if err := telemetry.SpanErr(ctx, r.tracer, "session.upsert_git_connection", func(ctx context.Context) error {
+			return r.git.UpsertGitHubConnection(
+				ctx, &shared.GitHubConnection{
+					SessionEventIdentifier: &session.Identifier,
+					RepoFullName:           *session.RepoFullName,
+					Connected:              false,
+					InstallationId:         nil,
+				},
+			)
 		}); err != nil {
 			return nil, err
 		}
@@ -400,7 +483,37 @@ func (r *controller) verifyGitAccess(
 		return nil, nil
 	}
 
-	return gitAccess, nil
+	access, err := gitHandler.GetGitAccess(ctx, connection)
+
+	if err != nil {
+		if errors.Is(err, shared.ErrGitHubInstallationUnavailable) {
+			if err := r.git.ResetGitHubConnection(ctx, *connection.InstallationId, []string{*session.RepoFullName}); err != nil {
+				return nil, err
+			}
+
+			// TODO: Fix/hardcoded secret path
+			if err := r.secretManager.Delete(ctx, "/github/installations", *connection.InstallationId); err != nil {
+				return nil, err
+			}
+
+			if err := agentHandler.SendGitConnectionRequest(
+				ctx,
+				session.Identifier,
+				agentHandlerCredential,
+				string(shared.PlatformProvider_GitHub),
+				gitHandler.GetInstallationUrl(),
+			); err != nil {
+				agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
+				return nil, err
+			}
+
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return access, nil
 }
 
 func (r *controller) sandbox(

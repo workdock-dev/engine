@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package async
+package infrastructure
 
 import (
 	"context"
@@ -23,7 +23,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/workdock-dev/engine/shared"
+	"github.com/workdock-dev/engine/features/agent_session/interfaces"
+	"github.com/workdock-dev/engine/features/agent_session/types"
 	"github.com/workdock-dev/engine/shared/telemetry"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -37,23 +38,14 @@ const (
 	HeartbeatInterval  = time.Minute
 )
 
-type HandlerFunc func(ctx context.Context, job *shared.EventJob) error
-
-type TaskSchedulerConfig struct {
-	Workers           int
-	LeaseDuration     time.Duration
-	MaxAttempts       int
-	HeartbeatInterval time.Duration
-}
-
 type TaskScheduler struct {
 	serviceId        string
-	config           TaskSchedulerConfig
+	config           types.TaskSchedulerConfig
 	cond             sync.Cond
 	lastNotification time.Time
-	extQueue         shared.Queue
+	extQueue         interfaces.Queue
 	running          sync.Map
-	handler          HandlerFunc
+	handler          types.JobHandler
 	closed           bool
 	tracer           trace.Tracer
 	busyWorkers      atomic.Int64
@@ -63,7 +55,7 @@ type TaskScheduler struct {
 // NewTaskScheduler creates a new TaskScheduler with sensible defaults when
 // optional configuration values are not provided. The scheduler is responsible
 // for coordinating job execution through the configured queue.
-func NewTaskScheduler(queue shared.Queue, config TaskSchedulerConfig, handler HandlerFunc) (*TaskScheduler, error) {
+func NewTaskScheduler(queue interfaces.Queue, config types.TaskSchedulerConfig, handler types.JobHandler) (*TaskScheduler, error) {
 	if config.Workers <= 0 {
 		config.Workers = DefaultWorkers
 	}
@@ -202,7 +194,7 @@ func (s *TaskScheduler) worker(ctx context.Context, workerId int) {
 				),
 			)
 
-			var job *shared.EventJob
+			var job *types.EventJob
 			var err error
 
 			defer func() {
@@ -217,7 +209,7 @@ func (s *TaskScheduler) worker(ctx context.Context, workerId int) {
 
 			cCtx, cSpan := s.tracer.Start(exCtx, "job.claim")
 			if job, err = s.extQueue.Claim(cCtx, s.serviceId); err != nil {
-				if errors.Is(err, shared.ErrJobNotRunnable) {
+				if errors.Is(err, interfaces.ErrJobNotRunnable) {
 					slog.Debug("worker failed to claimed job", "worker_id", workerId)
 				} else {
 					cSpan.RecordError(err)
@@ -255,7 +247,7 @@ func (s *TaskScheduler) worker(ctx context.Context, workerId int) {
 // execute processes a claimed job using its registered handler while keeping
 // its lease alive through periodic heartbeats. Based on the execution result,
 // the job is completed, retried, or marked as failed.
-func (s *TaskScheduler) execute(ctx context.Context, job *shared.EventJob, startedAt time.Time) {
+func (s *TaskScheduler) execute(ctx context.Context, job *types.EventJob, startedAt time.Time) {
 	span := trace.SpanFromContext(ctx)
 	hCtx, cancel := context.WithCancel(ctx)
 

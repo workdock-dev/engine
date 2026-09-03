@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package async
+package infrastructure
 
 import (
 	"context"
@@ -22,7 +22,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/suite"
-	"github.com/workdock-dev/engine/shared"
+	"github.com/workdock-dev/engine/features/agent_session/interfaces"
+	"github.com/workdock-dev/engine/features/agent_session/types"
 )
 
 type TaskSchedulerSuite struct {
@@ -39,9 +40,9 @@ func TestTaskSchedulerSuite(t *testing.T) {
 
 func (s *TaskSchedulerSuite) TestNewTaskScheduler_DefaultConfig() {
 	q := &mockQueue{runnable: make(chan struct{}, 1), cancellable: make(chan string, 1)}
-	handler := func(ctx context.Context, job *shared.EventJob) error { return nil }
+	handler := func(ctx context.Context, job *types.EventJob) error { return nil }
 
-	sched, err := NewTaskScheduler(q, TaskSchedulerConfig{}, handler)
+	sched, err := NewTaskScheduler(q, types.TaskSchedulerConfig{}, handler)
 	s.NoError(err)
 	s.NotNil(sched)
 	s.Equal(DefaultWorkers, sched.config.Workers)
@@ -50,9 +51,9 @@ func (s *TaskSchedulerSuite) TestNewTaskScheduler_DefaultConfig() {
 
 func (s *TaskSchedulerSuite) TestNewTaskScheduler_CustomConfig() {
 	q := &mockQueue{runnable: make(chan struct{}, 1), cancellable: make(chan string, 1)}
-	handler := func(ctx context.Context, job *shared.EventJob) error { return nil }
+	handler := func(ctx context.Context, job *types.EventJob) error { return nil }
 
-	sched, err := NewTaskScheduler(q, TaskSchedulerConfig{Workers: 8, MaxAttempts: 5}, handler)
+	sched, err := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 8, MaxAttempts: 5}, handler)
 	s.NoError(err)
 	s.Equal(8, sched.config.Workers)
 	s.Equal(5, sched.config.MaxAttempts)
@@ -60,10 +61,10 @@ func (s *TaskSchedulerSuite) TestNewTaskScheduler_CustomConfig() {
 
 func (s *TaskSchedulerSuite) TestNewTaskScheduler_ServiceIdUnique() {
 	q := &mockQueue{runnable: make(chan struct{}, 1), cancellable: make(chan string, 1)}
-	handler := func(ctx context.Context, job *shared.EventJob) error { return nil }
+	handler := func(ctx context.Context, job *types.EventJob) error { return nil }
 
-	s1, _ := NewTaskScheduler(q, TaskSchedulerConfig{}, handler)
-	s2, _ := NewTaskScheduler(q, TaskSchedulerConfig{}, handler)
+	s1, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{}, handler)
+	s2, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{}, handler)
 	s.NotEqual(s1.serviceId, s2.serviceId)
 }
 
@@ -77,9 +78,9 @@ func (s *TaskSchedulerSuite) TestRun_ListenError() {
 		runnable:    make(chan struct{}, 1),
 		cancellable: make(chan string, 1),
 	}
-	handler := func(ctx context.Context, job *shared.EventJob) error { return nil }
+	handler := func(ctx context.Context, job *types.EventJob) error { return nil }
 
-	sched, err := NewTaskScheduler(q, TaskSchedulerConfig{Workers: 1}, handler)
+	sched, err := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1}, handler)
 	s.Require().NoError(err)
 
 	err = sched.Run(context.Background())
@@ -89,9 +90,9 @@ func (s *TaskSchedulerSuite) TestRun_ListenError() {
 
 func (s *TaskSchedulerSuite) TestRun_ShutdownCleanly() {
 	q := newMockQueueChannels(1)
-	handler := func(ctx context.Context, job *shared.EventJob) error { return nil }
+	handler := func(ctx context.Context, job *types.EventJob) error { return nil }
 
-	sched, err := NewTaskScheduler(q, TaskSchedulerConfig{Workers: 1}, handler)
+	sched, err := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1}, handler)
 	s.Require().NoError(err)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -113,13 +114,13 @@ func (s *TaskSchedulerSuite) TestRun_ShutdownCleanly() {
 
 func (s *TaskSchedulerSuite) TestRun_ClaimErrorJobNotRunnable() {
 	q := newMockQueueChannels(1)
-	q.claimErr = shared.ErrJobNotRunnable
+	q.claimErr = interfaces.ErrJobNotRunnable
 
-	handler := func(ctx context.Context, job *shared.EventJob) error {
+	handler := func(ctx context.Context, job *types.EventJob) error {
 		return nil
 	}
 
-	sched, _ := NewTaskScheduler(q, TaskSchedulerConfig{Workers: 1}, handler)
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1}, handler)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -137,12 +138,12 @@ func (s *TaskSchedulerSuite) TestRun_ClaimReturnsNil() {
 	q := newMockQueueChannels(1)
 	q.claimJob = nil
 
-	handler := func(ctx context.Context, job *shared.EventJob) error {
+	handler := func(ctx context.Context, job *types.EventJob) error {
 		s.Fail("handler should not be called")
 		return nil
 	}
 
-	sched, _ := NewTaskScheduler(q, TaskSchedulerConfig{Workers: 1}, handler)
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1}, handler)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -163,7 +164,7 @@ func (s *TaskSchedulerSuite) TestRun_ClaimReturnsNil() {
 
 func (s *TaskSchedulerSuite) TestRun_ExecutionSuccess() {
 	q := newMockQueueChannels(1)
-	job := &shared.EventJob{
+	job := &types.EventJob{
 		SessionEventIdentifier: "evt-1",
 		QueuedBy:               "sess-1",
 		Attempts:               0,
@@ -171,13 +172,13 @@ func (s *TaskSchedulerSuite) TestRun_ExecutionSuccess() {
 	q.claimJob = job
 
 	handlerCalled := make(chan struct{})
-	handler := func(ctx context.Context, j *shared.EventJob) error {
+	handler := func(ctx context.Context, j *types.EventJob) error {
 		q.claimJob = nil
 		close(handlerCalled)
 		return nil
 	}
 
-	sched, _ := NewTaskScheduler(q, TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -202,7 +203,7 @@ func (s *TaskSchedulerSuite) TestRun_ExecutionSuccess() {
 
 func (s *TaskSchedulerSuite) TestRun_ExecutionRetry() {
 	q := newMockQueueChannels(1)
-	job := &shared.EventJob{
+	job := &types.EventJob{
 		SessionEventIdentifier: "evt-retry",
 		QueuedBy:               "sess-1",
 		Attempts:               0,
@@ -210,12 +211,12 @@ func (s *TaskSchedulerSuite) TestRun_ExecutionRetry() {
 	q.claimJob = job
 
 	handlerErr := errors.New("transient failure")
-	handler := func(ctx context.Context, j *shared.EventJob) error {
+	handler := func(ctx context.Context, j *types.EventJob) error {
 		q.claimJob = nil
 		return handlerErr
 	}
 
-	sched, _ := NewTaskScheduler(q, TaskSchedulerConfig{Workers: 1, MaxAttempts: 3}, handler)
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 3}, handler)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -233,7 +234,7 @@ func (s *TaskSchedulerSuite) TestRun_ExecutionRetry() {
 
 func (s *TaskSchedulerSuite) TestRun_ExecutionFail() {
 	q := newMockQueueChannels(1)
-	job := &shared.EventJob{
+	job := &types.EventJob{
 		SessionEventIdentifier: "evt-fail",
 		QueuedBy:               "sess-1",
 		Attempts:               2,
@@ -241,12 +242,12 @@ func (s *TaskSchedulerSuite) TestRun_ExecutionFail() {
 	q.claimJob = job
 
 	handlerErr := errors.New("permanent failure")
-	handler := func(ctx context.Context, j *shared.EventJob) error {
+	handler := func(ctx context.Context, j *types.EventJob) error {
 		q.claimJob = nil
 		return handlerErr
 	}
 
-	sched, _ := NewTaskScheduler(q, TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -264,7 +265,7 @@ func (s *TaskSchedulerSuite) TestRun_ExecutionFail() {
 
 func (s *TaskSchedulerSuite) TestRun_HandlerCancelled() {
 	q := newMockQueueChannels(1)
-	job := &shared.EventJob{
+	job := &types.EventJob{
 		SessionEventIdentifier: "evt-cancel",
 		QueuedBy:               "sess-1",
 		Attempts:               0,
@@ -273,7 +274,7 @@ func (s *TaskSchedulerSuite) TestRun_HandlerCancelled() {
 
 	handlerStarted := make(chan struct{})
 	handlerDone := make(chan struct{})
-	handler := func(ctx context.Context, j *shared.EventJob) error {
+	handler := func(ctx context.Context, j *types.EventJob) error {
 		q.claimJob = nil
 		close(handlerStarted)
 		<-ctx.Done()
@@ -281,7 +282,7 @@ func (s *TaskSchedulerSuite) TestRun_HandlerCancelled() {
 		return ctx.Err()
 	}
 
-	sched, _ := NewTaskScheduler(q, TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -320,7 +321,7 @@ func (s *TaskSchedulerSuite) TestRun_HandlerCancelled() {
 
 func (s *TaskSchedulerSuite) TestRun_CompleteError() {
 	q := newMockQueueChannels(1)
-	job := &shared.EventJob{
+	job := &types.EventJob{
 		SessionEventIdentifier: "evt-complete-err",
 		QueuedBy:               "sess-1",
 		Attempts:               0,
@@ -328,12 +329,12 @@ func (s *TaskSchedulerSuite) TestRun_CompleteError() {
 	q.claimJob = job
 	q.completeErr = errors.New("complete failed")
 
-	handler := func(ctx context.Context, j *shared.EventJob) error {
+	handler := func(ctx context.Context, j *types.EventJob) error {
 		q.claimJob = nil
 		return nil
 	}
 
-	sched, _ := NewTaskScheduler(q, TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -351,7 +352,7 @@ func (s *TaskSchedulerSuite) TestRun_CompleteError() {
 
 func (s *TaskSchedulerSuite) TestRun_CancellationChannel() {
 	q := newMockQueueChannels(1)
-	job := &shared.EventJob{
+	job := &types.EventJob{
 		SessionEventIdentifier: "evt-cancel-ch",
 		QueuedBy:               "sess-1",
 		Attempts:               0,
@@ -359,13 +360,13 @@ func (s *TaskSchedulerSuite) TestRun_CancellationChannel() {
 	q.claimJob = job
 
 	cancelChCalled := make(chan struct{})
-	handler := func(ctx context.Context, j *shared.EventJob) error {
+	handler := func(ctx context.Context, j *types.EventJob) error {
 		q.claimJob = nil
 		<-ctx.Done()
 		return ctx.Err()
 	}
 
-	sched, _ := NewTaskScheduler(q, TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -398,12 +399,12 @@ func (s *TaskSchedulerSuite) TestRun_ClaimErrorOther() {
 	q := newMockQueueChannels(1)
 	q.claimErr = errors.New("some other error")
 
-	handler := func(ctx context.Context, job *shared.EventJob) error {
+	handler := func(ctx context.Context, job *types.EventJob) error {
 		s.Fail("handler should not be called")
 		return nil
 	}
 
-	sched, _ := NewTaskScheduler(q, TaskSchedulerConfig{Workers: 1}, handler)
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1}, handler)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -419,7 +420,7 @@ func (s *TaskSchedulerSuite) TestRun_ClaimErrorOther() {
 
 func (s *TaskSchedulerSuite) TestRun_ShutdownCancelsRunningJobs() {
 	q := newMockQueueChannels(1)
-	job := &shared.EventJob{
+	job := &types.EventJob{
 		SessionEventIdentifier: "evt-shutdown-cancel",
 		QueuedBy:               "sess-1",
 		Attempts:               0,
@@ -427,14 +428,14 @@ func (s *TaskSchedulerSuite) TestRun_ShutdownCancelsRunningJobs() {
 	q.claimJob = job
 
 	handlerStarted := make(chan struct{})
-	handler := func(ctx context.Context, j *shared.EventJob) error {
+	handler := func(ctx context.Context, j *types.EventJob) error {
 		q.claimJob = nil
 		close(handlerStarted)
 		<-ctx.Done()
 		return ctx.Err()
 	}
 
-	sched, _ := NewTaskScheduler(q, TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -470,8 +471,8 @@ func (s *TaskSchedulerSuite) TestRun_RunnableChannelClosed() {
 		cancellable: cancellable,
 	}
 
-	handler := func(ctx context.Context, job *shared.EventJob) error { return nil }
-	sched, _ := NewTaskScheduler(q, TaskSchedulerConfig{Workers: 1}, handler)
+	handler := func(ctx context.Context, job *types.EventJob) error { return nil }
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1}, handler)
 
 	ctx := context.Background()
 
@@ -492,7 +493,7 @@ func (s *TaskSchedulerSuite) TestRun_RunnableChannelClosed() {
 
 func (s *TaskSchedulerSuite) TestRun_ExecuteHeartbeatSuccess() {
 	q := newMockQueueChannels(1)
-	job := &shared.EventJob{
+	job := &types.EventJob{
 		SessionEventIdentifier: "evt-hb",
 		QueuedBy:               "sess-1",
 		Attempts:               0,
@@ -501,14 +502,14 @@ func (s *TaskSchedulerSuite) TestRun_ExecuteHeartbeatSuccess() {
 
 	handlerStarted := make(chan struct{})
 	blockCh := make(chan struct{})
-	handler := func(ctx context.Context, j *shared.EventJob) error {
+	handler := func(ctx context.Context, j *types.EventJob) error {
 		q.claimJob = nil
 		close(handlerStarted)
 		<-blockCh
 		return nil
 	}
 
-	sched, _ := NewTaskScheduler(q, TaskSchedulerConfig{Workers: 1, MaxAttempts: 2, HeartbeatInterval: 10 * time.Millisecond}, handler)
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2, HeartbeatInterval: 10 * time.Millisecond}, handler)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -537,7 +538,7 @@ func (s *TaskSchedulerSuite) TestRun_ExecuteHeartbeatSuccess() {
 
 func (s *TaskSchedulerSuite) TestRun_ExecuteHeartbeatError() {
 	q := newMockQueueChannels(1)
-	job := &shared.EventJob{
+	job := &types.EventJob{
 		SessionEventIdentifier: "evt-hb-err",
 		QueuedBy:               "sess-1",
 		Attempts:               0,
@@ -547,14 +548,14 @@ func (s *TaskSchedulerSuite) TestRun_ExecuteHeartbeatError() {
 
 	handlerStarted := make(chan struct{})
 	blockCh := make(chan struct{})
-	handler := func(ctx context.Context, j *shared.EventJob) error {
+	handler := func(ctx context.Context, j *types.EventJob) error {
 		q.claimJob = nil
 		close(handlerStarted)
 		<-blockCh
 		return nil
 	}
 
-	sched, _ := NewTaskScheduler(q, TaskSchedulerConfig{Workers: 1, MaxAttempts: 2, HeartbeatInterval: 10 * time.Millisecond}, handler)
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2, HeartbeatInterval: 10 * time.Millisecond}, handler)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -588,8 +589,8 @@ func (s *TaskSchedulerSuite) TestRun_CancellableChannelClosed() {
 		cancellable: cancellable,
 	}
 
-	handler := func(ctx context.Context, job *shared.EventJob) error { return nil }
-	sched, _ := NewTaskScheduler(q, TaskSchedulerConfig{Workers: 1}, handler)
+	handler := func(ctx context.Context, job *types.EventJob) error { return nil }
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1}, handler)
 
 	ctx := context.Background()
 
@@ -615,7 +616,7 @@ func (s *TaskSchedulerSuite) TestRun_CancellableChannelClosed() {
 type mockQueue struct {
 	runnable     chan struct{}
 	cancellable  chan string
-	claimJob     *shared.EventJob
+	claimJob     *types.EventJob
 	claimErr     error
 	completeErr  error
 	heartbeatErr error
@@ -705,7 +706,7 @@ func (m *mockQueue) Listen(ctx context.Context) (<-chan struct{}, <-chan string,
 	return m.runnable, m.cancellable, nil
 }
 
-func (m *mockQueue) Claim(ctx context.Context, owner string) (*shared.EventJob, error) {
+func (m *mockQueue) Claim(ctx context.Context, owner string) (*types.EventJob, error) {
 	if m.claimErr != nil {
 		return nil, m.claimErr
 	}
@@ -767,4 +768,4 @@ func (m *mockQueue) Fail(ctx context.Context, id string, cause error) error {
 	return nil
 }
 
-var _ shared.Queue = (*mockQueue)(nil)
+var _ interfaces.Queue = (*mockQueue)(nil)

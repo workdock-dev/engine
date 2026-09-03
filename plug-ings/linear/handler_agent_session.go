@@ -8,6 +8,7 @@ import (
 	"log/slog"
 
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
+	agent_session_types "github.com/workdock-dev/engine/features/agent_session/types"
 	"github.com/workdock-dev/engine/plug-ings/linear/helpers"
 	"github.com/workdock-dev/engine/plug-ings/linear/interfaces"
 	"github.com/workdock-dev/engine/plug-ings/linear/types"
@@ -45,7 +46,7 @@ func (h *AgentSessionHandler) Ingest(event shared.DomainEvent) (*shared.Session,
 		"seed", nil,
 	)
 
-	key, err := shared.GenerateIdempotencyKey(map[string]any{
+	key, err := agent_session_types.GenerateIdempotencyKey(map[string]any{
 		"id":        linearEvent.AgentSession.ID,
 		"timestamp": linearEvent.AgentSession.UpdatedAt,
 		"seed":      nil,

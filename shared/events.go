@@ -15,10 +15,11 @@
 package shared
 
 const (
-	EventType_GitHubConnected    = "github.connected"
-	EventType_LinearIssue        = "linear.issue"
-	EventType_LinearAgentSession = "linear.agent_session"
-	EventType_OrganizationCreate = "organization.create"
+	EventType_LinearIssue           = "linear.issue"
+	EventType_LinearAgentSession    = "linear.agent_session"
+	EventType_OrganizationCreate    = "organization.create"
+	EventType_GitResetConnection    = "git.reset_connection"
+	EventType_GitCompleteConnection = "git.complete_connection"
 	// EventType_Webhook                 = "webhook"
 	// EventType_PullRequestCommented    = "pull_request.comment"
 	// EventType_PullRequestChecksFailed = "pull_request.checks_failed"
@@ -49,16 +50,6 @@ const (
 
 // *--------------------------------------------------------------------------*
 
-type GitHubConnectedEvent struct {
-	Connection GitHubConnection
-}
-
-func (e GitHubConnectedEvent) EventType() string {
-	return EventType_GitHubConnected
-}
-
-// *--------------------------------------------------------------------------*
-
 type LinearIssueEvent[T any] struct {
 	Payload T
 }
@@ -85,6 +76,29 @@ type OrganizationCreateEvent struct {
 
 func (e OrganizationCreateEvent) EventType() string {
 	return EventType_OrganizationCreate
+}
+
+// *--------------------------------------------------------------------------*
+
+type GitCompleteConnectionEvent struct {
+	Repos          []string
+	InstallationId string
+	Token          []byte
+}
+
+func (e GitCompleteConnectionEvent) EventType() string {
+	return EventType_GitCompleteConnection
+}
+
+// *--------------------------------------------------------------------------*
+
+type GitResetConnectionEvent struct {
+	Repos          []string
+	InstallationId string
+}
+
+func (e GitResetConnectionEvent) EventType() string {
+	return EventType_GitResetConnection
 }
 
 // type WebhookEvent struct {

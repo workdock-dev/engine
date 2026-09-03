@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package postgres_client
+package infrastructure
 
 import (
 	"context"
@@ -23,7 +23,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/suite"
-	"github.com/workdock-dev/engine/shared"
+	"github.com/workdock-dev/engine/features/agent_session/types"
 )
 
 type EventQueueSuite struct {
@@ -52,8 +52,8 @@ func (s *EventQueueSuite) TestClaim_Success() {
 	s.pool.queryRowFn = func(ctx context.Context, sql string, args ...any) pgx.Row {
 		return &mockRow{scanFn: func(dest ...any) error {
 			*dest[0].(*string) = "event-1"
-			*dest[1].(*shared.EventJobStatus) = shared.EventJobStatus("queued")
-			*dest[2].(*shared.EventJobStatus) = shared.EventJobStatus("running")
+			*dest[1].(*types.EventJobStatus) = types.EventJobStatus("queued")
+			*dest[2].(*types.EventJobStatus) = types.EventJobStatus("running")
 			*dest[3].(*int) = 1
 			now := time.Now().UTC()
 			*dest[4].(**time.Time) = &now

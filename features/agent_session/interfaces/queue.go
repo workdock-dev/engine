@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package shared
+package interfaces
 
 import (
 	"context"
 	"errors"
+
+	"github.com/workdock-dev/engine/features/agent_session/types"
 )
 
 // ErrJobNotRunnable is returned by Claim when the job is not eligible for
@@ -24,7 +26,7 @@ import (
 var ErrJobNotRunnable = errors.New("job is not runnable")
 
 type Queue interface {
-	Claim(ctx context.Context, owner string) (*EventJob, error)
+	Claim(ctx context.Context, owner string) (*types.EventJob, error)
 	Heartbeat(ctx context.Context, id string) error
 	Complete(ctx context.Context, id string) error
 	Retry(ctx context.Context, id string, cause error) error

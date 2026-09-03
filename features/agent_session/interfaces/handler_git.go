@@ -32,14 +32,10 @@ type GitHandler interface {
 	// was created
 	GetLatestChangesComand() string
 
+	// GetGitAccess returns the git access configuration for the given provider
+	GetGitAccess(ctx context.Context, connection *shared.GitHubConnection) (*GitAccess, error)
+
 	// ParseLatestChangesResult receives the changes procude by the latest changes command
 	// and parse it to a concrete domain type
 	ParseLatestChangesResult(changes string) *shared.PullRequest
-
-	// VerifyRepoAccess verifies whether the platform connection associated
-	// with the session has access to the specified repository.
-	VerifyRepoAccess(ctx context.Context, sessionEventIdentifier string, repo *string) (*GitAccess, error)
-
-	// RequestConnection requests access to the specified repository.
-	RequestConnection(ctx context.Context, sessionEventIdentifier, repo string) error
 }

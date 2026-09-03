@@ -25,10 +25,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lmittmann/tint"
 	"github.com/workdock-dev/engine/features/agent_session"
 	agent_session_infrastructure "github.com/workdock-dev/engine/features/agent_session/infrastructure"
+	agent_session_types "github.com/workdock-dev/engine/features/agent_session/types"
 	oauth20 "github.com/workdock-dev/engine/features/oauth2.0"
 	"github.com/workdock-dev/engine/features/organization"
 	organization_infrastructure "github.com/workdock-dev/engine/features/organization/infrastructure"
@@ -37,23 +39,19 @@ import (
 	"github.com/workdock-dev/engine/infrastructure/in_memory_secrets"
 	"github.com/workdock-dev/engine/infrastructure/infisical_client"
 	"github.com/workdock-dev/engine/infrastructure/otlp_client"
-	"github.com/workdock-dev/engine/infrastructure/postgres_client"
 	"github.com/workdock-dev/engine/infrastructure/server"
-	async "github.com/workdock-dev/engine/infrastructure/task_scheduler"
-	"github.com/workdock-dev/engine/shared"
-	"gopkg.in/yaml.v3"
-
 	"github.com/workdock-dev/engine/plug-ings/daytona"
+	daytona_types "github.com/workdock-dev/engine/plug-ings/daytona/types"
 	"github.com/workdock-dev/engine/plug-ings/github"
 	github_infra "github.com/workdock-dev/engine/plug-ings/github/infrastructure"
+	github_types "github.com/workdock-dev/engine/plug-ings/github/types"
 	"github.com/workdock-dev/engine/plug-ings/linear"
 	linear_infra "github.com/workdock-dev/engine/plug-ings/linear/infrastructure"
-	"github.com/workdock-dev/engine/plug-ings/opencode"
-
-	daytona_types "github.com/workdock-dev/engine/plug-ings/daytona/types"
-	github_types "github.com/workdock-dev/engine/plug-ings/github/types"
 	linear_types "github.com/workdock-dev/engine/plug-ings/linear/types"
+	"github.com/workdock-dev/engine/plug-ings/opencode"
 	opencode_types "github.com/workdock-dev/engine/plug-ings/opencode/types"
+	"github.com/workdock-dev/engine/shared"
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
@@ -71,8 +69,10 @@ type Config struct {
 	// infrastructure configuration
 	Infisical infisical_client.InfisicalServiceConfig `yaml:"infisical"`
 	Secrets   SecretsConfig                           `yaml:"secrets"`
-	Postgres  postgres_client.PostgresServiceConfig   `yaml:"postgres"`
-	Otlp      *otlp_client.Config                     `yaml:"otlp"`
+	Postgres  struct {
+		DatabaseUrl string `yaml:"database_url"`
+	} `yaml:"postgres"`
+	Otlp *otlp_client.Config `yaml:"otlp"`
 }
 
 // SecretsConfig selects the secrets provider the engine wires as
@@ -101,6 +101,10 @@ func loadConfig(path string) (*Config, error) {
 }
 
 func main() {
+	// *-------------------------------------------------------------------------*
+	// * Load config                                                             *
+	// *-------------------------------------------------------------------------*
+
 	cfg, err := loadConfig("config.yaml")
 
 	if err != nil {
@@ -117,6 +121,10 @@ func main() {
 	if cfg.ServiceName != "" {
 		serviceName = cfg.ServiceName
 	}
+
+	// *-------------------------------------------------------------------------*
+	// * Setup logging                                                           *
+	// *-------------------------------------------------------------------------*
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -136,6 +144,10 @@ func main() {
 		slog.SetDefault(logger)
 	}
 
+	// *-------------------------------------------------------------------------*
+	// * Setup secrets manager                                                   *
+	// *-------------------------------------------------------------------------*
+
 	var secretManager shared.ForSecrets
 
 	switch cfg.Secrets.Mode {
@@ -148,7 +160,10 @@ func main() {
 		secretManager = infisicalClient
 	}
 
-	// Create infrastructure
+	// *-------------------------------------------------------------------------*
+	// * Setup infrastructure                                                    *
+	// *-------------------------------------------------------------------------*
+
 	eventBus := event_bus.NewInMemoryEventBus()
 
 	linearClient, err := linear_infra.NewClient(cfg.Linear, secretManager)
@@ -157,30 +172,34 @@ func main() {
 	githubClient, err := github_infra.NewClient(cfg.Github)
 	exit(err)
 
-	postgresClient, err := postgres_client.New(ctx, cfg.Postgres)
+	postgres, err := pgxpool.New(context.Background(), cfg.Postgres.DatabaseUrl)
 	exit(err)
 
-	postgresEventQueue, err := postgres_client.NewEventQueue(ctx, postgresClient)
+	postgresRawConn, err := pgx.Connect(ctx, cfg.Postgres.DatabaseUrl)
 	exit(err)
 
 	server, err := server.New(cfg.ServerAddress)
 	exit(err)
 
-	postgres, err := pgxpool.New(context.Background(), cfg.Postgres.DatabaseUrl)
-	exit(err)
+	// *-------------------------------------------------------------------------*
+	// * Setup plug-ings                                                         *
+	// *-------------------------------------------------------------------------*
 
-	// Create and configure features
+	linearAgentSessionHandler := linear.NewAgentSessionHandler(linearClient, secretManager)
+	githubGitHandler := github.NewGitHandler(cfg.Github, githubClient, secretManager)
+	daytonaSandboxHandler := daytona.NewSandboxHandler(cfg.Daytona)
+	opencodeHarnessHandler := opencode.NewHarnessHandler(cfg.Opencode)
+
+	// *-------------------------------------------------------------------------*
+	// * Setup application                                                       *
+	// *-------------------------------------------------------------------------*
+
 	webhook.New(
 		"POST /github/webhook",
 		server.Mux(),
 		github.NewWEventTransformer(),
 		github.NewWEventVerifier(cfg.Github),
-		github.NewWEventConsumer(
-			githubClient,
-			postgresClient,
-			secretManager,
-			eventBus,
-		),
+		github.NewWEventConsumer(githubClient, eventBus),
 	)
 
 	oauth20.New(
@@ -203,46 +222,46 @@ func main() {
 		organization_infrastructure.NewPostgres(postgres),
 	)
 
-	agentSessionPostgres := agent_session_infrastructure.NewPostgres(postgres)
-	agentSessionHandler := agent_session.New(
-		agent_session.AgentHandlerRegistry{
-			string(shared.PlatformProvider_Linear): linear.NewAgentSessionHandler(
-				linearClient,
-				secretManager,
-			),
-		},
-		agent_session.GitHandlerRegistry{
-			string(shared.PlatformProvider_GitHub): github.NewGitHandler(
-				cfg.Github,
-				postgresClient,
-				githubClient,
-				secretManager,
-			),
-		},
-		agent_session.SandboxHandlerRegistry{
-			string(shared.PlatformProvider_Daytona): daytona.NewSandboxHandler(cfg.Daytona),
-		},
-		agent_session.HarnessHandlerRegistry{
-			string(shared.HarnessProvider_OpenCode): opencode.NewHarnessHandler(cfg.Opencode),
-		},
-		eventBus,
-		agentSessionPostgres,
-		agentSessionPostgres,
-	)
-
-	taskScheduler, err := async.NewTaskScheduler(
-		postgresEventQueue,
-		async.TaskSchedulerConfig{
-			Workers:       cfg.Workers,
-			LeaseDuration: time.Duration(cfg.WorkerLeaseSeconds) * time.Second,
-		},
-		agentSessionHandler,
-	)
-	exit(err)
+	// *-------------------------------------------------------------------------*
+	// * Start application                                                       *
+	// *-------------------------------------------------------------------------*
 
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		taskScheduler.Run(ctx)
+
+		// *-------------------------------------------------------------------------*
+		// * Setup core application feature                                          *
+		// *-------------------------------------------------------------------------*
+
+		agentSessionPostgres := agent_session_infrastructure.NewPostgres(postgres)
+		agentSessionPostgresQueue := agent_session_infrastructure.NewEventQueue(postgres, postgresRawConn)
+
+		err := agent_session.New(
+			ctx,
+			agent_session_types.TaskSchedulerConfig{
+				Workers:       cfg.Workers,
+				LeaseDuration: time.Duration(cfg.WorkerLeaseSeconds) * time.Second,
+			},
+			agent_session.AgentHandlerRegistry{
+				string(shared.PlatformProvider_Linear): linearAgentSessionHandler,
+			},
+			agent_session.GitHandlerRegistry{
+				string(shared.PlatformProvider_GitHub): githubGitHandler,
+			},
+			agent_session.SandboxHandlerRegistry{
+				string(shared.PlatformProvider_Daytona): daytonaSandboxHandler,
+			},
+			agent_session.HarnessHandlerRegistry{
+				string(shared.HarnessProvider_OpenCode): opencodeHarnessHandler,
+			},
+			eventBus,
+			secretManager,
+			agentSessionPostgres,
+			agentSessionPostgres,
+			agentSessionPostgres,
+			agentSessionPostgresQueue,
+		)
+		exit(err)
 	})
 
 	if cfg.Otlp != nil && cfg.Otlp.Slog != nil {

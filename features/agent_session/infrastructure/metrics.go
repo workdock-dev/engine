@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package async
+package infrastructure
 
 import (
 	"context"
 	"errors"
 	"reflect"
 
+	"github.com/workdock-dev/engine/features/agent_session/interfaces"
 	"github.com/workdock-dev/engine/shared"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -153,7 +154,7 @@ func errorType(err error) string {
 		{"ErrGitHubInstallationUnavailable", shared.ErrGitHubInstallationUnavailable},
 		{"ErrGitHubConnectionReRequested", shared.ErrGitConnectionReRequested},
 		{"ErrHarnessUnhealthy", shared.ErrHarnessUnhealthy},
-		{"ErrJobNotRunnable", shared.ErrJobNotRunnable},
+		{"ErrJobNotRunnable", interfaces.ErrJobNotRunnable},
 	}
 
 	for _, k := range known {

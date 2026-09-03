@@ -13,55 +13,6 @@ import (
 	"github.com/workdock-dev/engine/shared"
 )
 
-// ResetInstallation cleans up a GitHub installation that is no longer
-// available: it disconnects the specified repositories linked to it and deletes its
-// stored credentials, so future sessions request a fresh GitHub connection.
-func resetInstallation(
-	ctx context.Context,
-	repository interfaces.Repository,
-	secretManager shared.ForSecrets,
-	installationId string,
-	repos []string,
-) error {
-	if err := repository.ResetGitHubConnection(ctx, installationId, repos); err != nil {
-		return err
-	}
-
-	if err := secretManager.Delete(ctx, types.GitHub_SecretPath, installationId); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// batchGitHubConnections links each repository to the given installation
-func batchGitHubConnections(
-	ctx context.Context,
-	repository interfaces.Repository,
-	installationId string,
-	repos []string,
-) ([]shared.GitHubConnection, error) {
-	// TODO: Refactor this to a batch upsert
-	connections := make([]shared.GitHubConnection, 0, len(repos))
-
-	for i, repo := range repos {
-		connection := &shared.GitHubConnection{
-			SessionEventIdentifier: nil,
-			RepoFullName:           repo,
-			Connected:              true,
-			InstallationId:         &installationId,
-		}
-
-		if err := repository.UpsertGitHubConnection(ctx, connection); err != nil {
-			return nil, err
-		}
-
-		connections[i] = *connection
-	}
-
-	return connections, nil
-}
-
 // getGitHubAccessToken retrieves the GitHub installation access token for a
 // given installation from the secrets store.
 //
