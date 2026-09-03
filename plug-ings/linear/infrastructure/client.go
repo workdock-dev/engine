@@ -17,19 +17,13 @@ package infrastructure
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"crypto/subtle"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 
@@ -354,72 +348,6 @@ func (s *Client) GetIssueLabels(ctx context.Context, accessToken string, issueId
 	return result.Issue.Labels.Nodes, nil
 }
 
-// Webhook validates and parses an incoming Linear webhook request.
-//
-//   - Verifies that the request originates from an authorized Linear IP address.
-//   - Validates the webhook signature to ensure the payload is authentic and
-//     untampered.
-//   - Enforces Linear's timestamp window to protect against replay attacks.
-//   - Deserializes the webhook payload into the application's domain model for
-//     downstream processing.
-//
-// Requests that fail origin, signature, or timestamp validation are rejected
-// before any business logic is executed.
-func (s *Client) Webhook(ctx context.Context, req shared.WebhookRequest) (any, shared.WebhookEventType, error) {
-	if !s.isAllowedIP(req) {
-		slog.Error("received request from invalid IP", "ip", s.clientIP(req))
-		return nil, shared.WebhookEventType_Unknown, shared.ErrForbidden
-	}
-
-	rawBody, err := io.ReadAll(req.Body)
-
-	if err != nil {
-		slog.Error("failed to parse request body", "err", err)
-		return nil, shared.WebhookEventType_Unknown, shared.ErrBadRequest
-	}
-
-	if !s.verifyWebhookSignature(req.Get("Linear-Signature"), rawBody) {
-		slog.Error("failed verifying request signature")
-		return nil, shared.WebhookEventType_Unknown, shared.ErrUnAuthorized
-	}
-
-	eventType := req.Get("Linear-Event")
-
-	if eventType == "Issue" {
-		var issuePayload types.IssueStatusChangePayload
-
-		if err := json.Unmarshal(rawBody, &issuePayload); err != nil {
-			slog.Error("failed to unmarshal issue payload", "err", err)
-			return nil, shared.WebhookEventType_Unknown, shared.ErrBadRequest
-		}
-
-		diff := time.Since(time.UnixMilli(issuePayload.WebhookTimestamp))
-
-		if diff < -60*time.Second || diff > 60*time.Second {
-			slog.Error("request is past the 60 seconds expectation from linear")
-			return nil, shared.WebhookEventType_Unknown, shared.ErrUnAuthorized
-		}
-
-		return &issuePayload, shared.WebhookEventType_IssueStateUpdated, nil
-	}
-
-	var payload types.AgentSessionEventData
-
-	if err := json.Unmarshal(rawBody, &payload); err != nil {
-		slog.Error("failed unmarshing request bosy", "err", err)
-		return nil, shared.WebhookEventType_Unknown, shared.ErrBadRequest
-	}
-
-	diff := time.Since(time.UnixMilli(payload.WebhookTimestamp))
-
-	if diff < -60*time.Second || diff > 60*time.Second {
-		slog.Error("request is past the 60 seconds expectation from linear")
-		return nil, shared.WebhookEventType_Unknown, shared.ErrUnAuthorized
-	}
-
-	return &payload, shared.WebhookEventType_AIRequest, nil
-}
-
 // doRequest executes an authenticated GraphQL request against the Linear API.
 //
 //   - Sends a GraphQL operation using the provided access token.
@@ -488,70 +416,6 @@ func (s *Client) doRequest(ctx context.Context, query string, variables map[stri
 	}
 
 	return gqlResp.Data, nil
-}
-
-// verifyWebhookSignature validates that a webhook request was signed by Linear.
-//
-//   - Computes the expected HMAC-SHA256 signature using the configured webhook
-//     secret.
-//   - Compares the computed signature with the signature provided by Linear using
-//     a constant-time comparison to prevent timing attacks.
-//
-// A successful verification confirms the request originated from a trusted
-// source and that the payload was not modified in transit.
-func (s *Client) verifyWebhookSignature(headerSignature string, body []byte) bool {
-	if headerSignature == "" {
-		return false
-	}
-
-	expected, err := hex.DecodeString(headerSignature)
-
-	if err != nil {
-		return false
-	}
-
-	mac := hmac.New(sha256.New, []byte(s.config.WebhookSecret))
-	mac.Write(body)
-
-	return subtle.ConstantTimeCompare(mac.Sum(nil), expected) == 1
-}
-
-// isAllowedIP determines whether a webhook request originates from a trusted
-// Linear IP address.
-//
-// Requests originating from untrusted IP addresses should be rejected before
-// processing.
-func (s *Client) isAllowedIP(req shared.WebhookRequest) bool {
-	ip := s.clientIP(req)
-	return slices.Contains(s.config.IPs, ip)
-}
-
-// clientIP extracts the originating client IP address from an HTTP request.
-//
-//   - Prefers proxy forwarding headers when the application is deployed behind a
-//     reverse proxy or load balancer.
-//   - Falls back to the remote connection address when no forwarding information
-//     is available.
-//
-// The returned IP is intended for request validation and auditing.
-func (s *Client) clientIP(req shared.WebhookRequest) string {
-	if xff := req.Get("X-Forwarded-For"); xff != "" {
-		if ip := strings.TrimSpace(strings.Split(xff, ",")[0]); ip != "" {
-			return ip
-		}
-	}
-
-	if xri := req.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
-
-	host, _, err := net.SplitHostPort(req.RemoteAddr)
-
-	if err != nil {
-		return req.RemoteAddr
-	}
-
-	return host
 }
 
 // exchangeCode exchanges a Linear OAuth authorization code for an access token.

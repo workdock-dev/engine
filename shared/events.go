@@ -25,29 +25,6 @@ const (
 	// EventType_PullRequestChecksFailed = "pull_request.checks_failed"
 )
 
-// WebhookEventType indicates the kind of domain event a webhook payload
-// represents. Platforms return this alongside the parsed payload so the
-// application can route the event to the correct handler.
-type WebhookEventType string
-
-const (
-	// // WebhookEventType_Unknown is the default webhook event type when the
-	// // specific type cannot be determined or is not relevant.
-	WebhookEventType_Unknown WebhookEventType = "unknown"
-
-	// // WebhookEventType_AIRequest is returned when a webhook represents an
-	// // AI agent session request (e.g. a new comment or agent session event).
-	WebhookEventType_AIRequest WebhookEventType = "ai-request"
-
-	// // WebhookEventType_IssueStateUpdated is returned when a webhook represents
-	// // an issue state change (e.g. a ticket moved to "Done").
-	WebhookEventType_IssueStateUpdated WebhookEventType = "issue-state-updated"
-
-	// // WebhookEventType_Git is returned when a webhook represents a Git event
-	// // (e.g. a pull request comment).
-	WebhookEventType_Git WebhookEventType = "git"
-)
-
 // *--------------------------------------------------------------------------*
 
 type LinearIssueEvent[T any] struct {
