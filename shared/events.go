@@ -15,34 +15,33 @@
 package shared
 
 const (
-	EventType_LinearIssue           = "linear.issue"
-	EventType_LinearAgentSession    = "linear.agent_session"
-	EventType_OrganizationCreate    = "organization.create"
-	EventType_GitResetConnection    = "git.reset_connection"
-	EventType_GitCompleteConnection = "git.complete_connection"
-	// EventType_Webhook                 = "webhook"
-	// EventType_PullRequestCommented    = "pull_request.comment"
-	// EventType_PullRequestChecksFailed = "pull_request.checks_failed"
+	EventType_IssueChange             = "issue.changed"
+	EventType_AgentSession            = "agent_session.prompt"
+	EventType_OrganizationCreate      = "organization.create"
+	EventType_GitResetConnection      = "git.reset_connection"
+	EventType_GitCompleteConnection   = "git.complete_connection"
+	EventType_PullRequestCommented    = "pull_request.comment"
+	EventType_PullRequestChecksFailed = "pull_request.checks_failed"
 )
 
 // *--------------------------------------------------------------------------*
 
-type LinearIssueEvent[T any] struct {
+type IssueChangedEvent[T any] struct {
 	Payload T
 }
 
-func (e LinearIssueEvent[T]) EventType() string {
-	return EventType_LinearIssue
+func (e IssueChangedEvent[T]) EventType() string {
+	return EventType_IssueChange
 }
 
 // *--------------------------------------------------------------------------*
 
-type LinearAgentSession[T any] struct {
+type AgentSessionEvent[T any] struct {
 	Payload T
 }
 
-func (e LinearAgentSession[T]) EventType() string {
-	return EventType_LinearAgentSession
+func (e AgentSessionEvent[T]) EventType() string {
+	return EventType_AgentSession
 }
 
 // *--------------------------------------------------------------------------*
@@ -72,45 +71,36 @@ func (e GitCompleteConnectionEvent) EventType() string {
 type GitResetConnectionEvent struct {
 	Repos          []string
 	InstallationId string
+	Delete         bool
 }
 
 func (e GitResetConnectionEvent) EventType() string {
 	return EventType_GitResetConnection
 }
 
-// type WebhookEvent struct {
-// 	Provider PlatformProvider
-// 	Payload  any
-// 	Type     WebhookEventType
-// }
+// *--------------------------------------------------------------------------*
 
-// func (e WebhookEvent) EventType() string {
-// 	return EventType_Webhook + "." + string(e.Provider)
-// }
+type PullRequestCommentedEvent struct {
+	Provider       PlatformProvider
+	GitRef         string
+	InstallationId string
+	RepoFullName   string
+}
 
-// func PlatformWebhookEvent(name PlatformProvider) string {
-// 	return EventType_Webhook + "." + string(name)
-// }
+func (e PullRequestCommentedEvent) EventType() string {
+	return EventType_PullRequestCommented
+}
 
-// type PullRequestCommentedEvent struct {
-// 	Provider       PlatformProvider
-// 	GitRef         string
-// 	InstallationId string
-// 	RepoFullName   string
-// }
+// *--------------------------------------------------------------------------*
 
-// func (e PullRequestCommentedEvent) EventType() string {
-// 	return EventType_PullRequestCommented
-// }
+type PullRequestChecksFailedEvent struct {
+	Provider       PlatformProvider
+	GitRef         string
+	InstallationId string
+	RepoFullName   string
+	ChecksFailed   []string
+}
 
-// type PullRequestChecksFailedEvent struct {
-// 	Provider       PlatformProvider
-// 	GitRef         string
-// 	InstallationId string
-// 	RepoFullName   string
-// 	ChecksFailed   []string
-// }
-
-// func (e PullRequestChecksFailedEvent) EventType() string {
-// 	return EventType_PullRequestChecksFailed
-// }
+func (e PullRequestChecksFailedEvent) EventType() string {
+	return EventType_PullRequestChecksFailed
+}

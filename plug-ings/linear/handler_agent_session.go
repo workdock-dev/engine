@@ -31,10 +31,10 @@ func NewAgentSessionHandler(
 }
 
 func (h *AgentSessionHandler) Ingest(event shared.DomainEvent) (*shared.Session, *shared.SessionEvent, error) {
-	agentSessionEvent, ok := event.(shared.LinearAgentSession[types.AgentSessionEventData])
+	agentSessionEvent, ok := event.(shared.AgentSessionEvent[types.AgentSessionEventData])
 
 	if !ok {
-		return nil, nil, fmt.Errorf("failed to ingest linear agent, expected %s got %s", shared.EventType_LinearAgentSession, event.EventType())
+		return nil, nil, fmt.Errorf("failed to ingest linear agent, expected %s got %s", shared.EventType_AgentSession, event.EventType())
 	}
 
 	linearEvent := agentSessionEvent.Payload
@@ -63,12 +63,6 @@ func (h *AgentSessionHandler) Ingest(event shared.DomainEvent) (*shared.Session,
 		return nil, nil, err
 	}
 
-	// var gitRef *string
-
-	// if from != nil && from.GitRef != nil {
-	// 	gitRef = from.GitRef
-	// }
-
 	session := &shared.Session{
 		OrganizationIdentifier: linearEvent.OrganizationID,
 		Identifier:             linearEvent.AgentSession.ID,
@@ -82,9 +76,6 @@ func (h *AgentSessionHandler) Ingest(event shared.DomainEvent) (*shared.Session,
 		SessionIdentifier: session.Identifier,
 		Identifier:        key,
 		Payload:           payload,
-		// GitRef:            gitRef, // When set, pull request is associated
-		// Result not set, is that ok?
-		// Seed: seed,
 	}
 
 	return session, sessionEvent, nil

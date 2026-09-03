@@ -199,7 +199,7 @@ func main() {
 		server.Mux(),
 		github.NewWEventTransformer(),
 		github.NewWEventVerifier(cfg.Github),
-		github.NewWEventConsumer(githubClient, eventBus),
+		github.NewWEventConsumer(cfg.Github, githubClient, eventBus),
 	)
 
 	oauth20.New(

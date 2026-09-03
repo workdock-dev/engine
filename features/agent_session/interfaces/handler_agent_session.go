@@ -15,8 +15,7 @@ type PromptContext struct {
 // AgentSessionHandler is the interfaces required to be implemented
 // by work platforms that provides agent assignment to tickets
 type AgentSessionHandler interface {
-	// Ingest parses the agent session domain event into into domain session
-	// and session event.
+	// Ingest transform the work platform agent session payload into the domain session
 	Ingest(event shared.DomainEvent) (*shared.Session, *shared.SessionEvent, error)
 
 	// GetCredentials returns the access token required to send agent session updates

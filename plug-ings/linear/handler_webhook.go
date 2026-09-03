@@ -188,7 +188,7 @@ func (c *WEventConsumer) Consume(_ context.Context, event *webhook.VerifiedWEven
 			return err
 		}
 
-		c.eventBus.Publish(context.Background(), shared.LinearIssueEvent[types.IssueStatusChangePayload]{
+		c.eventBus.Publish(context.Background(), shared.IssueChangedEvent[types.IssueStatusChangePayload]{
 			Payload: payload,
 		})
 
@@ -208,7 +208,7 @@ func (c *WEventConsumer) Consume(_ context.Context, event *webhook.VerifiedWEven
 			return err
 		}
 
-		c.eventBus.Publish(context.Background(), shared.LinearAgentSession[types.AgentSessionEventData]{
+		c.eventBus.Publish(context.Background(), shared.AgentSessionEvent[types.AgentSessionEventData]{
 			Payload: payload,
 		})
 

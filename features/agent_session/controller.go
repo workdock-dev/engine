@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/workdock-dev/engine/features/agent_session/infrastructure"
 	"github.com/workdock-dev/engine/features/agent_session/interfaces"
@@ -98,21 +99,25 @@ func New(
 	return r.taskScheduler.Run(ctx)
 }
 
-func (r *controller) init() error {
+func (c *controller) init() error {
 	taskScheduler, err := infrastructure.NewTaskScheduler(
-		r.queue,
-		r.taskSchedulerConfig,
-		r.execute,
+		c.queue,
+		c.taskSchedulerConfig,
+		c.execute,
 	)
 
 	if err != nil {
 		return err
 	}
 
-	r.taskScheduler = taskScheduler
+	c.taskScheduler = taskScheduler
 
-	for provider, ingestor := range r.agentHandlerRegistry {
-		r.eventBus.Subscribe(provider, func(
+	// *-------------------------------------------------------------------------*
+	// * Configured domain event for agent session generated from work platform  *
+	// *-------------------------------------------------------------------------*
+
+	for provider, ingestor := range c.agentHandlerRegistry {
+		c.eventBus.Subscribe(provider, func(
 			ctx context.Context,
 			event shared.DomainEvent,
 		) error {
@@ -122,26 +127,24 @@ func (r *controller) init() error {
 				return err
 			}
 
-			// TODO: Fix this
-			// sessionEvent.Reason = reason
-
-			if org, err := r.organization.GetOrganization(ctx, session.OrganizationIdentifier); err != nil {
+			if org, err := c.organization.GetOrganization(ctx, session.OrganizationIdentifier); err != nil {
 				return err
 			} else if org == nil {
 				// TODO: Inform the user they need to initialize their account
 				// Received an agent session event from an unknown organization
-				return err
+				return fmt.Errorf("failed to start session, organization %s not found. did you authenticated?", session.OrganizationIdentifier)
 			}
 
-			if sess, err := r.session.GetAgentSession(ctx, session.Identifier); err != nil {
+			if sess, err := c.session.GetAgentSession(ctx, session.Identifier); err != nil {
 				return err
 			} else if sess == nil {
 				// Session doesn't exist, create it
-				if err := r.session.UpsertAgentSession(ctx, session); err != nil {
+				if err := c.session.UpsertAgentSession(ctx, session); err != nil {
 					return err
 				}
 			} else {
-				sEvent, err := r.session.GetAgentSessionEvent(ctx, sessionEvent.Identifier)
+				// Verify if the agent session event is a duplicate
+				sEvent, err := c.session.GetAgentSessionEvent(ctx, sessionEvent.Identifier)
 
 				if err != nil {
 					return err
@@ -155,7 +158,8 @@ func (r *controller) init() error {
 				session = sess
 			}
 
-			if err := r.session.CreateSessionEvent(ctx, sessionEvent); err != nil {
+			sessionEvent.Reason = shared.AgentSessionEventReason_Prompt
+			if err := c.session.CreateSessionEvent(ctx, sessionEvent); err != nil {
 				return err
 			}
 
@@ -164,30 +168,90 @@ func (r *controller) init() error {
 		})
 	}
 
-	r.eventBus.Subscribe(shared.EventType_GitResetConnection, func(ctx context.Context, event shared.DomainEvent) error {
+	// *-------------------------------------------------------------------------*
+	// * Configured domain event for agent session generated pr review comment   *
+	// *-------------------------------------------------------------------------*
+
+	c.eventBus.Subscribe(shared.EventType_PullRequestCommented, func(ctx context.Context, event shared.DomainEvent) error {
+		e, ok := event.(shared.PullRequestCommentedEvent)
+
+		if !ok {
+			return fmt.Errorf("expected a pull request commented event, received %s", event.EventType())
+		}
+
+		sessionEvent, err := c.session.GetAgentSessionEventByGitRef(ctx, e.GitRef, e.RepoFullName)
+
+		if err != nil {
+			return err
+		}
+
+		if sessionEvent == nil {
+			return fmt.Errorf("session event not found: %s@%s", e.GitRef, e.RepoFullName)
+		}
+
+		session, err := c.session.GetAgentSession(ctx, sessionEvent.SessionIdentifier)
+
+		if err != nil {
+			return err
+		}
+
+		if session == nil {
+			return fmt.Errorf("session not found: %s", sessionEvent.SessionIdentifier)
+		}
+
+		if err := c.session.CreateSessionEvent(ctx, &shared.SessionEvent{
+			SessionIdentifier: session.Identifier,
+			Identifier:        uuid.NewV7().String(),
+			Payload:           sessionEvent.Payload,
+			Seed:              &sessionEvent.Identifier,
+			GitRef:            &e.GitRef,
+			Reason:            shared.AgentSessionEventReason_PRComment,
+		}); err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	// TODO: Implement/check run failed domain subscription
+
+	// *-------------------------------------------------------------------------*
+	// * Configured domain event for removing git access                         *
+	// *-------------------------------------------------------------------------*
+
+	c.eventBus.Subscribe(shared.EventType_GitResetConnection, func(ctx context.Context, event shared.DomainEvent) error {
 		payload, ok := event.(shared.GitResetConnectionEvent)
 
 		if !ok {
 			return fmt.Errorf("expected event type %s got %s", shared.EventType_GitResetConnection, event.EventType())
 		}
 
-		if err := r.secretManager.Delete(ctx, "/github/installations", payload.InstallationId); err != nil {
-			return err
+		if payload.Delete {
+			if err := c.secretManager.Delete(ctx, "/github/installations", payload.InstallationId); err != nil {
+				return err
+			}
 		}
 
-		return r.git.ResetGitHubConnection(ctx, payload.InstallationId, payload.Repos)
+		return c.git.ResetGitHubConnection(ctx, payload.InstallationId, payload.Repos)
 	})
 
-	r.eventBus.Subscribe(shared.EventType_GitCompleteConnection, func(ctx context.Context, event shared.DomainEvent) error {
+	// *-------------------------------------------------------------------------*
+	// * Configured domain event to complete the git access connection           *
+	// *-------------------------------------------------------------------------*
+
+	c.eventBus.Subscribe(shared.EventType_GitCompleteConnection, func(ctx context.Context, event shared.DomainEvent) error {
 		payload, ok := event.(shared.GitCompleteConnectionEvent)
 
 		if !ok {
 			return fmt.Errorf("expected event type %s got %s", shared.EventType_GitCompleteConnection, event.EventType())
 		}
 
-		if err := r.secretManager.Set(ctx, "/github/installations", payload.InstallationId, string(payload.Token)); err != nil {
-			slog.Error("failed to store installation access token", "installation_id", payload.InstallationId, "err", err)
-			return err
+		// this case happens when a repo is being connected to an existent connection
+		if payload.Token != nil {
+			if err := c.secretManager.Set(ctx, "/github/installations", payload.InstallationId, string(payload.Token)); err != nil {
+				slog.Error("failed to store installation access token", "installation_id", payload.InstallationId, "err", err)
+				return err
+			}
 		}
 
 		for _, repo := range payload.Repos {
@@ -197,7 +261,7 @@ func (r *controller) init() error {
 				InstallationId: &payload.InstallationId,
 			}
 
-			if err := r.git.UpsertGitHubConnection(ctx, connection); err != nil {
+			if err := c.git.UpsertGitHubConnection(ctx, connection); err != nil {
 				return err
 			}
 		}
@@ -210,17 +274,17 @@ func (r *controller) init() error {
 
 // execute provisions and coordinates all the components to successfully run the
 // agent session's request based on a scheduled job
-func (r *controller) execute(ctx context.Context, job *types.EventJob) error {
-	sessionEvent, err := telemetry.Span(ctx, r.tracer, "session.get_event", func(ctx context.Context) (*shared.SessionEvent, error) {
-		return r.session.GetAgentSessionEvent(ctx, job.SessionEventIdentifier)
+func (c *controller) execute(ctx context.Context, job *types.EventJob) error {
+	sessionEvent, err := telemetry.Span(ctx, c.tracer, "session.get_event", func(ctx context.Context) (*shared.SessionEvent, error) {
+		return c.session.GetAgentSessionEvent(ctx, job.SessionEventIdentifier)
 	})
 
 	if err != nil || sessionEvent == nil {
 		return err
 	}
 
-	session, err := telemetry.Span(ctx, r.tracer, "session.get", func(ctx context.Context) (*shared.Session, error) {
-		return r.session.GetAgentSession(ctx, sessionEvent.SessionIdentifier)
+	session, err := telemetry.Span(ctx, c.tracer, "session.get", func(ctx context.Context) (*shared.Session, error) {
+		return c.session.GetAgentSession(ctx, sessionEvent.SessionIdentifier)
 	})
 
 	if err != nil || session == nil {
@@ -230,7 +294,7 @@ func (r *controller) execute(ctx context.Context, job *types.EventJob) error {
 	// *-------------------------------------------------------------------------*
 	// * Get provider: work platform, git hosting, harness, sandbox              *
 	// *-------------------------------------------------------------------------*
-	agentHandler, gitHandler, sandboxHandler, harnessHandler, err := r.getHandlers(session)
+	agentHandler, gitHandler, sandboxHandler, harnessHandler, err := c.getHandlers(session)
 
 	if err != nil {
 		return err
@@ -239,7 +303,7 @@ func (r *controller) execute(ctx context.Context, job *types.EventJob) error {
 	// *-------------------------------------------------------------------------*
 	// * Get providers credentials                                               *
 	// *-------------------------------------------------------------------------*
-	agentHandlerCredential, err := telemetry.Span(ctx, r.tracer, "session.get_agent_handler_credentials", func(ctx context.Context) (string, error) {
+	agentHandlerCredential, err := telemetry.Span(ctx, c.tracer, "session.get_agent_handler_credentials", func(ctx context.Context) (string, error) {
 		return agentHandler.GetCredentials(ctx, session.OrganizationIdentifier)
 	})
 
@@ -254,7 +318,7 @@ func (r *controller) execute(ctx context.Context, job *types.EventJob) error {
 	// *-------------------------------------------------------------------------*
 	// * Create prompt                                                           *
 	// *-------------------------------------------------------------------------*
-	prompt, err := r.getPrompt(ctx, agentHandler, agentHandlerCredential, session, sessionEvent)
+	prompt, err := c.getPrompt(ctx, agentHandler, agentHandlerCredential, session, sessionEvent)
 
 	if err != nil {
 		return err
@@ -263,7 +327,7 @@ func (r *controller) execute(ctx context.Context, job *types.EventJob) error {
 	// *-------------------------------------------------------------------------*
 	// * Verify git access                                                       *
 	// *-------------------------------------------------------------------------*
-	gitAccess, err := r.verifyGitAccess(ctx, agentHandler, agentHandlerCredential, gitHandler, session, sessionEvent)
+	gitAccess, err := c.verifyGitAccess(ctx, agentHandler, agentHandlerCredential, gitHandler, session)
 
 	if err != nil {
 		return err
@@ -277,7 +341,7 @@ func (r *controller) execute(ctx context.Context, job *types.EventJob) error {
 	// *-------------------------------------------------------------------------*
 	// * Configure, start sandbox and run harness                                *
 	// *-------------------------------------------------------------------------*
-	stdout, stderr, shutdown, err := r.sandbox(
+	stdout, stderr, shutdown, err := c.sandbox(
 		ctx,
 		agentHandler,
 		agentHandlerCredential,
@@ -295,12 +359,16 @@ func (r *controller) execute(ctx context.Context, job *types.EventJob) error {
 			result := shutdown(context.Background())
 
 			// *-------------------------------------------------------------------------*
-			// * Get exit command results
+			// * Parse exit command
 			// *-------------------------------------------------------------------------*
 			pr := gitHandler.ParseLatestChangesResult(result)
 
 			if pr != nil {
-				// TODO: Implemet what to do with this
+				sessionEvent.Result = &shared.SessionEventResult{
+					PullRequest: pr,
+				}
+				sessionEvent.GitRef = &pr.HeadRefName
+				c.session.UpdateSessionEventResult(ctx, sessionEvent)
 			}
 		}
 	}()
@@ -309,10 +377,12 @@ func (r *controller) execute(ctx context.Context, job *types.EventJob) error {
 		return err
 	}
 
+	// TODO: Implement/harness liveness probe
+
 	// *-------------------------------------------------------------------------*
 	// * Process harness output, blocks until work is completed or an error      *
 	// *-------------------------------------------------------------------------*
-	r.harness(
+	c.harness(
 		ctx,
 		stdout,
 		stderr,
@@ -326,35 +396,35 @@ func (r *controller) execute(ctx context.Context, job *types.EventJob) error {
 	return nil
 }
 
-func (r *controller) getHandlers(session *shared.Session) (
+func (c *controller) getHandlers(session *shared.Session) (
 	interfaces.AgentSessionHandler,
 	interfaces.GitHandler,
 	interfaces.SandboxHandler,
 	interfaces.HarnessHandler,
 	error,
 ) {
-	agentHandler, ok := r.agentHandlerRegistry[string(session.Provider)]
+	agentHandler, ok := c.agentHandlerRegistry[string(session.Provider)]
 
 	if !ok {
 		return nil, nil, nil, nil, fmt.Errorf("provider %s not configured for agent session run", session.Provider)
 	}
 
 	// TODO: Make this dynamic
-	gitHandler, ok := r.gitHostingHandlerRegistry[string(shared.PlatformProvider_GitHub)]
+	gitHandler, ok := c.gitHostingHandlerRegistry[string(shared.PlatformProvider_GitHub)]
 
 	if !ok {
 		return nil, nil, nil, nil, fmt.Errorf("provider %s not configured for git hosting handler", shared.PlatformProvider_GitHub)
 	}
 
 	// TODO: Make this dynamic
-	sandboxHandler, ok := r.sandboxHandlerRegistry[string(shared.PlatformProvider_Daytona)]
+	sandboxHandler, ok := c.sandboxHandlerRegistry[string(shared.PlatformProvider_Daytona)]
 
 	if !ok {
 		return nil, nil, nil, nil, fmt.Errorf("provider %s not configured for sandbox handler", shared.PlatformProvider_Daytona)
 	}
 
 	// TODO: Make this dynamic
-	harnessHandler, ok := r.harnessHandlerRegistry[string(shared.HarnessProvider_OpenCode)]
+	harnessHandler, ok := c.harnessHandlerRegistry[string(shared.HarnessProvider_OpenCode)]
 
 	if !ok {
 		return nil, nil, nil, nil, fmt.Errorf("provider %s not configured for harness handler", shared.HarnessProvider_OpenCode)
@@ -363,14 +433,14 @@ func (r *controller) getHandlers(session *shared.Session) (
 	return agentHandler, gitHandler, sandboxHandler, harnessHandler, nil
 }
 
-func (r *controller) getPrompt(
+func (c *controller) getPrompt(
 	ctx context.Context,
 	agentHandler interfaces.AgentSessionHandler,
 	agentHandlerCrendential string,
 	session *shared.Session,
 	sessionEvent *shared.SessionEvent,
 ) (string, error) {
-	promptContext, err := telemetry.Span(ctx, r.tracer, "session.get_prompt_context", func(ctx context.Context) (*interfaces.PromptContext, error) {
+	promptContext, err := telemetry.Span(ctx, c.tracer, "session.get_prompt_context", func(ctx context.Context) (*interfaces.PromptContext, error) {
 		return agentHandler.GetPromptContext(sessionEvent)
 	})
 
@@ -379,8 +449,8 @@ func (r *controller) getPrompt(
 		return "", err
 	}
 
-	prompt, err := telemetry.Span(ctx, r.tracer, "session.create_prompt", func(ctx context.Context) (string, error) {
-		return r.createPrompt(session, sessionEvent, promptContext)
+	prompt, err := telemetry.Span(ctx, c.tracer, "session.create_prompt", func(ctx context.Context) (string, error) {
+		return c.createPrompt(session, sessionEvent, promptContext)
 	})
 
 	if err != nil {
@@ -391,7 +461,7 @@ func (r *controller) getPrompt(
 	return prompt, nil
 }
 
-func (r *controller) createPrompt(
+func (c *controller) createPrompt(
 	session *shared.Session,
 	sessionEvent *shared.SessionEvent,
 	promptContext *interfaces.PromptContext,
@@ -411,7 +481,7 @@ func (r *controller) createPrompt(
 	))
 
 	if sessionEvent != nil && sessionEvent.GitRef != nil && sessionEvent.Seed != nil {
-		if sessionEvent.Reason == shared.SessionEventTriggerReason_CheckRun {
+		if sessionEvent.Reason == shared.AgentSessionEventReason_CheckRun {
 			p += fmt.Sprintf(
 				PromptTemplate_PullRequestChecksFailed,
 				"The pull request checks have failed. Review the check failures, fix the issues, and ensure all checks pass before the pull request can be merged.",
@@ -430,21 +500,20 @@ func (r *controller) createPrompt(
 	return p, nil
 }
 
-func (r *controller) verifyGitAccess(
+func (c *controller) verifyGitAccess(
 	ctx context.Context,
 	agentHandler interfaces.AgentSessionHandler,
 	agentHandlerCredential string,
 	gitHandler interfaces.GitHandler,
 	session *shared.Session,
-	sessionEvent *shared.SessionEvent,
 ) (*interfaces.GitAccess, error) {
 	// no repo, no access required
 	if session.RepoFullName == nil {
 		return nil, nil
 	}
 
-	connection, err := telemetry.Span(ctx, r.tracer, "session.get_git_connection", func(ctx context.Context) (*shared.GitHubConnection, error) {
-		return r.git.GetGitHubConnection(ctx, *session.RepoFullName)
+	connection, err := telemetry.Span(ctx, c.tracer, "session.get_git_connection", func(ctx context.Context) (*shared.GitHubConnection, error) {
+		return c.git.GetGitHubConnection(ctx, *session.RepoFullName)
 	})
 
 	if err != nil {
@@ -455,8 +524,8 @@ func (r *controller) verifyGitAccess(
 	// This applies to both public and private repositories — write operations
 	// (push branches, create PRs) require an authenticated Git.
 	if connection == nil || !connection.Connected || connection.InstallationId == nil {
-		if err := telemetry.SpanErr(ctx, r.tracer, "session.upsert_git_connection", func(ctx context.Context) error {
-			return r.git.UpsertGitHubConnection(
+		if err := telemetry.SpanErr(ctx, c.tracer, "session.upsert_git_connection", func(ctx context.Context) error {
+			return c.git.UpsertGitHubConnection(
 				ctx, &shared.GitHubConnection{
 					SessionEventIdentifier: &session.Identifier,
 					RepoFullName:           *session.RepoFullName,
@@ -487,12 +556,12 @@ func (r *controller) verifyGitAccess(
 
 	if err != nil {
 		if errors.Is(err, shared.ErrGitHubInstallationUnavailable) {
-			if err := r.git.ResetGitHubConnection(ctx, *connection.InstallationId, []string{*session.RepoFullName}); err != nil {
+			if err := c.git.ResetGitHubConnection(ctx, *connection.InstallationId, []string{*session.RepoFullName}); err != nil {
 				return nil, err
 			}
 
 			// TODO: Fix/hardcoded secret path
-			if err := r.secretManager.Delete(ctx, "/github/installations", *connection.InstallationId); err != nil {
+			if err := c.secretManager.Delete(ctx, "/github/installations", *connection.InstallationId); err != nil {
 				return nil, err
 			}
 
@@ -516,7 +585,7 @@ func (r *controller) verifyGitAccess(
 	return access, nil
 }
 
-func (r *controller) sandbox(
+func (c *controller) sandbox(
 	ctx context.Context,
 	agentHandler interfaces.AgentSessionHandler,
 	agentHandlerCredential string,
@@ -537,6 +606,8 @@ func (r *controller) sandbox(
 	stderr := make(chan string, 100)
 	secrets := make([]interfaces.SandboxSecret, 0)
 	fileUploads := make(map[string][]byte)
+
+	// TODO: Implement/work platform mcp+credentials
 
 	if gitAccess != nil && gitAccess.Granted {
 		secrets = append(secrets, interfaces.SandboxSecret{
@@ -586,7 +657,7 @@ func (r *controller) sandbox(
 	return stdout, stderr, shutdown, err
 }
 
-func (r *controller) harness(
+func (c *controller) harness(
 	ctx context.Context,
 	stdout <-chan string,
 	stderr <-chan string,
@@ -611,7 +682,7 @@ func (r *controller) harness(
 			return
 		}
 
-		_, messageSpan = r.tracer.Start(ctx, "opencode.output.message")
+		_, messageSpan = c.tracer.Start(ctx, "opencode.output.message")
 	}
 
 	endMessage := func() {

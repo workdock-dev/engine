@@ -20,15 +20,12 @@ import (
 
 type PlatformProvider string
 type HarnessProvider string
-type SessionEventTriggerReason string
-type IssueState string
+type AgentSessionEventReason string
 
 const (
-	SessionEventTriggerReason_Unknown   SessionEventTriggerReason = "unknown"
-	SessionEventTriggerReason_PRComment SessionEventTriggerReason = "pr_comment"
-	SessionEventTriggerReason_CheckRun  SessionEventTriggerReason = "check_run"
-
-	IssueStateCompleted IssueState = "completed"
+	AgentSessionEventReason_Prompt    AgentSessionEventReason = "user_prompt"
+	AgentSessionEventReason_PRComment AgentSessionEventReason = "pr_comment"
+	AgentSessionEventReason_CheckRun  AgentSessionEventReason = "check_run"
 )
 
 const (
@@ -64,19 +61,10 @@ type SessionEvent struct {
 	SessionIdentifier string
 	Identifier        string
 	Payload           json.RawMessage
-
-	// Set when event originates from a previous
-	// event. Recreate the original identifier using
-	// the session's provider ingest
-	Seed   *string
-	Result *SessionEventResult
-	GitRef *string
-
-	// Reason indicates why a session event was re-triggered.
-	// This is set when the event originates from a GitHub webhook
-	// (e.g., pull_request_review_comment, check_run) to preserve
-	// context about what happened.
-	Reason SessionEventTriggerReason
+	Seed              *string // TODO: Refactor this name to parent (session event's parent), this is set on event that generated pr review comments
+	GitRef            *string
+	Result            *SessionEventResult
+	Reason            AgentSessionEventReason // Indicate the origin/why this event
 }
 
 type SessionEventResult struct {
