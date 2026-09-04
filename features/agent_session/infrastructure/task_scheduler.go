@@ -40,7 +40,10 @@ const (
 	DefaultRetryGracePeriod  = time.Minute
 )
 
-var errShutdownRequeue = errors.New("scheduler shutdown")
+var (
+	errShutdownRequeue    = errors.New("scheduler shutdown")
+	errJobCancelledByUser = errors.New("cancelled by user")
+)
 
 type TaskScheduler struct {
 	serviceId        string
@@ -109,9 +112,9 @@ func (s *TaskScheduler) Run(ctx context.Context) error {
 		s.closed = true
 		s.cond.Broadcast()
 		s.running.Range(func(key any, value any) bool {
-			if cancel, ok := value.(context.CancelFunc); ok {
+			if cancel, ok := value.(context.CancelCauseFunc); ok {
 				slog.Debug("[task-scheduler] shutdown worker", "event_identifier", key)
-				cancel()
+				cancel(errShutdownRequeue)
 			}
 
 			return true
@@ -134,7 +137,7 @@ func (s *TaskScheduler) Run(ctx context.Context) error {
 
 				if val, ok := s.running.Load(sessionEventIdentifier); ok {
 					slog.Debug("[task-scheduler] job cancelled", "event_identifier", sessionEventIdentifier)
-					val.(context.CancelFunc)()
+					val.(context.CancelCauseFunc)(errJobCancelledByUser)
 				}
 
 			case _, ok := <-runnable:
@@ -185,7 +188,7 @@ func (s *TaskScheduler) worker(ctx context.Context, workerId int) {
 		s.cond.L.Unlock()
 
 		func() {
-			jCtx, cancel := context.WithCancel(ctx)
+			jCtx, cancel := context.WithCancelCause(ctx)
 			exCtx, exSpan := s.tracer.Start(
 				jCtx,
 				"job.execute",
@@ -204,7 +207,9 @@ func (s *TaskScheduler) worker(ctx context.Context, workerId int) {
 				}
 
 				exSpan.End()
-				cancel()
+				// The first cause wins, so this never overwrites an explicit
+				// cancellation cause set by shutdown or a user cancellation.
+				cancel(nil)
 			}()
 
 			cCtx, cSpan := s.tracer.Start(exCtx, "job.claim")
@@ -284,20 +289,27 @@ func (s *TaskScheduler) execute(ctx context.Context, job *types.EventJob, starte
 
 	if ctx.Err() != nil {
 		span.SetAttributes(attribute.String("job.result", "cancelled"))
-		span.SetAttributes(attribute.Bool("job.retry", true))
 		span.AddEvent("job.cancelled")
 
-		slog.Debug("[task-scheduler] job cancelled, releasing job for retry", "event_identifier", job.SessionEventIdentifier, "success", "-")
+		s.metrics.recordJob(ctx, ResultCancelled, "", duration)
 
-		// The worker context was cancelled (e.g. scheduler shutdown or job
-		// cancellation) while the job was still running. Without a status
-		// update the job would stay running until its lease expires, so
-		// release it back to the queue for another attempt instead.
-		telemetry.SpanErr(ctx, s.tracer, "job.release", func(ctx context.Context) error {
+		if errors.Is(context.Cause(ctx), errJobCancelledByUser) {
+			slog.Debug("[task-scheduler] job cancelled by user, job already cancelled in database", "event_identifier", job.SessionEventIdentifier, "success", "-")
+			return
+		}
+
+		// The scheduler is shutting down while the job was still running.
+		// Without a status update the job would stay running until its lease
+		// expires, so release it back to the queue for another attempt. The
+		// parent context is already cancelled, so run the update on a
+		// non-cancelled context.
+		span.SetAttributes(attribute.Bool("job.retry", true))
+		slog.Debug("[task-scheduler] job cancelled by shutdown, releasing job for retry", "event_identifier", job.SessionEventIdentifier, "success", "-")
+
+		telemetry.SpanErr(context.WithoutCancel(ctx), s.tracer, "job.release", func(ctx context.Context) error {
 			return s.extQueue.Retry(ctx, job.SessionEventIdentifier, errShutdownRequeue, DefaultRetryGracePeriod)
 		})
 
-		s.metrics.recordJob(ctx, ResultCancelled, "", duration)
 		return
 	}
 
