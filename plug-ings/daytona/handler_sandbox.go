@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 	"uuid"
 
@@ -29,6 +30,11 @@ import (
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
 	"github.com/workdock-dev/engine/plug-ings/daytona/helpers"
 	"github.com/workdock-dev/engine/plug-ings/daytona/types"
+)
+
+const (
+	USER_PLACERHOLDER = "${USER}"
+	DAYTONA_USER      = "daytona"
 )
 
 type SandboxHandler struct {
@@ -56,6 +62,7 @@ func (h *SandboxHandler) Run(
 	// *-------------------------------------------------------------------------*
 	// * Create daytona client                                                   *
 	// *-------------------------------------------------------------------------*
+	slog.Debug("[sandbox][daytona] client created")
 	client, err := daytona.NewClientWithConfig(&sdktypes.DaytonaConfig{
 		APIKey:     h.config.ApiKey,
 		APIUrl:     h.config.ApiUrl,
@@ -87,7 +94,7 @@ func (h *SandboxHandler) Run(
 			// *-------------------------------------------------------------------------*
 			// * Run the provided exit command
 			// *-------------------------------------------------------------------------*
-			exitCode, result, err := h.ExecuteCommand(
+			_, result, _ := h.ExecuteCommand(
 				ctx,
 				sandbox,
 				config,
@@ -95,11 +102,7 @@ func (h *SandboxHandler) Run(
 				time.Minute*2,
 			)
 
-			if err != nil {
-				slog.Error("failed to run exit command", "event_identifier", config.SessionEvent.Identifier, "err", err)
-			} else if exitCode != 0 {
-				slog.Error("failed to run exit command", "event_identifier", config.SessionEvent.Identifier, "err", errors.New("non-zero exit code"), "exitCode", exitCode)
-			} else if result != "" {
+			if result != "" {
 				out = result
 			}
 
@@ -120,7 +123,7 @@ func (h *SandboxHandler) Run(
 		}
 
 		if err := client.Close(ctx); err != nil {
-			slog.Error("failed to close daytona client", "err", err, "event_identifier", config.SessionEvent.Identifier)
+			slog.Error("[sandbox][daytona] failed to close client", "err", err, "event_identifier", config.SessionEvent.Identifier)
 		}
 
 		return out
@@ -130,6 +133,7 @@ func (h *SandboxHandler) Run(
 	// * Create secrets using daytona's secret API these secrets are never       *
 	// * written into the sandbox                                                *
 	// *-------------------------------------------------------------------------*
+	slog.Debug("[sandbox][daytona] secrets configured")
 	secrets := make(map[string]string)
 
 	for _, secret := range config.Secrets {
@@ -157,6 +161,7 @@ func (h *SandboxHandler) Run(
 	// *-------------------------------------------------------------------------*
 	// * Create or returns the existent sandbox based on the config              *
 	// *-------------------------------------------------------------------------*
+	slog.Debug("[sandbox][daytona] created")
 	sandbox, created, err = h.GetOrCreateSandbox(ctx, client, config, secrets)
 
 	if err != nil {
@@ -166,6 +171,7 @@ func (h *SandboxHandler) Run(
 	// *-------------------------------------------------------------------------*
 	// * Starts the sandbox                                                      *
 	// *-------------------------------------------------------------------------*
+	slog.Debug("[sandbox][daytona] started")
 	if err := h.Start(ctx, sandbox, config); err != nil {
 		return shutdown, err
 	}
@@ -174,16 +180,12 @@ func (h *SandboxHandler) Run(
 	// * If this sandbox was just created, install any additional dependency     *
 	// *-------------------------------------------------------------------------*
 	if created {
+		slog.Debug("[sandbox][daytona] installing dependencies")
 		for _, cmd := range config.CommandsWhenCreated {
-			if exitCode, _, err := h.ExecuteCommand(ctx, sandbox, config, cmd, time.Minute*1); err != nil {
+			if _, _, err := h.ExecuteCommand(ctx, sandbox, config, cmd, time.Minute*1); err != nil {
 				deleting = true
 				h.DeleteSandbox(context.Background(), sandbox, config)
 				return shutdown, err
-			} else if exitCode != 0 {
-				deleting = true
-				slog.Error("command execution return non-zero exit code", "cmd", cmd, "event_identifier", config.SessionEvent.Identifier)
-				h.DeleteSandbox(context.Background(), sandbox, config)
-				return shutdown, errors.New("command execution return non-zero exit code")
 			}
 		}
 	}
@@ -191,6 +193,7 @@ func (h *SandboxHandler) Run(
 	// *-------------------------------------------------------------------------*
 	// * Configure the git user, we call it always in case user updated it       *
 	// *-------------------------------------------------------------------------*
+	slog.Debug("[sandbox][daytona] configured git user")
 	if err := h.ConfigureGitUser(ctx, sandbox, config); err != nil {
 		return shutdown, err
 	}
@@ -198,8 +201,9 @@ func (h *SandboxHandler) Run(
 	// *-------------------------------------------------------------------------*
 	// * Upload any file required for work                                       *
 	// *-------------------------------------------------------------------------*
+	slog.Debug("[sandbox][daytona] files uploaded")
 	for path, data := range config.FileUploads {
-		if err := h.UploadFile(ctx, sandbox, config, data, path); err != nil {
+		if err := h.UploadFile(ctx, sandbox, config, data, strings.ReplaceAll(path, USER_PLACERHOLDER, DAYTONA_USER)); err != nil {
 			return shutdown, err
 		}
 	}
@@ -207,11 +211,13 @@ func (h *SandboxHandler) Run(
 	// *-------------------------------------------------------------------------*
 	// * Create an execution process since interacting with the AI takes time    *
 	// *-------------------------------------------------------------------------*
+	slog.Debug("[sandbox][daytona] execution sesion created")
 	if err := h.CreateExecutionSession(ctx, sandbox, config); err != nil {
 		return shutdown, err
 	}
 
 	execSessionCreated = true
+	slog.Debug("[sandbox][daytona] execution sesion running", "cmd", config.HarnessCommand)
 	result, err := h.ExecuteSessionCommand(ctx, sandbox, config)
 
 	if err != nil {
@@ -222,17 +228,17 @@ func (h *SandboxHandler) Run(
 
 	if !ok {
 		err := errors.New("invalid pid type")
-		slog.Error("failed to execute session command in daytona sandbox", "err", err, "event_identifier", config.SessionEvent.Identifier)
+		slog.Error("[sandbox][daytona] failed to execute session command", "err", err, "event_identifier", config.SessionEvent.Identifier)
 		return shutdown, err
 	}
 
 	go func() {
-		slog.Debug("Streamming session output", "event_identifier", config.SessionEvent.Identifier)
+		slog.Debug("[sandbox][daytona] streaming command logs", "event_identifier", config.SessionEvent.Identifier)
 
 		// Channel are closed internally
 		listening = true
 		if err := h.StreamSessionCommandLogs(ctx, sandbox, config, cmdId, stdout, stderr); err != nil {
-			slog.Error("failed to stream session output", "err", err, "event_identifier", config.SessionEvent.Identifier)
+			slog.Error("[sandbox][daytona] failed to stream session output", "err", err, "event_identifier", config.SessionEvent.Identifier)
 			return
 		}
 	}()
@@ -321,7 +327,7 @@ func (h *SandboxHandler) GetOrCreateSandbox(ctx context.Context, client *daytona
 		}
 
 		if !errors.Is(err, sdkerrors.ErrNotFound) {
-			slog.Error("failed to get daytona sandbox for the given session", "err", err, "event_identifier", config.SessionEvent.Identifier)
+			slog.Error("[sandbox][daytona] failed to get", "err", err, "event_identifier", config.SessionEvent.Identifier)
 			return nil, false, err
 		}
 	}
@@ -338,7 +344,7 @@ func (h *SandboxHandler) GetOrCreateSandbox(ctx context.Context, client *daytona
 					Snapshot:         "daytona-small",
 					Name:             config.Session.Identifier,
 					Public:           false,
-					AutoStopInterval: new(config.AutoStopInterval),
+					AutoStopInterval: &config.AutoStopInterval,
 					Labels: map[string]string{
 						"session_event_identifier": config.SessionEvent.Identifier,
 					},
@@ -348,15 +354,13 @@ func (h *SandboxHandler) GetOrCreateSandbox(ctx context.Context, client *daytona
 		}()
 
 		if err != nil {
-			slog.Error("failed to create daytona sandbox", "err", err, "event_identifier", config.SessionEvent.Identifier)
+			slog.Error("[sandbox][daytona] failed to create", "err", err, "event_identifier", config.SessionEvent.Identifier)
 			return nil, false, err
 		}
 
-		slog.Debug("created daytona sandbox", "event_identifier", config.SessionEvent.Identifier)
 		return sdb, true, nil
 	}
 
-	slog.Debug("reusing daytona sandbox", "event_identifier", config.SessionEvent.Identifier)
 	return sandbox, false, nil
 }
 
@@ -372,11 +376,10 @@ func (h *SandboxHandler) SetSecret(ctx context.Context, client *daytona.Client, 
 	})
 
 	if err != nil {
-		slog.Error("failed to create secret", "err", err, "secret", secretName, "event_identifier", config.SessionEvent.Identifier)
+		slog.Error("[sandbox][daytona] failed to create secret", "err", err, "secret", secretName, "event_identifier", config.SessionEvent.Identifier)
 		return "", "", err
 	}
 
-	slog.Debug("Secret set", "name", secretName, "secret_id", secret.ID, "hosts", hosts, "event_identifier", config.SessionEvent.Identifier)
 	return secret.ID, secretName, nil
 }
 
@@ -386,9 +389,7 @@ func (h *SandboxHandler) DeleteSecret(ctx context.Context, client *daytona.Clien
 	})
 
 	if err != nil {
-		slog.Error("failed to delete secret", "secret_id", secretId, "err", err, "event_identifier", config.SessionEvent.Identifier)
-	} else {
-		slog.Debug("Deleted secret", "secret_id", secretId, "event_identifier", config.SessionEvent.Identifier)
+		slog.Error("[sandbox][daytona] failed to delete secret", "secret_id", secretId, "err", err, "event_identifier", config.SessionEvent.Identifier)
 	}
 
 	return err
@@ -406,11 +407,10 @@ func (h *SandboxHandler) Start(ctx context.Context, sandbox *daytona.Sandbox, co
 			return err
 		}
 
-		slog.Error("failed to start daytona sandbox", "err", err, "event_identifier", config.SessionEvent.Identifier)
+		slog.Error("[sandbox][daytona] failed to start", "err", err, "event_identifier", config.SessionEvent.Identifier)
 		return err
 	}
 
-	slog.Debug("Started daytona sandbox", "event_identifier", config.SessionEvent.Identifier)
 	return nil
 }
 
@@ -426,7 +426,7 @@ func (h *SandboxHandler) UpdateExistingSandbox(ctx context.Context, sandbox *day
 
 		return sandbox.UpdateSecrets(ctx, secrets)
 	}); err != nil {
-		slog.Error("failed to update daytona sandbox secrets", "event_identifier", config.SessionEvent.Identifier, "err", err)
+		slog.Error("[sandbox][daytona] failed to update secrets", "event_identifier", config.SessionEvent.Identifier, "err", err)
 		return err
 	}
 
@@ -437,7 +437,7 @@ func (h *SandboxHandler) UpdateExistingSandbox(ctx context.Context, sandbox *day
 
 		return sandbox.UpdateEnv(ctx, envVars, nil)
 	}); err != nil {
-		slog.Error("failed to update daytona sandbox env vars", "event_identifier", config.SessionEvent.Identifier, "err", err)
+		slog.Error("[sandbox][daytona] failed to update env vars", "event_identifier", config.SessionEvent.Identifier, "err", err)
 		return err
 	}
 
@@ -452,31 +452,28 @@ func (h *SandboxHandler) Shutdown(ctx context.Context, sandbox *daytona.Sandbox,
 
 		return sandbox.Stop(ctx)
 	}); err != nil {
-		slog.Error("failed to stop daytona sandbox", "err", err, "event_identifier", config.SessionEvent.Identifier)
+		slog.Error("[sandbox][daytona] failed to stop", "err", err, "event_identifier", config.SessionEvent.Identifier)
 		return err
 	}
 
-	slog.Debug("Stopped daytona sandbox", "event_identifier", config.SessionEvent.Identifier)
 	return nil
 }
 
 func (h *SandboxHandler) UploadFile(ctx context.Context, sandbox *daytona.Sandbox, config *agent_session_interfaces.SandboxConfig, data []byte, path string) error {
-	if err := sandbox.FileSystem.UploadFile(ctx, data, path); err != nil {
-		slog.Error("failed to upload file to daytona sandbox", "err", err, "path", path, "event_identifier", config.SessionEvent.Identifier)
+	if err := sandbox.FileSystem.UploadFile(ctx, data, strings.ReplaceAll(path, USER_PLACERHOLDER, DAYTONA_USER)); err != nil {
+		slog.Error("[sandbox][daytona] failed to upload file", "err", err, "path", path, "event_identifier", config.SessionEvent.Identifier)
 		return err
 	}
 
-	slog.Debug("Uploaded file to daytona sandbox", "path", path, "event_identifier", config.SessionEvent.Identifier)
 	return nil
 }
 
 func (h *SandboxHandler) ConfigureGitUser(ctx context.Context, sandbox *daytona.Sandbox, config *agent_session_interfaces.SandboxConfig) error {
 	if err := sandbox.Git.ConfigureUser(ctx, config.GitName, config.GitEmail); err != nil {
-		slog.Error("failed to configure git user in daytona sandbox", "err", err, "event_identifier", config.SessionEvent.Identifier)
+		slog.Error("[sandbox][daytona] failed to configure git user", "err", err, "event_identifier", config.SessionEvent.Identifier)
 		return err
 	}
 
-	slog.Debug("Configured git user in daytona sandbox", "name", config.GitName, "event_identifier", config.SessionEvent.Identifier)
 	return nil
 }
 
@@ -492,20 +489,20 @@ func (h *SandboxHandler) ExecuteCommand(
 	exec, err := sandbox.Process.ExecuteCommand(ctx, command, options.WithExecuteTimeout(timeout))
 
 	if err != nil {
-		slog.Error("failed to execute command in daytona sandbox", "err", err, "event_identifier", config.SessionEvent.Identifier)
+		slog.Error("[sandbox][daytona] failed to execute command", "err", err, "event_identifier", config.SessionEvent.Identifier)
 		return -1, "", err
 	}
 
 	if exec == nil {
 		err := errors.New("exec result is nil")
-		slog.Error("failed to execute command in daytona sandbox", "err", err, "event_identifier", config.SessionEvent.Identifier)
+		slog.Error("[sandbox][daytona] failed to execute command", "err", err, "event_identifier", config.SessionEvent.Identifier)
 		return -1, "", err
 	}
 
 	if exec.ExitCode != 0 {
 		err := fmt.Errorf("exec result is non-zero: exit code %d", exec.ExitCode)
-		slog.Error("failed to execute command in daytona sandbox", "err", err, "event_identifier", config.SessionEvent.Identifier, "result", exec.Result)
-		return -1, "", err
+		slog.Error("[sandbox][daytona] failed to execute command", "err", err, "event_identifier", config.SessionEvent.Identifier, "result", exec.Result)
+		return exec.ExitCode, "", err
 	}
 
 	return exec.ExitCode, exec.Result, nil
@@ -513,21 +510,19 @@ func (h *SandboxHandler) ExecuteCommand(
 
 func (h *SandboxHandler) CreateExecutionSession(ctx context.Context, sandbox *daytona.Sandbox, config *agent_session_interfaces.SandboxConfig) error {
 	if err := sandbox.Process.CreateSession(ctx, config.Session.Identifier); err != nil {
-		slog.Error("failed to create daytona sandbox session", "err", err)
+		slog.Error("[sandbox][daytona] failed to create execution session", "err", err)
 		return err
 	}
 
-	slog.Debug("Created execution session", "session_id", config.Session.Identifier)
 	return nil
 }
 
 func (h *SandboxHandler) DeleteExecutionSession(ctx context.Context, sandbox *daytona.Sandbox, config *agent_session_interfaces.SandboxConfig) error {
 	if err := sandbox.Process.DeleteSession(ctx, config.Session.Identifier); err != nil {
-		slog.Error("failed to delete daytona sandbox session", "err", err, "event_identifier", config.SessionEvent.Identifier)
+		slog.Error("[sandbox][daytona] failed to delete execution session", "err", err, "event_identifier", config.SessionEvent.Identifier)
 		return err
 	}
 
-	slog.Debug("Deleted execution session", "event_identifier", config.SessionEvent.Identifier)
 	return nil
 }
 
@@ -539,7 +534,7 @@ func (h *SandboxHandler) ExecuteSessionCommand(
 	result, err := sandbox.Process.ExecuteSessionCommand(ctx, config.Session.Identifier, config.HarnessCommand, true, false)
 
 	if err != nil {
-		slog.Error("failed to execute session command in daytona sandbox", "err", err, "cmd", config.HarnessCommand, "event_identifier", config.SessionEvent.Identifier)
+		slog.Error("[sandbox][daytona] failed to execute session command", "err", err, "cmd", config.HarnessCommand, "event_identifier", config.SessionEvent.Identifier)
 		return nil, err
 	}
 
@@ -567,7 +562,7 @@ func (h *SandboxHandler) DeleteSandbox(ctx context.Context, sandbox *daytona.San
 	})
 
 	if err != nil {
-		slog.Error("failed to delete sandbox", "err", err, "event_identifier", config.SessionEvent.Identifier)
+		slog.Error("[sandbox][daytona] failed to delete", "err", err, "event_identifier", config.SessionEvent.Identifier)
 	}
 
 	return err
@@ -585,7 +580,7 @@ func (h *SandboxHandler) newUUIDStartingWithLetter() string {
 
 		switch u.String()[0] {
 		case 'a', 'b', 'c', 'd', 'e', 'f':
-			slog.Debug("Deterministic UUID that starts with a letter; patch for daytona ran", "count", count)
+			slog.Debug("[sandbox][daytona] deterministic UUID that starts with a letter; patch for daytona ran", "count", count)
 			return u.String()
 		}
 	}

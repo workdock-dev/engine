@@ -26,21 +26,23 @@ const (
 
 // *--------------------------------------------------------------------------*
 
-type IssueChangedEvent[T any] struct {
-	Payload T
+type IssueChangedEvent struct {
+	Provider string
+	Payload  any
 }
 
-func (e IssueChangedEvent[T]) EventType() string {
+func (e IssueChangedEvent) EventType() string {
 	return EventType_IssueChange
 }
 
 // *--------------------------------------------------------------------------*
 
-type AgentSessionEvent[T any] struct {
-	Payload T
+type AgentSessionEvent struct {
+	Provider string
+	Payload  any
 }
 
-func (e AgentSessionEvent[T]) EventType() string {
+func (e AgentSessionEvent) EventType() string {
 	return EventType_AgentSession
 }
 

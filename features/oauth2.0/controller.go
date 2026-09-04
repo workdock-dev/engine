@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -32,9 +33,9 @@ const (
 )
 
 type Token struct {
-	AccessToken  string
-	RefreshToken string
-	ExpiresAt    time.Time
+	AccessToken  string    `yaml:"access_token"`
+	RefreshToken string    `yaml:"refresh_token"`
+	ExpiresAt    time.Time `yaml:"expires_at"`
 }
 
 type CallbackResult struct {
@@ -95,10 +96,12 @@ func New(
 }
 
 func (c *controller) authorize() (string, error) {
+	slog.Debug("[oauth20] authorize")
 	return c.handler.GetAuthorizationURL(), nil
 }
 
 func (c *controller) callback(r *http.Request) (string, error) {
+	slog.Debug("[oauth20] callback")
 	ctx := r.Context()
 	result, err := c.handler.Callback(ctx, r.URL.Query().Get("code"), r.URL.Query().Get("error"))
 

@@ -12,4 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-curl -fsSL https://opencode.ai/install | bash -s -- --version
+curl -fsSL https://opencode.ai/install | bash -s -- --version VERSION_ARG

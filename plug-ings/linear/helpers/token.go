@@ -45,31 +45,26 @@ func NewTokenHandler(secretManager shared.ForSecrets, client interfaces.Client) 
 // If the token is expired or expires within the next 5 minutes, it is renewed
 // using the stored refresh token and the refreshed credentials are persisted
 // back to the secrets store before returning.
-func (s *TokenHandler) GetLinearAccessToken(ctx context.Context, byName string) (string, error) {
+func (s *TokenHandler) GetLinearAccessToken(ctx context.Context, orgId string) (string, error) {
 	if ctx.Err() != nil {
 		return "", ctx.Err()
 	}
 
-	token, err := s.getStoredLinearToken(ctx, byName)
+	token, err := s.getStoredLinearToken(ctx, orgId)
 
 	if err != nil {
 		return "", err
 	}
 
-	now := time.Now()
-	decision := shared.ShouldRenewToken(token.ExpiresAt, token.RefreshToken != "", now, shared.DefaultTokenRefreshWindow)
-
-	if decision == shared.TokenLifecycleKeep {
-		slog.Debug("Got linear access token", "secret_name", byName)
+	if time.Until(token.ExpiresAt) > 5*time.Minute {
+		slog.Debug("Got linear access token", "secret_name", orgId)
 		return token.AccessToken, nil
 	}
 
-	if decision == shared.TokenLifecycleExpired {
-		slog.Error("linear access token expired and no refresh token is available", "organization_id", byName)
+	if token.RefreshToken == "" {
+		slog.Error("linear access token expired and no refresh token is available", "organization_id", orgId)
 		return "", shared.ErrLinearTokenExpired
 	}
-
-	slog.Debug("Linear access token is expired or expiring soon, refreshing", "secret_name", byName, "expires_at", token.ExpiresAt)
 
 	refreshed, err := s.client.RefreshToken(ctx, token.RefreshToken)
 
@@ -78,15 +73,15 @@ func (s *TokenHandler) GetLinearAccessToken(ctx context.Context, byName string) 
 			return "", err
 		}
 
-		slog.Error("failed to refresh linear access token", "err", err, "organization_id", byName)
+		slog.Error("failed to refresh linear access token", "err", err, "organization_id", orgId)
 		return "", shared.ErrLinearTokenRefreshFailed
 	}
 
-	if err := s.storeLinearToken(ctx, byName, refreshed); err != nil {
+	if err := s.storeLinearToken(ctx, orgId, refreshed); err != nil {
 		return "", err
 	}
 
-	slog.Debug("Refreshed linear access token", "secret_name", byName)
+	slog.Debug("Refreshed linear access token", "secret_name", orgId)
 	return refreshed.AccessToken, nil
 }
 

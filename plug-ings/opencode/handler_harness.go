@@ -51,7 +51,7 @@ func NewHarnessHandler(config types.Config) agent_session_interfaces.HandlerHarn
 
 func (h *HarnessHandler) GetConfigurationCommands() []string {
 	return []string{
-		fmt.Sprintf("%s %s", OPENCODE_INSTALL, h.config.Version),
+		strings.ReplaceAll(OPENCODE_INSTALL, "VERSION_ARG", h.config.Version),
 	}
 }
 

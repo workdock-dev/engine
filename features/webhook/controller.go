@@ -114,6 +114,7 @@ func New(
 
 func (c *controller) init() {
 	c.mux.HandleFunc(c.endpoint, func(w http.ResponseWriter, req *http.Request) {
+		slog.Debug("[webhook] event received", "endpoint", c.endpoint)
 		if err := c.execute(req); err != nil {
 			status := http.StatusInternalServerError
 
@@ -144,6 +145,8 @@ func (c *controller) init() {
 // events, and any consumer error is returned to the caller.
 func (c *controller) execute(req *http.Request) error {
 	ctx := req.Context()
+
+	slog.Debug("[webhook] transform")
 	wevent, err := c.transformer.Transform(ctx, req)
 
 	if err != nil {
@@ -151,6 +154,7 @@ func (c *controller) execute(req *http.Request) error {
 		return err
 	}
 
+	slog.Debug("[webhook] verify")
 	result, err := c.verifier.Verify(ctx, wevent)
 
 	if err != nil {
@@ -158,6 +162,7 @@ func (c *controller) execute(req *http.Request) error {
 		return err
 	}
 
+	slog.Debug("[webhook] consume")
 	if err := c.consumer.Consume(ctx, result); err != nil {
 		slog.Error("Failed to consume wevent", "err", err)
 		return err

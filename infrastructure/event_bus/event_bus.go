@@ -41,6 +41,7 @@ func NewInMemoryEventBus() *InMemoryEventBus {
 
 // Subscribe registers a handler for the given event type.
 func (b *InMemoryEventBus) Subscribe(eventType string, handler shared.EventHandler) {
+	slog.Debug("[event-bus] subscribed to event", "event_type", eventType)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -49,6 +50,7 @@ func (b *InMemoryEventBus) Subscribe(eventType string, handler shared.EventHandl
 
 // Publish synchronously invokes every handler subscribed to the event's type.
 func (b *InMemoryEventBus) Publish(ctx context.Context, event shared.DomainEvent) error {
+	slog.Debug("[event-bus] event published", "event_type", event.EventType())
 	b.mu.RLock()
 	handlers := make([]shared.EventHandler, len(b.handlers[event.EventType()]))
 	copy(handlers, b.handlers[event.EventType()])
@@ -56,7 +58,7 @@ func (b *InMemoryEventBus) Publish(ctx context.Context, event shared.DomainEvent
 
 	for _, handler := range handlers {
 		if err := handler(ctx, event); err != nil {
-			slog.Error("event handler failed", "event_type", event.EventType(), "err", err)
+			slog.Error("[event-bus] handler failed", "event_type", event.EventType(), "err", err)
 		}
 	}
 

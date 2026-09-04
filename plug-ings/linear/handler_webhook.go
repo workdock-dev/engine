@@ -73,23 +73,24 @@ func NewWEventVerifier(config types.Config) webhook.WEventVerifier {
 // unmarshaling the payload more than once.
 func (t *WEventVerifier) Verify(_ context.Context, event *webhook.WEvent) (*webhook.VerifiedWEvent, error) {
 	if !t.isAllowedIP(event) {
-		slog.Error("received request from invalid IP", "ip", t.clientIP(event))
+		slog.Error("[webhook][linear] received request from invalid IP", "ip", t.clientIP(event))
 		return nil, webhook.ErrWForBidden
 	}
 
 	rawBody, err := io.ReadAll(event.Body)
 
 	if err != nil {
-		slog.Error("failed to parse request body", "err", err)
+		slog.Error("[webhook][linear] failed to parse request body", "err", err)
 		return nil, webhook.ErrWBadRequest
 	}
 
 	if !t.verifyWebhookSignature(event.Get("Linear-Signature"), rawBody) {
-		slog.Error("failed verifying request signature")
+		slog.Error("[webhook][linear] failed verifying request signature")
 		return nil, webhook.ErrWUnAuthorized
 	}
 
 	eventType := event.Get("Linear-Event")
+	slog.Debug("[webhook][linear] event accepted", "event_type", eventType)
 
 	if eventType == "Issue" {
 		return &webhook.VerifiedWEvent{
@@ -105,6 +106,7 @@ func (t *WEventVerifier) Verify(_ context.Context, event *webhook.WEvent) (*webh
 		}, nil
 	}
 
+	slog.Warn("[webhook][linear] unhandled event type", "event_type", eventType)
 	return nil, webhook.ErrWBadRequest
 }
 
@@ -189,11 +191,12 @@ func NewWEventConsumer(eventBus shared.ForEventBus) webhook.WEventConsumer {
 // Timestamp validation is performed after unmarshaling to avoid decoding the
 // same payload twice.
 func (c *WEventConsumer) Consume(_ context.Context, event *webhook.VerifiedWEvent) error {
+	slog.Debug("[webhook][linear] consuming event", "event_type", event.WEventType)
 	if event.WEventType == WEventType_Issue {
 		var payload types.IssueStatusChangePayload
 
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
-			slog.Error("failed to unmarshal issue payload", "err", err)
+			slog.Error("[webhook][linear] failed to unmarshal issue payload", "err", err)
 			return webhook.ErrWBadRequest
 		}
 
@@ -202,8 +205,9 @@ func (c *WEventConsumer) Consume(_ context.Context, event *webhook.VerifiedWEven
 			return err
 		}
 
-		c.eventBus.Publish(context.Background(), shared.IssueChangedEvent[types.IssueStatusChangePayload]{
-			Payload: payload,
+		c.eventBus.Publish(context.Background(), shared.IssueChangedEvent{
+			Provider: string(shared.PlatformProvider_Linear),
+			Payload:  payload,
 		})
 
 		return nil
@@ -213,7 +217,7 @@ func (c *WEventConsumer) Consume(_ context.Context, event *webhook.VerifiedWEven
 		var payload types.AgentSessionEventData
 
 		if err := json.Unmarshal(event.Payload, &payload); err != nil {
-			slog.Error("failed unmarshing request bosy", "err", err)
+			slog.Error("[webhook][linear] failed unmarshal agent session payload", "err", err)
 			return webhook.ErrWBadRequest
 		}
 
@@ -222,13 +226,15 @@ func (c *WEventConsumer) Consume(_ context.Context, event *webhook.VerifiedWEven
 			return err
 		}
 
-		c.eventBus.Publish(context.Background(), shared.AgentSessionEvent[types.AgentSessionEventData]{
-			Payload: payload,
+		c.eventBus.Publish(context.Background(), shared.AgentSessionEvent{
+			Provider: string(shared.PlatformProvider_Linear),
+			Payload:  payload,
 		})
 
 		return nil
 	}
 
+	slog.Debug("[webhook][linear] unhandled event", "event_type", event.WEventType)
 	return webhook.ErrWBadRequest
 }
 
@@ -236,7 +242,7 @@ func (c *WEventConsumer) verifyTimestampRecency(timestamp int64) error {
 	diff := time.Since(time.UnixMilli(timestamp))
 
 	if diff < -60*time.Second || diff > 60*time.Second {
-		slog.Error("request is past the 60 seconds expectation from linear")
+		slog.Error("[webhook][linear] event is older than one minute")
 		return webhook.ErrWUnAuthorized
 	}
 

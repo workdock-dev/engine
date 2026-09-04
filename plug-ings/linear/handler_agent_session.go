@@ -45,16 +45,20 @@ func NewAgentSessionHandler(
 }
 
 func (h *AgentSessionHandler) Ingest(event shared.DomainEvent) (*shared.Session, *shared.SessionEvent, error) {
-	agentSessionEvent, ok := event.(shared.AgentSessionEvent[types.AgentSessionEventData])
+	agentSessionEvent, ok := event.(shared.AgentSessionEvent)
 
 	if !ok {
-		return nil, nil, fmt.Errorf("failed to ingest linear agent, expected %s got %s", shared.EventType_AgentSession, event.EventType())
+		return nil, nil, fmt.Errorf("[agent-session][linear] failed to ingest, expected %s got %s", shared.EventType_AgentSession, event.EventType())
 	}
 
-	linearEvent := agentSessionEvent.Payload
+	linearEvent, ok := agentSessionEvent.Payload.(types.AgentSessionEventData)
+
+	if !ok {
+		return nil, nil, fmt.Errorf("[agent-session][linear] failed to cast payload")
+	}
 
 	slog.Debug(
-		"Generated linear agent session event idempotency key from",
+		"[agent-session][linear] generated idempotency key from",
 		"id", linearEvent.AgentSession.ID,
 		"timestamp", linearEvent.AgentSession.UpdatedAt,
 		"seed", nil,
@@ -103,12 +107,12 @@ func (h *AgentSessionHandler) GetPromptContext(sessionEvent *shared.SessionEvent
 	var linearEvent types.AgentSessionEventData
 
 	if err := json.Unmarshal(sessionEvent.Payload, &linearEvent); err != nil {
-		slog.Error("failed to unmarshal agent session payload", "err", err, "event_identifier", sessionEvent.Identifier)
+		slog.Error("[agent-session][linear] failed to unmarshal payload", "err", err, "event_identifier", sessionEvent.Identifier)
 		return nil, err
 	}
 
 	if linearEvent.AgentSession == nil {
-		err := errors.New("linear event in corrupted state")
+		err := errors.New("[agent-session][linear] event in corrupted state")
 		return nil, err
 	}
 

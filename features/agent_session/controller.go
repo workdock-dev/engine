@@ -24,7 +24,6 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
-	"time"
 	"uuid"
 
 	"github.com/workdock-dev/engine/features/agent_session/infrastructure"
@@ -106,7 +105,7 @@ func New(
 		organization:              organization,
 		session:                   session,
 		queue:                     queue,
-		tracer:                    otel.Tracer("workdock.agent_session_runner"),
+		tracer:                    otel.Tracer("workdock.agent_session"),
 	}
 
 	if err := r.init(); err != nil {
@@ -130,70 +129,93 @@ func (c *controller) init() error {
 	c.taskScheduler = taskScheduler
 
 	// *-------------------------------------------------------------------------*
-	// * Configured domain event for agent session generated from work platform  *
+	// * Configured domain event for agent session                               *
 	// *-------------------------------------------------------------------------*
 
-	for provider, ingestor := range c.agentHandlerRegistry {
-		c.eventBus.Subscribe(provider, func(
-			ctx context.Context,
-			event shared.DomainEvent,
-		) error {
-			session, sessionEvent, err := ingestor.Ingest(event)
+	c.eventBus.Subscribe(shared.EventType_AgentSession, func(ctx context.Context, event shared.DomainEvent) error {
+		e, ok := event.(shared.AgentSessionEvent)
+
+		if !ok {
+			return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_AgentSession, event.EventType())
+		}
+
+		provider, ok := c.agentHandlerRegistry[e.Provider]
+
+		if !ok {
+			return fmt.Errorf("[agent-session] agent session handler not found in registry: %s", e.Provider)
+		}
+
+		session, sessionEvent, err := provider.Ingest(event)
+
+		if err != nil {
+			return err
+		}
+
+		if org, err := c.organization.GetOrganization(ctx, session.OrganizationIdentifier); err != nil {
+			return err
+		} else if org == nil {
+			// TODO: Inform the user they need to initialize their account
+			// Received an agent session event from an unknown organization
+			return fmt.Errorf("[agent-session] failed to start session, organization %s not found. did you authenticated?", session.OrganizationIdentifier)
+		}
+
+		if sess, err := c.session.GetAgentSession(ctx, session.Identifier); err != nil {
+			return err
+		} else if sess == nil {
+			// Session doesn't exist, create it
+			if err := c.session.UpsertAgentSession(ctx, session); err != nil {
+				return err
+			}
+		} else {
+			// Verify if the agent session event is a duplicate
+			sEvent, err := c.session.GetAgentSessionEvent(ctx, sessionEvent.Identifier)
 
 			if err != nil {
 				return err
 			}
 
-			if org, err := c.organization.GetOrganization(ctx, session.OrganizationIdentifier); err != nil {
-				return err
-			} else if org == nil {
-				// TODO: Inform the user they need to initialize their account
-				// Received an agent session event from an unknown organization
-				return fmt.Errorf("failed to start session, organization %s not found. did you authenticated?", session.OrganizationIdentifier)
+			if sEvent != nil {
+				slog.Debug("[agent-session] received duplicated event", "event_identifier", sessionEvent.Identifier)
+				return nil
 			}
 
-			if sess, err := c.session.GetAgentSession(ctx, session.Identifier); err != nil {
-				return err
-			} else if sess == nil {
-				// Session doesn't exist, create it
-				if err := c.session.UpsertAgentSession(ctx, session); err != nil {
-					return err
-				}
-			} else {
-				// Verify if the agent session event is a duplicate
-				sEvent, err := c.session.GetAgentSessionEvent(ctx, sessionEvent.Identifier)
+			session = sess
+		}
 
-				if err != nil {
-					return err
-				}
+		sessionEvent.Reason = shared.AgentSessionEventReason_Prompt
+		if err := c.session.CreateSessionEvent(ctx, sessionEvent); err != nil {
+			return err
+		}
 
-				if sEvent != nil {
-					slog.Debug("received duplicated event", "event_identifier", sessionEvent.Identifier)
-					return nil
-				}
-
-				session = sess
-			}
-
-			sessionEvent.Reason = shared.AgentSessionEventReason_Prompt
-			if err := c.session.CreateSessionEvent(ctx, sessionEvent); err != nil {
-				return err
-			}
-
-			slog.Debug("Created session event", "event_identifier", sessionEvent.Identifier)
-			return nil
-		})
-	}
+		slog.Debug("[agent-session] created session event", "event_identifier", sessionEvent.Identifier)
+		return nil
+	})
 
 	// *-------------------------------------------------------------------------*
-	// * Configured domain event for agent session generated pr review comment   *
+	// * Configured domain event for agent session                               *
+	// *-------------------------------------------------------------------------*
+
+	c.eventBus.Subscribe(shared.EventType_IssueChange, func(ctx context.Context, event shared.DomainEvent) error {
+		_, ok := event.(shared.IssueChangedEvent)
+
+		if !ok {
+			return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_IssueChange, event.EventType())
+		}
+
+		// TODO Implement/Handle issue status changed
+
+		return nil
+	})
+
+	// *-------------------------------------------------------------------------*
+	// * Configured domain event for pr review comment                           *
 	// *-------------------------------------------------------------------------*
 
 	c.eventBus.Subscribe(shared.EventType_PullRequestCommented, func(ctx context.Context, event shared.DomainEvent) error {
 		e, ok := event.(shared.PullRequestCommentedEvent)
 
 		if !ok {
-			return fmt.Errorf("expected a pull request commented event, received %s", event.EventType())
+			return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_PullRequestCommented, event.EventType())
 		}
 
 		sessionEvent, err := c.session.GetAgentSessionEventByGitRef(ctx, e.GitRef, e.RepoFullName)
@@ -203,7 +225,7 @@ func (c *controller) init() error {
 		}
 
 		if sessionEvent == nil {
-			return fmt.Errorf("session event not found: %s@%s", e.GitRef, e.RepoFullName)
+			return fmt.Errorf("[agent-session] session event not found: %s@%s", e.GitRef, e.RepoFullName)
 		}
 
 		session, err := c.session.GetAgentSession(ctx, sessionEvent.SessionIdentifier)
@@ -213,7 +235,7 @@ func (c *controller) init() error {
 		}
 
 		if session == nil {
-			return fmt.Errorf("session not found: %s", sessionEvent.SessionIdentifier)
+			return fmt.Errorf("[agent-session] session not found: %s", sessionEvent.SessionIdentifier)
 		}
 
 		if err := c.session.CreateSessionEvent(ctx, &shared.SessionEvent{
@@ -240,10 +262,11 @@ func (c *controller) init() error {
 		payload, ok := event.(shared.GitResetConnectionEvent)
 
 		if !ok {
-			return fmt.Errorf("expected event type %s got %s", shared.EventType_GitResetConnection, event.EventType())
+			return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_GitResetConnection, event.EventType())
 		}
 
 		if payload.Delete {
+			// TODO: Remove this hardcoded value
 			if err := c.secretManager.Delete(ctx, "/github/installations", payload.InstallationId); err != nil {
 				return err
 			}
@@ -260,13 +283,13 @@ func (c *controller) init() error {
 		payload, ok := event.(shared.GitCompleteConnectionEvent)
 
 		if !ok {
-			return fmt.Errorf("expected event type %s got %s", shared.EventType_GitCompleteConnection, event.EventType())
+			return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_GitCompleteConnection, event.EventType())
 		}
 
 		// this case happens when a repo is being connected to an existent connection
 		if payload.Token != nil {
 			if err := c.secretManager.Set(ctx, "/github/installations", payload.InstallationId, string(payload.Token)); err != nil {
-				slog.Error("failed to store installation access token", "installation_id", payload.InstallationId, "err", err)
+				slog.Error("[agent-session] failed to store installation access token", "installation_id", payload.InstallationId, "err", err)
 				return err
 			}
 		}
@@ -311,6 +334,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) error {
 	// *-------------------------------------------------------------------------*
 	// * Get provider: work platform, git hosting, harness, sandbox              *
 	// *-------------------------------------------------------------------------*
+	slog.Debug("[agent-session] get handlers")
 	agentHandler, gitHandler, sandboxHandler, harnessHandler, err := c.getHandlers(session)
 
 	if err != nil {
@@ -320,6 +344,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) error {
 	// *-------------------------------------------------------------------------*
 	// * Get providers credentials                                               *
 	// *-------------------------------------------------------------------------*
+	slog.Debug("[agent-session] get agent handler credentials")
 	agentHandlerCredential, err := telemetry.Span(ctx, c.tracer, "session.get_agent_handler_credentials", func(ctx context.Context) (string, error) {
 		return agentHandler.GetCredentials(ctx, session.OrganizationIdentifier)
 	})
@@ -330,38 +355,43 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) error {
 
 	// DO NOT REMOVE!
 	// Can start communicating, this let's the user know the request is being process.
+	slog.Debug("[agent-session] send thought event")
 	agentHandler.SendThought(ctx, session.Identifier, agentHandlerCredential, "")
 
 	// *-------------------------------------------------------------------------*
 	// * Create prompt                                                           *
 	// *-------------------------------------------------------------------------*
-	prompt, err := c.getPrompt(ctx, agentHandler, agentHandlerCredential, session, sessionEvent)
+	slog.Debug("[agent-session] get prompt")
+	prompt, err := c.getPrompt(ctx, agentHandler, session, sessionEvent)
 
 	if err != nil {
+		agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
 		return err
 	}
 
 	// *-------------------------------------------------------------------------*
 	// * Verify git access                                                       *
 	// *-------------------------------------------------------------------------*
+	slog.Debug("[agent-session] verify git access")
 	gitAccess, err := c.verifyGitAccess(ctx, agentHandler, agentHandlerCredential, gitHandler, session)
 
 	if err != nil {
+		agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
 		return err
 	}
 
 	// Cannot continue, requires git access
 	if session.RepoFullName != nil && gitAccess == nil {
+		slog.Debug("[agent-session] git acess required")
 		return nil
 	}
 
 	// *-------------------------------------------------------------------------*
 	// * Configure, start sandbox and run harness                                *
 	// *-------------------------------------------------------------------------*
+	slog.Debug("[agent-session] sandbox start")
 	stdout, stderr, shutdown, err := c.sandbox(
 		ctx,
-		agentHandler,
-		agentHandlerCredential,
 		gitHandler,
 		harnessHandler,
 		sandboxHandler,
@@ -373,6 +403,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) error {
 
 	defer func() {
 		if shutdown != nil {
+			slog.Debug("[agent-session] sandbox shutdown")
 			result := shutdown(context.Background())
 
 			// *-------------------------------------------------------------------------*
@@ -381,16 +412,25 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) error {
 			pr := gitHandler.ParseLatestChangesResult(result)
 
 			if pr != nil {
+				slog.Debug("[agent-session] update session result")
 				sessionEvent.Result = &shared.SessionEventResult{
 					PullRequest: pr,
 				}
 				sessionEvent.GitRef = &pr.HeadRefName
 				c.session.UpdateSessionEventResult(ctx, sessionEvent)
 			}
+
+			// DO NOT REMOVE!
+			// Some times the harness bug out and doesn't send the response, causing the
+			// UI/UX Chat to stay in a thinking state; thus, with this, we guranteed to
+			// send the finish signal
+			slog.Debug("[agent-session] send response event")
+			agentHandler.SendResponse(ctx, session.Identifier, agentHandlerCredential, "")
 		}
 	}()
 
 	if err != nil {
+		agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
 		return err
 	}
 
@@ -399,6 +439,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) error {
 	// *-------------------------------------------------------------------------*
 	// * Process harness output, blocks until work is completed or an error      *
 	// *-------------------------------------------------------------------------*
+	slog.Debug("[agent-session] harness running")
 	c.harness(
 		ctx,
 		stdout,
@@ -423,28 +464,28 @@ func (c *controller) getHandlers(session *shared.Session) (
 	agentHandler, ok := c.agentHandlerRegistry[string(session.Provider)]
 
 	if !ok {
-		return nil, nil, nil, nil, fmt.Errorf("provider %s not configured for agent session run", session.Provider)
+		return nil, nil, nil, nil, fmt.Errorf("[agent-session] provider %s not configured for agent session run", session.Provider)
 	}
 
 	// TODO: Make this dynamic
 	gitHandler, ok := c.gitHostingHandlerRegistry[string(shared.PlatformProvider_GitHub)]
 
 	if !ok {
-		return nil, nil, nil, nil, fmt.Errorf("provider %s not configured for git hosting handler", shared.PlatformProvider_GitHub)
+		return nil, nil, nil, nil, fmt.Errorf("[agent-session] provider %s not configured for git hosting handler", shared.PlatformProvider_GitHub)
 	}
 
 	// TODO: Make this dynamic
 	sandboxHandler, ok := c.sandboxHandlerRegistry[string(shared.PlatformProvider_Daytona)]
 
 	if !ok {
-		return nil, nil, nil, nil, fmt.Errorf("provider %s not configured for sandbox handler", shared.PlatformProvider_Daytona)
+		return nil, nil, nil, nil, fmt.Errorf("[agent-session] provider %s not configured for sandbox handler", shared.PlatformProvider_Daytona)
 	}
 
 	// TODO: Make this dynamic
 	harnessHandler, ok := c.harnessHandlerRegistry[string(shared.HarnessProvider_OpenCode)]
 
 	if !ok {
-		return nil, nil, nil, nil, fmt.Errorf("provider %s not configured for harness handler", shared.HarnessProvider_OpenCode)
+		return nil, nil, nil, nil, fmt.Errorf("[agent-session] provider %s not configured for harness handler", shared.HarnessProvider_OpenCode)
 	}
 
 	return agentHandler, gitHandler, sandboxHandler, harnessHandler, nil
@@ -453,7 +494,6 @@ func (c *controller) getHandlers(session *shared.Session) (
 func (c *controller) getPrompt(
 	ctx context.Context,
 	agentHandler interfaces.HandlerAgentSession,
-	agentHandlerCrendential string,
 	session *shared.Session,
 	sessionEvent *shared.SessionEvent,
 ) (string, error) {
@@ -462,7 +502,6 @@ func (c *controller) getPrompt(
 	})
 
 	if err != nil {
-		agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCrendential)
 		return "", err
 	}
 
@@ -471,7 +510,6 @@ func (c *controller) getPrompt(
 	})
 
 	if err != nil {
-		agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCrendential)
 		return "", err
 	}
 
@@ -513,7 +551,6 @@ func (c *controller) createPrompt(
 		p += fmt.Sprintf(PromptTemplate_LatestUserComment, *promptContext.Context)
 	}
 
-	slog.Debug("Prompt prepared", "event_identifier", sessionEvent.Identifier)
 	return p, nil
 }
 
@@ -561,7 +598,6 @@ func (c *controller) verifyGitAccess(
 			string(shared.PlatformProvider_GitHub),
 			gitHandler.GetInstallationUrl(),
 		); err != nil {
-			agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
 			return nil, err
 		}
 
@@ -589,7 +625,6 @@ func (c *controller) verifyGitAccess(
 				string(shared.PlatformProvider_GitHub),
 				gitHandler.GetInstallationUrl(),
 			); err != nil {
-				agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
 				return nil, err
 			}
 
@@ -604,8 +639,6 @@ func (c *controller) verifyGitAccess(
 
 func (c *controller) sandbox(
 	ctx context.Context,
-	agentHandler interfaces.HandlerAgentSession,
-	agentHandlerCredential string,
 	gitHandler interfaces.HandlerGit,
 	harnessHandler interfaces.HandlerHarness,
 	sandboxHandler interfaces.HandlerSandbox,
@@ -653,7 +686,6 @@ func (c *controller) sandbox(
 
 	// Get harness configuration and prepare it for upload
 	if file, data, err := harnessHandler.GetConfigFile(harnessConfig); err != nil {
-		agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
 		return nil, nil, nil, err
 	} else {
 		fileUploads[file] = data
@@ -662,7 +694,7 @@ func (c *controller) sandbox(
 	shutdown, err := sandboxHandler.Run(
 		ctx,
 		&interfaces.SandboxConfig{
-			AutoStopInterval: int(time.Minute * 5),
+			AutoStopInterval: 5, // 5 minutes
 			Session:          session,
 			SessionEvent:     sessionEvent,
 			CommandsWhenCreated: slices.Concat(
@@ -762,6 +794,7 @@ outer:
 	for stdout != nil || stderr != nil {
 		select {
 		case chunk, ok := <-stdout:
+			slog.Debug(chunk)
 			if !ok {
 				stdout = nil
 
@@ -769,7 +802,11 @@ outer:
 					startMessage()
 
 					if json.Valid(out) {
-						part <- out
+						select {
+						case part <- out:
+						case <-ctx.Done():
+							break outer
+						}
 					}
 
 					out = nil
@@ -793,8 +830,14 @@ outer:
 				}
 
 				// The complete message has now been received.
-				if json.Valid(out) {
-					part <- out
+				message := out[:i]
+
+				if json.Valid(message) {
+					select {
+					case part <- message:
+					case <-ctx.Done():
+						break outer
+					}
 				}
 
 				out = out[i+1:]
@@ -816,7 +859,7 @@ outer:
 			// o.lastEvent.Store(time.Now().UnixNano())
 
 			if _, err := stdErrBuilder.Write([]byte(chunk)); err != nil {
-				slog.Error("failed to write to stderr builder", "err", err, "event_identifier", sessionEvent.Identifier)
+				slog.Error("[agent-session] failed to write to stderr builder", "err", err, "event_identifier", sessionEvent.Identifier)
 			}
 
 		case <-ctx.Done():
@@ -826,20 +869,7 @@ outer:
 
 	if str := stdErrBuilder.String(); str != "" {
 		agentHandler.SendResponse(ctx, session.Identifier, agentHandlerCredential, str)
-		// o.stderrError = fmt.Errorf("%s", str)
-
-		// span.AddEvent(
-		// 	"output.stderr",
-		// 	trace.WithAttributes(
-		// 		attribute.String("error", str),
-		// 	),
-		// )
-
-		slog.Error(
-			"opencode stderr",
-			"event_identifier", sessionEvent.Identifier,
-			"err", str,
-		)
+		slog.Error("[agent-session] harness stderr", "event_identifier", sessionEvent.Identifier, "err", str)
 	}
 
 }

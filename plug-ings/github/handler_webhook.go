@@ -79,21 +79,22 @@ func (t *WEventVerifier) Verify(_ context.Context, event *webhook.WEvent) (*webh
 	rawBody, err := io.ReadAll(event.Body)
 
 	if err != nil {
-		slog.Error("failed to read request body", "err", err)
+		slog.Error("[webhook][github] failed to read request body", "err", err)
 		return nil, webhook.ErrWBadRequest
 	}
 
 	signature := event.Get("X-Hub-Signature-256")
 
 	if !t.verifyWebhookSignature(signature, rawBody) {
-		slog.Error("failed verifying github webhook signature")
+		slog.Error("[webhook][github] failed verifying github webhook signature")
 		return nil, webhook.ErrWUnAuthorized
 	}
 
 	eventType := event.Get("X-GitHub-Event")
+	slog.Debug("[webhook][github] event accepted", "event_type", eventType)
 
 	if eventType == "" {
-		slog.Error("missing X-GitHub-Event header")
+		slog.Error("[webhook][github] missing X-GitHub-Event header")
 		return nil, webhook.ErrWBadRequest
 	}
 
@@ -166,15 +167,15 @@ func NewWEventConsumer(
 // Timestamp validation is performed after unmarshaling to avoid decoding the
 // same payload twice.
 func (c *WEventConsumer) Consume(ctx context.Context, event *webhook.VerifiedWEvent) error {
+	slog.Debug("[webhook][github] consuming event", "event_type", event.WEventType)
 	if event.WEventType == WEventType_Ping {
-		slog.Debug("github ping event received")
 		return nil
 	}
 
 	var payload types.WebhookEvent
 
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
-		slog.Error("failed to unmarshal webhook payload", "err", err)
+		slog.Error("[webhook][github] failed to unmarshal", "err", err)
 		return webhook.ErrWBadRequest
 	}
 
@@ -203,17 +204,17 @@ func (c *WEventConsumer) Consume(ctx context.Context, event *webhook.VerifiedWEv
 		return c.handleCheckSuite(&payload)
 	}
 
+	slog.Debug("[webhook][github] unhandled event", "event_type", event.WEventType)
 	return webhook.ErrWBadRequest
 }
 
 // handleInstallation processes a GitHub installation event.
 func (c *WEventConsumer) handleInstallation(ctx context.Context, event *types.WebhookEvent) error {
 	if event.Installation == nil {
-		slog.Warn("installation event without installation data", "action", event.Action)
+		slog.Warn("[webhook][github] installation event without installation data", "action", event.Action)
 		return nil
 	}
 
-	slog.Debug("Processing GitHub installation event", "action", event.Action, "installation_id", event.Installation.ID)
 	installationId := strconv.Itoa(event.Installation.ID)
 
 	if event.Action == "deleted" || event.Action == "removed" {
@@ -233,26 +234,26 @@ func (c *WEventConsumer) handleInstallation(ctx context.Context, event *types.We
 	}
 
 	if event.Action != "created" && event.Action != "added" {
-		slog.Debug("ignoring non-created installation event", "action", event.Action)
+		slog.Debug("[webhook][github] ignoring non-created installation event", "action", event.Action)
 		return nil
 	}
 
 	if len(event.Repositories) <= 0 && len(event.RepositoriesAdded) <= 0 {
-		slog.Debug("user didn't grant access to any repo, skipping getting installation token")
+		slog.Debug("[webhook][github] user didn't grant access to any repo, skipping getting installation token")
 		return nil
 	}
 
 	token, err := c.client.CreateInstallationAccessToken(event.Installation.ID)
 
 	if err != nil {
-		slog.Error("failed to create installation access token", "installation_id", event.Installation.ID, "err", err)
+		slog.Error("[webhook][github] failed to create installation access token", "installation_id", event.Installation.ID, "err", err)
 		return err
 	}
 
 	tokenData, err := json.Marshal(token)
 
 	if err != nil {
-		slog.Error("failed to marshal installation access token", "installation_id", event.Installation.ID, "err", err)
+		slog.Error("[webhook][github] failed to marshal installation access token", "installation_id", event.Installation.ID, "err", err)
 		return err
 	}
 
@@ -273,16 +274,15 @@ func (c *WEventConsumer) handleInstallation(ctx context.Context, event *types.We
 
 func (c *WEventConsumer) handleInstallationRepositories(ctx context.Context, event *types.WebhookEvent) error {
 	if event.Installation == nil {
-		slog.Warn("installation_repositories event without installation data", "action", event.Action)
+		slog.Warn("[webhook][github] installation_repositories event without installation data", "action", event.Action)
 		return nil
 	}
 
-	slog.Debug("Processing GitHub installation_repositories event", "action", event.Action, "installation_id", event.Installation.ID)
 	installationId := strconv.Itoa(event.Installation.ID)
 
 	if event.Action == "added" {
 		if len(event.RepositoriesAdded) <= 0 {
-			slog.Debug("no repositories added in installation_repositories event")
+			slog.Debug("[webhook][github] no repositories added in installation_repositories event")
 			return nil
 		}
 
@@ -297,7 +297,6 @@ func (c *WEventConsumer) handleInstallationRepositories(ctx context.Context, eve
 			InstallationId: installationId,
 		})
 
-		slog.Debug("GitHub installation_repositories handled", "installation_id", event.Installation.ID, "repos_count", len(repos))
 		return nil
 	}
 
@@ -319,16 +318,16 @@ func (c *WEventConsumer) handleInstallationRepositories(ctx context.Context, eve
 			Delete:         false,
 		})
 
-		slog.Debug("GitHub installation_repositories removed handled", "installation_id", event.Installation.ID, "repos_count", len(repos))
 		return nil
 	}
 
-	slog.Debug("ignoring non-added/removed installation_repositories event", "action", event.Action)
+	slog.Debug("[webhook][github] ignoring non-added/removed installation_repositories event", "action", event.Action)
 	return nil
 }
 
 func (c *WEventConsumer) handlePullRequestComment(event *types.WebhookEvent) error {
 	if event.Sender == nil {
+		slog.Warn("[webhook][github] pull request comment event without sender", "action", event.Action)
 		return nil
 	}
 
@@ -341,19 +340,18 @@ func (c *WEventConsumer) handlePullRequestComment(event *types.WebhookEvent) err
 	}
 
 	if event.PullRequest == nil {
-		slog.Warn("pull request comment event without pull request data", "action", event.Action)
+		slog.Warn("[webhook][github] pull request comment event without pull request data", "action", event.Action)
 		return nil
 	}
 
 	// The GitHub App installation. Webhook payloads contain the installation property
 	// when the event is configured for and sent to a GitHub App.
 	if event.Installation == nil {
-		slog.Warn("pull request comment event without installation data", "action", event.Action)
+		slog.Warn("[webhook][github] pull request comment event without installation data", "action", event.Action)
 		return nil
 	}
 
 	installationId := strconv.Itoa(event.Installation.ID)
-	slog.Debug("github pull_request event", "action", event.Action, "delivery_id", event.DeliveryID)
 
 	c.eventBus.Publish(context.Background(), shared.PullRequestCommentedEvent{
 		Provider:       shared.PlatformProvider_GitHub,
@@ -367,11 +365,12 @@ func (c *WEventConsumer) handlePullRequestComment(event *types.WebhookEvent) err
 
 func (c *WEventConsumer) handleCheckRun(event *types.WebhookEvent) error {
 	if event.CheckRun == nil {
-		slog.Warn("check_run event without check_run data", "action", event.Action)
+		slog.Warn("[webhook][github] check run event without check_run data", "action", event.Action)
 		return nil
 	}
 
 	if event.Sender == nil {
+		slog.Warn("[webhook][github] check run event without sender", "action", event.Action)
 		return nil
 	}
 
@@ -379,7 +378,8 @@ func (c *WEventConsumer) handleCheckRun(event *types.WebhookEvent) error {
 		return nil
 	}
 
-	if event.CheckRun.Conclusion != nil {
+	if event.CheckRun.Conclusion == nil {
+		slog.Warn("[webhook][github] check run event without conclusion", "action", event.Action)
 		return nil
 	}
 
@@ -392,20 +392,18 @@ func (c *WEventConsumer) handleCheckRun(event *types.WebhookEvent) error {
 	}
 
 	if event.Installation == nil {
-		slog.Warn("check_run event without installation data", "action", event.Action)
+		slog.Warn("[webhook][github] check run event without installation data", "action", event.Action)
 		return nil
 	}
 
 	if len(event.CheckRun.PullRequests) == 0 {
-		slog.Debug("check_run event without pull requests, ignoring")
+		slog.Warn("[webhook][github] check run event without pull requests, ignoring")
 		return nil
 	}
 
 	installationId := strconv.Itoa(event.Installation.ID)
 
 	for _, pr := range event.CheckRun.PullRequests {
-		slog.Debug("github check_run event", "action", event.Action, "conclusion", *event.CheckRun.Conclusion, "check_run_id", event.CheckRun.ID, "pr", pr.Head.Ref)
-
 		c.eventBus.Publish(context.Background(), shared.PullRequestChecksFailedEvent{
 			Provider:       shared.PlatformProvider_GitHub,
 			GitRef:         pr.Head.Ref,
@@ -420,11 +418,12 @@ func (c *WEventConsumer) handleCheckRun(event *types.WebhookEvent) error {
 
 func (c *WEventConsumer) handleCheckSuite(event *types.WebhookEvent) error {
 	if event.CheckSuite == nil {
-		slog.Warn("check_suite event without check_suite data", "action", event.Action)
+		slog.Warn("[webhook][github] check suite event without check_suite data", "action", event.Action)
 		return nil
 	}
 
 	if event.Sender == nil {
+		slog.Warn("[webhook][github] check suite event without sender", "action", event.Action)
 		return nil
 	}
 
@@ -432,7 +431,8 @@ func (c *WEventConsumer) handleCheckSuite(event *types.WebhookEvent) error {
 		return nil
 	}
 
-	if event.CheckRun.Conclusion != nil {
+	if event.CheckRun.Conclusion == nil {
+		slog.Warn("[webhook][github] check run event without conclusion", "action", event.Action)
 		return nil
 	}
 
@@ -445,20 +445,18 @@ func (c *WEventConsumer) handleCheckSuite(event *types.WebhookEvent) error {
 	}
 
 	if event.Installation == nil {
-		slog.Warn("check_suite event without installation data", "action", event.Action)
+		slog.Warn("[webhook][github] check suite event without installation data", "action", event.Action)
 		return nil
 	}
 
 	if len(event.CheckSuite.PullRequests) == 0 {
-		slog.Debug("check_suite event without pull requests, ignoring")
+		slog.Warn("[webhook][github] check suite event without pull requests, ignoring")
 		return nil
 	}
 
 	installationId := strconv.Itoa(event.Installation.ID)
 
 	for _, pr := range event.CheckSuite.PullRequests {
-		slog.Debug("github check_suite event", "action", event.Action, "conclusion", *event.CheckRun.Conclusion, "check_suite_id", event.CheckSuite.ID, "pr", pr.Head.Ref)
-
 		c.eventBus.Publish(context.Background(), shared.PullRequestChecksFailedEvent{
 			Provider:       shared.PlatformProvider_GitHub,
 			GitRef:         pr.Head.Ref,

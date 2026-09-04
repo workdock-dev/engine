@@ -93,5 +93,4 @@ func (h *oauth20Handler) Callback(ctx context.Context, code, errCode string) (*o
 			ExpiresAt:    token.ExpiresAt,
 		},
 	}, nil
-
 }
