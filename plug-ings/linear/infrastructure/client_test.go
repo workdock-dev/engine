@@ -502,17 +502,13 @@ func (s *LinearServiceSuite) TestGetIssueLabels_NilIssue() {
 }
 
 func (s *LinearServiceSuite) TestGetIssueLabels_Success() {
-	labelsJSON := `{"data":{"issue":{"labelIds":["l1"],"labels":{"nodes":[{"id":"l1","name":"bug","color":"red","description":"a bug","isGroup":false}],"pageInfo":{"hasNextPage":false,"endCursor":"c1"}}}}}`
+	labelsJSON := `repo=workdock-dev/engine`
 	handler := okJSONHandler(labelsJSON)
 	svc := s.newService(handler)
 	labels, err := svc.GetIssueLabels(context.Background(), "token", "issue-1")
 	s.NoError(err)
 	s.Len(labels, 1)
-	s.Equal("l1", labels[0].ID)
-	s.Equal("bug", labels[0].Name)
-	s.Equal("red", labels[0].Color)
-	s.Equal("a bug", labels[0].Description)
-	s.False(labels[0].IsGroup)
+	s.Equal("repo=workdock-dev/engine", labels[0])
 }
 
 // --- doRequest() (tested via GetWorkspaceInfo which calls doRequest) ---

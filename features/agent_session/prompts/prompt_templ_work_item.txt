@@ -26,7 +26,6 @@ When determining what work to perform, use the following order of precedence:
 - If information is ambiguous or incomplete, identify the ambiguity instead of making assumptions.
 - Preserve existing behavior unless a higher-priority source explicitly requests a change.
 - Limit your work to what is necessary to satisfy the current request.
-- Set the ticket status to "In Progress" before starting work on it. Keep it "In Progress" while you are actively working on the task. Once you have completed the implementation and the changes are ready for review, move the ticket to "In Review".
 
 ## Pull Request Rules
 

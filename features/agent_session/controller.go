@@ -105,6 +105,7 @@ func New(
 		mcpHandler:                mcpHandler,
 		organization:              organization,
 		session:                   session,
+		git:                       git,
 		queue:                     queue,
 		tracer:                    otel.Tracer("workdock.agent_session"),
 	}
@@ -181,6 +182,35 @@ func (c *controller) init() error {
 			}
 
 			session = sess
+		}
+
+		// Update the session based on the ticket's labels
+		credentials, err := provider.GetCredentials(ctx, session.OrganizationIdentifier)
+
+		if err != nil {
+			return err
+		}
+
+		labels, err := provider.GetLabels(ctx, session.IssueId, credentials)
+
+		if err != nil {
+			return err
+		}
+
+		repo := ""
+
+		for _, label := range labels {
+			if after, ok := strings.CutPrefix(label, "repo="); ok {
+				repo = after
+				break
+			}
+		}
+
+		if (session.RepoFullName != nil && *session.RepoFullName != repo) || (session.RepoFullName == nil && repo != "") {
+			session.RepoFullName = &repo
+			if err := c.session.UpsertAgentSession(ctx, session); err != nil {
+				return err
+			}
 		}
 
 		sessionEvent.Reason = shared.AgentSessionEventReason_Prompt

@@ -32,6 +32,9 @@ type HandlerAgentSession interface {
 	// Ingest transform the work platform agent session payload into the domain session
 	Ingest(event shared.DomainEvent) (*shared.Session, *shared.SessionEvent, error)
 
+	// GetLabels returns the list of labels assigned to the ticket
+	GetLabels(ctx context.Context, issueId, accessToken string) ([]string, error)
+
 	// GetCredentials returns the access token required to send agent session updates
 	GetCredentials(ctx context.Context, orgId string) (string, error)
 

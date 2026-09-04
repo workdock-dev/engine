@@ -99,6 +99,10 @@ func (h *AgentSessionHandler) Ingest(event shared.DomainEvent) (*shared.Session,
 	return session, sessionEvent, nil
 }
 
+func (h *AgentSessionHandler) GetLabels(ctx context.Context, issueId, accessToken string) ([]string, error) {
+	return h.client.GetIssueLabels(ctx, issueId, accessToken)
+}
+
 func (h *AgentSessionHandler) GetCredentials(ctx context.Context, orgId string) (string, error) {
 	return h.tokenHandler.GetLinearAccessToken(ctx, orgId)
 }

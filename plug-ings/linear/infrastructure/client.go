@@ -297,7 +297,7 @@ func (s *Client) GetIssue(ctx context.Context, accessToken string, issueId strin
 //     their identifiers and display information.
 //
 // An error is returned if the specified issue cannot be found.
-func (s *Client) GetIssueLabels(ctx context.Context, accessToken string, issueId string) ([]types.IssueLabel, error) {
+func (s *Client) GetIssueLabels(ctx context.Context, issueId, accessToken string) ([]string, error) {
 	query := `query GetIssueLabels($id: String!) {
   issue(id: $id) {
     labelIds
@@ -345,7 +345,13 @@ func (s *Client) GetIssueLabels(ctx context.Context, accessToken string, issueId
 		return nil, fmt.Errorf("[linear-client] issue not found: %s", issueId)
 	}
 
-	return result.Issue.Labels.Nodes, nil
+	labelNames := make([]string, len(result.Issue.Labels.Nodes))
+
+	for i, label := range result.Issue.Labels.Nodes {
+		labelNames[i] = label.Name
+	}
+
+	return labelNames, nil
 }
 
 // doRequest executes an authenticated GraphQL request against the Linear API.
