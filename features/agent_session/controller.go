@@ -129,11 +129,20 @@ func (c *controller) init() error {
 	}
 
 	c.taskScheduler = taskScheduler
+	c.onAgentSessionPrompt()
+	c.onAgentSessionStop()
+	c.onIssueChange()
+	c.onPullRequestCommented()
+	c.onGitResetConnection()
+	c.onGitCompleteConnection()
 
-	// *-------------------------------------------------------------------------*
-	// * Configured domain event for agent session prompt                        *
-	// *-------------------------------------------------------------------------*
+	// TODO: Implement/check run failed domain subscription
 
+	return nil
+}
+
+// onAgentSessionPrompt Configured domain event for agent session prompt
+func (c *controller) onAgentSessionPrompt() {
 	c.eventBus.Subscribe(shared.EventType_AgentSessionPrompt, func(ctx context.Context, event shared.DomainEvent) error {
 		e, ok := event.(shared.AgentSessionPromptEvent)
 
@@ -221,11 +230,10 @@ func (c *controller) init() error {
 		slog.Debug("[agent-session] created session event", "event_identifier", sessionEvent.Identifier)
 		return nil
 	})
+}
 
-	// *-------------------------------------------------------------------------*
-	// * Configured domain event for agent session stop                          *
-	// *-------------------------------------------------------------------------*
-
+// onAgentSessionStop Configured domain event for agent session stop                          *
+func (c *controller) onAgentSessionStop() {
 	c.eventBus.Subscribe(shared.EventType_AgentSessionStop, func(ctx context.Context, event shared.DomainEvent) error {
 		e, ok := event.(shared.AgentSessionStopEvent)
 
@@ -250,11 +258,10 @@ func (c *controller) init() error {
 
 		return err
 	})
+}
 
-	// *-------------------------------------------------------------------------*
-	// * Configured domain event for agent session                               *
-	// *-------------------------------------------------------------------------*
-
+// onIssueChange Configured domain event for agent session
+func (c *controller) onIssueChange() {
 	c.eventBus.Subscribe(shared.EventType_IssueChange, func(ctx context.Context, event shared.DomainEvent) error {
 		_, ok := event.(shared.IssueChangedEvent)
 
@@ -266,11 +273,10 @@ func (c *controller) init() error {
 
 		return nil
 	})
+}
 
-	// *-------------------------------------------------------------------------*
-	// * Configured domain event for pr review comment                           *
-	// *-------------------------------------------------------------------------*
-
+// onPullRequestCommented Configured domain event for pr review comment
+func (c *controller) onPullRequestCommented() {
 	c.eventBus.Subscribe(shared.EventType_PullRequestCommented, func(ctx context.Context, event shared.DomainEvent) error {
 		e, ok := event.(shared.PullRequestCommentedEvent)
 
@@ -311,13 +317,10 @@ func (c *controller) init() error {
 
 		return nil
 	})
+}
 
-	// TODO: Implement/check run failed domain subscription
-
-	// *-------------------------------------------------------------------------*
-	// * Configured domain event for removing git access                         *
-	// *-------------------------------------------------------------------------*
-
+// onGitResetConnection Configured domain event for removing git access
+func (c *controller) onGitResetConnection() {
 	c.eventBus.Subscribe(shared.EventType_GitResetConnection, func(ctx context.Context, event shared.DomainEvent) error {
 		payload, ok := event.(shared.GitResetConnectionEvent)
 
@@ -334,11 +337,10 @@ func (c *controller) init() error {
 
 		return c.git.ResetGitHubConnection(ctx, payload.InstallationId, payload.Repos)
 	})
+}
 
-	// *-------------------------------------------------------------------------*
-	// * Configured domain event to complete the git access connection           *
-	// *-------------------------------------------------------------------------*
-
+// onGitCompleteConnection Configured domain event to complete the git access connection
+func (c *controller) onGitCompleteConnection() {
 	c.eventBus.Subscribe(shared.EventType_GitCompleteConnection, func(ctx context.Context, event shared.DomainEvent) error {
 		payload, ok := event.(shared.GitCompleteConnectionEvent)
 
@@ -368,8 +370,6 @@ func (c *controller) init() error {
 
 		return nil
 	})
-
-	return nil
 }
 
 // execute provisions and coordinates all the components to successfully run the
