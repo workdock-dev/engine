@@ -45,10 +45,10 @@ func NewAgentSessionHandler(
 }
 
 func (h *AgentSessionHandler) Ingest(event shared.DomainEvent) (*shared.Session, *shared.SessionEvent, error) {
-	agentSessionEvent, ok := event.(shared.AgentSessionEvent)
+	agentSessionEvent, ok := event.(shared.AgentSessionPromptEvent)
 
 	if !ok {
-		return nil, nil, fmt.Errorf("[agent-session][linear] failed to ingest, expected %s got %s", shared.EventType_AgentSession, event.EventType())
+		return nil, nil, fmt.Errorf("[agent-session][linear] failed to ingest, expected %s got %s", shared.EventType_AgentSessionPrompt, event.EventType())
 	}
 
 	linearEvent, ok := agentSessionEvent.Payload.(types.AgentSessionEventData)

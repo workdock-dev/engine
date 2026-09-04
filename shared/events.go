@@ -16,7 +16,8 @@ package shared
 
 const (
 	EventType_IssueChange             = "issue.changed"
-	EventType_AgentSession            = "agent_session.prompt"
+	EventType_AgentSessionPrompt      = "agent_session.prompt"
+	EventType_AgentSessionStop        = "agent_session.stop"
 	EventType_OrganizationCreate      = "organization.create"
 	EventType_GitResetConnection      = "git.reset_connection"
 	EventType_GitCompleteConnection   = "git.complete_connection"
@@ -37,13 +38,25 @@ func (e IssueChangedEvent) EventType() string {
 
 // *--------------------------------------------------------------------------*
 
-type AgentSessionEvent struct {
+type AgentSessionPromptEvent struct {
 	Provider string
 	Payload  any
 }
 
-func (e AgentSessionEvent) EventType() string {
-	return EventType_AgentSession
+func (e AgentSessionPromptEvent) EventType() string {
+	return EventType_AgentSessionPrompt
+}
+
+// *--------------------------------------------------------------------------*
+
+type AgentSessionStopEvent struct {
+	Provider               string
+	OrganizationIdentifier string
+	SessionIdentifier      string
+}
+
+func (e AgentSessionStopEvent) EventType() string {
+	return EventType_AgentSessionStop
 }
 
 // *--------------------------------------------------------------------------*

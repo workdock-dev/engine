@@ -131,14 +131,14 @@ func (c *controller) init() error {
 	c.taskScheduler = taskScheduler
 
 	// *-------------------------------------------------------------------------*
-	// * Configured domain event for agent session                               *
+	// * Configured domain event for agent session prompt                        *
 	// *-------------------------------------------------------------------------*
 
-	c.eventBus.Subscribe(shared.EventType_AgentSession, func(ctx context.Context, event shared.DomainEvent) error {
-		e, ok := event.(shared.AgentSessionEvent)
+	c.eventBus.Subscribe(shared.EventType_AgentSessionPrompt, func(ctx context.Context, event shared.DomainEvent) error {
+		e, ok := event.(shared.AgentSessionPromptEvent)
 
 		if !ok {
-			return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_AgentSession, event.EventType())
+			return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_AgentSessionPrompt, event.EventType())
 		}
 
 		provider, ok := c.agentHandlerRegistry[e.Provider]
@@ -220,6 +220,35 @@ func (c *controller) init() error {
 
 		slog.Debug("[agent-session] created session event", "event_identifier", sessionEvent.Identifier)
 		return nil
+	})
+
+	// *-------------------------------------------------------------------------*
+	// * Configured domain event for agent session stop                          *
+	// *-------------------------------------------------------------------------*
+
+	c.eventBus.Subscribe(shared.EventType_AgentSessionStop, func(ctx context.Context, event shared.DomainEvent) error {
+		e, ok := event.(shared.AgentSessionStopEvent)
+
+		if !ok {
+			return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_AgentSessionStop, event.EventType())
+		}
+
+		provider, ok := c.agentHandlerRegistry[e.Provider]
+
+		if !ok {
+			return fmt.Errorf("[agent-session] agent session handler not found in registry: %s", e.Provider)
+		}
+
+		credentials, err := provider.GetCredentials(ctx, e.OrganizationIdentifier)
+
+		if err != nil {
+			return err
+		}
+
+		provider.SendResponse(ctx, e.SessionIdentifier, credentials, "Request stopped")
+		_, err = c.session.CancelSession(ctx, e.SessionIdentifier, "cancelled by user")
+
+		return err
 	})
 
 	// *-------------------------------------------------------------------------*

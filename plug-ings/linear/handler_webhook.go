@@ -226,10 +226,18 @@ func (c *WEventConsumer) Consume(_ context.Context, event *webhook.VerifiedWEven
 			return err
 		}
 
-		c.eventBus.Publish(context.Background(), shared.AgentSessionEvent{
-			Provider: string(shared.PlatformProvider_Linear),
-			Payload:  payload,
-		})
+		if payload.AgentActivity.Signal == types.SignalType_Stop {
+			c.eventBus.Publish(context.Background(), shared.AgentSessionStopEvent{
+				Provider:               string(shared.PlatformProvider_Linear),
+				OrganizationIdentifier: payload.OrganizationID,
+				SessionIdentifier:      payload.AgentSession.ID,
+			})
+		} else {
+			c.eventBus.Publish(context.Background(), shared.AgentSessionPromptEvent{
+				Provider: string(shared.PlatformProvider_Linear),
+				Payload:  payload,
+			})
+		}
 
 		return nil
 	}
