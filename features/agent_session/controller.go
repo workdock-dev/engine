@@ -24,6 +24,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync"
 	"uuid"
 
 	"github.com/workdock-dev/engine/features/agent_session/infrastructure"
@@ -734,7 +735,6 @@ func (c *controller) harness(
 	var stdErrBuilder strings.Builder
 
 	part := make(chan []byte, 100)
-	defer close(part)
 
 	// Start and end messages tracks the span of each harness message, allow us
 	// to detect when the time it took the harness to generate each message. Helpful
@@ -758,118 +758,125 @@ func (c *controller) harness(
 
 	defer endMessage()
 
+	var wg sync.WaitGroup
+
 	// configure the harness parser and connects it to the agent handler
-	harnessHandler.Parse(
-		ctx,
-		part,
-		sessionEvent.Identifier,
+	wg.Go(func() {
+		harnessHandler.Parse(
+			ctx,
+			part,
+			sessionEvent.Identifier,
 
-		// sendThought sends the thinking state to the provider
-		func(ctx context.Context, text string) error {
-			return agentHandler.SendThought(ctx, session.Identifier, agentHandlerCredential, text)
-		},
+			// sendThought sends the thinking state to the provider
+			func(ctx context.Context, text string) error {
+				return agentHandler.SendThought(ctx, session.Identifier, agentHandlerCredential, text)
+			},
 
-		// sendResponse sends text chunks/parts to the provider
-		func(ctx context.Context, text string) error {
-			return agentHandler.SendResponse(ctx, session.Identifier, agentHandlerCredential, text)
-		},
+			// sendResponse sends text chunks/parts to the provider
+			func(ctx context.Context, text string) error {
+				return agentHandler.SendResponse(ctx, session.Identifier, agentHandlerCredential, text)
+			},
 
-		// sendACtion sends an action required to be executed by the user
-		func(ctx context.Context, action shared.AgentAction) error {
-			return agentHandler.SendAction(ctx, session.Identifier, agentHandlerCredential, action)
-		},
+			// sendACtion sends an action required to be executed by the user
+			func(ctx context.Context, action shared.AgentAction) error {
+				return agentHandler.SendAction(ctx, session.Identifier, agentHandlerCredential, action)
+			},
 
-		// sendElicitation sends a collection of questions to be answer by the user
-		func(ctx context.Context, elicitation shared.AgentElicitation) error {
-			return agentHandler.SendElicitation(ctx, session.Identifier, agentHandlerCredential, elicitation)
-		},
+			// sendElicitation sends a collection of questions to be answer by the user
+			func(ctx context.Context, elicitation shared.AgentElicitation) error {
+				return agentHandler.SendElicitation(ctx, session.Identifier, agentHandlerCredential, elicitation)
+			},
 
-		// sendServerInternalError sends a geneeric server internal error
-		func(ctx context.Context) error {
-			return agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
-		},
-	)
+			// sendServerInternalError sends a geneeric server internal error
+			func(ctx context.Context) error {
+				return agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
+			},
+		)
+	})
 
-outer:
-	for stdout != nil || stderr != nil {
-		select {
-		case chunk, ok := <-stdout:
-			slog.Debug(chunk)
-			if !ok {
-				stdout = nil
+	wg.Go(func() {
+		defer close(part)
+		for stdout != nil || stderr != nil {
+			select {
+			case chunk, ok := <-stdout:
+				slog.Debug(chunk)
+				if !ok {
+					stdout = nil
 
-				if len(out) > 0 {
-					startMessage()
+					if len(out) > 0 {
+						startMessage()
 
-					if json.Valid(out) {
+						if json.Valid(out) {
+							select {
+							case part <- out:
+							case <-ctx.Done():
+								return
+							}
+						}
+
+						out = nil
+						endMessage()
+					}
+
+					continue
+				}
+
+				// o.lastEvent.Store(time.Now().UnixNano())
+
+				// We received the first chunk of a new message.
+				startMessage()
+				out = append(out, chunk...)
+
+				for {
+					i := bytes.IndexByte(out, '\n')
+
+					if i == -1 {
+						break
+					}
+
+					// The complete message has now been received.
+					message := out[:i]
+
+					if json.Valid(message) {
 						select {
-						case part <- out:
+						case part <- message:
 						case <-ctx.Done():
-							break outer
+							return
 						}
 					}
 
-					out = nil
+					out = out[i+1:]
 					endMessage()
-				}
 
-				continue
-			}
-
-			// o.lastEvent.Store(time.Now().UnixNano())
-
-			// We received the first chunk of a new message.
-			startMessage()
-			out = append(out, chunk...)
-
-			for {
-				i := bytes.IndexByte(out, '\n')
-
-				if i == -1 {
-					break
-				}
-
-				// The complete message has now been received.
-				message := out[:i]
-
-				if json.Valid(message) {
-					select {
-					case part <- message:
-					case <-ctx.Done():
-						break outer
+					// There may already be another complete/partial message
+					// in pending, so start measuring the next one.
+					if len(out) > 0 {
+						startMessage()
 					}
 				}
 
-				out = out[i+1:]
-				endMessage()
-
-				// There may already be another complete/partial message
-				// in pending, so start measuring the next one.
-				if len(out) > 0 {
-					startMessage()
+			case chunk, ok := <-stderr:
+				if !ok {
+					stderr = nil
+					continue
 				}
+
+				// o.lastEvent.Store(time.Now().UnixNano())
+
+				if _, err := stdErrBuilder.Write([]byte(chunk)); err != nil {
+					slog.Error("[agent-session] failed to write to stderr builder", "err", err, "event_identifier", sessionEvent.Identifier)
+				}
+
+			case <-ctx.Done():
+				return
 			}
-
-		case chunk, ok := <-stderr:
-			if !ok {
-				stderr = nil
-				continue
-			}
-
-			// o.lastEvent.Store(time.Now().UnixNano())
-
-			if _, err := stdErrBuilder.Write([]byte(chunk)); err != nil {
-				slog.Error("[agent-session] failed to write to stderr builder", "err", err, "event_identifier", sessionEvent.Identifier)
-			}
-
-		case <-ctx.Done():
-			break outer
 		}
-	}
+	})
+
+	wg.Wait()
 
 	if str := stdErrBuilder.String(); str != "" {
 		agentHandler.SendResponse(ctx, session.Identifier, agentHandlerCredential, str)
 		slog.Error("[agent-session] harness stderr", "event_identifier", sessionEvent.Identifier, "err", str)
 	}
-
 }

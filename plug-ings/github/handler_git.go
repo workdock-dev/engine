@@ -37,7 +37,7 @@ var (
 	//go:embed scripts/gh_git_setup.sh
 	GH_GIT_SETUP string
 
-	//go:emebed scripts/get_changes.sh
+	//go:embed scripts/get_changes.sh
 	GET_CHANGES string
 )
 

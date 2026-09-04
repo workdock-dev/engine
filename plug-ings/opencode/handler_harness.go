@@ -158,7 +158,7 @@ func (h *HarnessHandler) GetConfigFile(config agent_session_interfaces.HarnessCo
   "share": "disabled",
   "autoupdate": false,
   "permission": %s,
-  "model": %s,
+  "model": "%s",
   "provider": %s,
   "mcp": %s
 }
@@ -173,7 +173,7 @@ func (h *HarnessHandler) RunCommand() string {
 	// -m, --model        model to use in the format of provider/model
 	// --dir              directory to run in, path on remote server if attaching
 	// -c, --continue     continue the last session
-	return fmt.Sprintf(`mkdir -p %[1]s && %[2]s/opencode run --format json --thinking --dir %[1]s -c < %s`,
+	return fmt.Sprintf(`mkdir -p %[1]s && %[2]s/opencode run --format json --thinking --dir %[1]s -c < %[3]s`,
 		WORKSPACE_PATH, BIN_PATH, PROMPT_FILE_PATH,
 	)
 }

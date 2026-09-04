@@ -40,6 +40,8 @@ const (
 	DefaultRetryGracePeriod  = time.Minute
 )
 
+var errShutdownRequeue = errors.New("scheduler shutdown")
+
 type TaskScheduler struct {
 	serviceId        string
 	config           types.TaskSchedulerConfig
@@ -282,8 +284,18 @@ func (s *TaskScheduler) execute(ctx context.Context, job *types.EventJob, starte
 
 	if ctx.Err() != nil {
 		span.SetAttributes(attribute.String("job.result", "cancelled"))
+		span.SetAttributes(attribute.Bool("job.retry", true))
 		span.AddEvent("job.cancelled")
-		slog.Debug("[task-scheduler] job cancelled by user, skipping status update", "event_identifier", job.SessionEventIdentifier, "success", "-")
+
+		slog.Debug("[task-scheduler] job cancelled, releasing job for retry", "event_identifier", job.SessionEventIdentifier, "success", "-")
+
+		// The worker context was cancelled (e.g. scheduler shutdown or job
+		// cancellation) while the job was still running. Without a status
+		// update the job would stay running until its lease expires, so
+		// release it back to the queue for another attempt instead.
+		telemetry.SpanErr(ctx, s.tracer, "job.release", func(ctx context.Context) error {
+			return s.extQueue.Retry(ctx, job.SessionEventIdentifier, errShutdownRequeue, DefaultRetryGracePeriod)
+		})
 
 		s.metrics.recordJob(ctx, ResultCancelled, "", duration)
 		return
