@@ -80,7 +80,7 @@ func NewTaskScheduler(queue interfaces.Queue, config types.TaskSchedulerConfig, 
 	metrics, err := NewMetrics(otel.Meter("workdock.task_scheduler"), s)
 
 	if err != nil {
-		slog.Error("failed to initialize task scheduler metrics", "err", err)
+		slog.Error("[task-scheduler] failed to initialize metrics", "err", err)
 		return nil, err
 	}
 
@@ -93,10 +93,10 @@ func NewTaskScheduler(queue interfaces.Queue, config types.TaskSchedulerConfig, 
 // when new work may be available, and blocks until the scheduler shuts down.
 func (s *TaskScheduler) Run(ctx context.Context) error {
 	runnable, cancellable, err := s.extQueue.Listen(ctx)
-	slog.Debug("Started listening to queue")
+	slog.Debug("[task-scheduler] listening to queue")
 
 	if err != nil {
-		slog.Error("failed to start queue listener", "err", err)
+		slog.Error("[task-scheduler] listeting to queue failed", "err", err)
 		return err
 	}
 
@@ -108,7 +108,7 @@ func (s *TaskScheduler) Run(ctx context.Context) error {
 		s.cond.Broadcast()
 		s.running.Range(func(key any, value any) bool {
 			if cancel, ok := value.(context.CancelFunc); ok {
-				slog.Debug("Shutdown worker", "event_identifier", key)
+				slog.Debug("[task-scheduler] shutdown worker", "event_identifier", key)
 				cancel()
 			}
 
@@ -131,7 +131,7 @@ func (s *TaskScheduler) Run(ctx context.Context) error {
 				}
 
 				if val, ok := s.running.Load(sessionEventIdentifier); ok {
-					slog.Debug("Cancelled job", "event_identifier", sessionEventIdentifier)
+					slog.Debug("[task-scheduler] job cancelled", "event_identifier", sessionEventIdentifier)
 					val.(context.CancelFunc)()
 				}
 
@@ -155,7 +155,7 @@ func (s *TaskScheduler) Run(ctx context.Context) error {
 		})
 	}
 
-	slog.Info("WorkerPool started", "capacity", s.config.Workers)
+	slog.Info("[task-scheduler] worker pool started", "capacity", s.config.Workers)
 	wg.Wait()
 
 	return nil
@@ -208,7 +208,7 @@ func (s *TaskScheduler) worker(ctx context.Context, workerId int) {
 			cCtx, cSpan := s.tracer.Start(exCtx, "job.claim")
 			if job, err = s.extQueue.Claim(cCtx, s.serviceId, time.Now().Add(DefaultLeaseDuration)); err != nil {
 				if errors.Is(err, interfaces.ErrJobNotRunnable) {
-					slog.Debug("worker failed to claimed job", "worker_id", workerId)
+					slog.Debug("[task-scheduler] failed to claimed job", "worker_id", workerId)
 				} else {
 					cSpan.RecordError(err)
 				}
@@ -226,7 +226,7 @@ func (s *TaskScheduler) worker(ctx context.Context, workerId int) {
 			s.busyWorkers.Add(1)
 			startedAt := time.Now()
 			s.running.Store(job.SessionEventIdentifier, cancel)
-			slog.Debug("worker claimed job", "worker_id", workerId, "event_identifier", job.SessionEventIdentifier)
+			slog.Debug("[task-scheduler] claimed job", "worker_id", workerId, "event_identifier", job.SessionEventIdentifier)
 
 			job.SetMaxAttempts(s.config.MaxAttempts)
 
@@ -256,10 +256,10 @@ func (s *TaskScheduler) execute(ctx context.Context, job *types.EventJob, starte
 		for {
 			select {
 			case <-hCtx.Done():
-				slog.Debug("Job heartbeat stopped", "event_identifier", job.SessionEventIdentifier)
+				slog.Debug("[task-scheduler] job heartbeat stopped", "event_identifier", job.SessionEventIdentifier)
 				return
 			case <-t.C:
-				if err := s.extQueue.Heartbeat(hCtx, job.SessionEventIdentifier, time.Duration(DefaultHeartbeatInterval)); err != nil {
+				if err := s.extQueue.Heartbeat(hCtx, job.SessionEventIdentifier, time.Duration(DefaultLeaseDuration)); err != nil {
 					span.AddEvent(
 						"job.heartbeat.failed",
 						trace.WithAttributes(
@@ -274,7 +274,7 @@ func (s *TaskScheduler) execute(ctx context.Context, job *types.EventJob, starte
 		}
 	}()
 
-	slog.Debug("Process job", "event_identifier", job.SessionEventIdentifier)
+	slog.Debug("[task-scheduler] processing job", "event_identifier", job.SessionEventIdentifier)
 	err := s.handler(ctx, job)
 	cancel()
 
@@ -283,7 +283,7 @@ func (s *TaskScheduler) execute(ctx context.Context, job *types.EventJob, starte
 	if ctx.Err() != nil {
 		span.SetAttributes(attribute.String("job.result", "cancelled"))
 		span.AddEvent("job.cancelled")
-		slog.Debug("User cancelled job, skipping status update", "event_identifier", job.SessionEventIdentifier, "success", "-")
+		slog.Debug("[task-scheduler] job cancelled by user, skipping status update", "event_identifier", job.SessionEventIdentifier, "success", "-")
 
 		s.metrics.recordJob(ctx, ResultCancelled, "", duration)
 		return
@@ -313,11 +313,11 @@ func (s *TaskScheduler) execute(ctx context.Context, job *types.EventJob, starte
 			})
 		}
 
-		slog.Debug("Processed job", "event_identifier", job.SessionEventIdentifier, "success", "false", "cause", err)
+		slog.Debug("[task-scheduler] job processed", "event_identifier", job.SessionEventIdentifier, "success", "false", "cause", err)
 		return
 	}
 
-	slog.Debug("Processed job", "event_identifier", job.SessionEventIdentifier, "success", "true")
+	slog.Debug("[task-scheduler] job processed", "event_identifier", job.SessionEventIdentifier, "success", "true")
 
 	err = telemetry.SpanErr(ctx, s.tracer, "job.complete", func(ctx context.Context) error {
 		return s.extQueue.Complete(ctx, job.SessionEventIdentifier)

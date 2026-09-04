@@ -112,11 +112,11 @@ func (q *EventQueue) Claim(ctx context.Context, owner string, nextAttemptAt time
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			slog.Debug("There aren't any job to claimns")
+			slog.Debug("[event-queue][postgres] there aren't any job to claimns")
 			return nil, nil
 		}
 
-		slog.Error("failed to claim job", "owner", owner, "err", err)
+		slog.Error("[event-queue][postgres] failed to claim job", "owner", owner, "err", err)
 		return nil, err
 	}
 
@@ -135,12 +135,12 @@ func (q *EventQueue) Heartbeat(ctx context.Context, id string, leaseDuration tim
 	tags, err := q.client.Exec(ctx, HeartbeatSql, id, time.Now().Add(leaseDuration))
 
 	if err != nil {
-		slog.Error("failed to send jobs heartbeat", "event_identifier", id, "err", err)
+		slog.Error("[event-queue][postgres] failed to send jobs heartbeat", "event_identifier", id, "err", err)
 		return err
 	}
 
 	if tags.RowsAffected() == 0 {
-		slog.Error("failed to set heartbeat, not affected rows", "event_identifier", id)
+		slog.Error("[event-queue][postgres] failed to set heartbeat, not affected rows", "event_identifier", id)
 	}
 
 	return nil
@@ -158,12 +158,12 @@ func (q *EventQueue) Complete(ctx context.Context, id string) error {
 	tags, err := q.client.Exec(ctx, CompleteSql, id)
 
 	if err != nil {
-		slog.Error("failed to send job as completed", "event_identifier", id, "err", err)
+		slog.Error("[event-queue][postgres] failed to send job as completed", "event_identifier", id, "err", err)
 		return err
 	}
 
 	if tags.RowsAffected() == 0 {
-		slog.Error("failed to set job as completed, not affected rows", "event_identifier", id)
+		slog.Error("[event-queue][postgres] failed to set job as completed, not affected rows", "event_identifier", id)
 	}
 
 	return nil
@@ -182,12 +182,12 @@ func (q *EventQueue) Retry(ctx context.Context, id string, cause error, retryGra
 	tags, err := q.client.Exec(ctx, RetrySql, id, cause.Error(), time.Now().Add(retryGracePeriod))
 
 	if err != nil {
-		slog.Error("failed to send job for retry", "event_identifier", id, "err", err)
+		slog.Error("[event-queue][postgres] failed to send job for retry", "event_identifier", id, "err", err)
 		return err
 	}
 
 	if tags.RowsAffected() == 0 {
-		slog.Error("failed to set job for retry, not affected rows", "event_identifier", id)
+		slog.Error("[event-queue][postgres] failed to set job for retry, not affected rows", "event_identifier", id)
 	}
 
 	return nil
@@ -206,12 +206,12 @@ func (q *EventQueue) Fail(ctx context.Context, id string, cause error) error {
 	tags, err := q.client.Exec(ctx, FailSql, id, cause.Error())
 
 	if err != nil {
-		slog.Error("failed to send job for failure", "event_identifier", id, "err", err)
+		slog.Error("[event-queue][postgres] failed to send job for failure", "event_identifier", id, "err", err)
 		return err
 	}
 
 	if tags.RowsAffected() == 0 {
-		slog.Error("failed to set job for failure, not affected rows", "event_identifier", id)
+		slog.Error("[event-queue][postgres] failed to set job for failure, not affected rows", "event_identifier", id)
 	}
 
 	return nil
@@ -230,7 +230,7 @@ LISTEN jobs_cancelled;
 		`)
 
 	if err != nil {
-		slog.Debug("failed to create listener for jobs updates", "err", err)
+		slog.Debug("[event-queue][postgres] failed to create listener for jobs updates", "err", err)
 		return runnableCh, cancellableCh, err
 	}
 
@@ -246,7 +246,7 @@ LISTEN jobs_cancelled;
 					return
 				}
 
-				slog.Error("event queue listener failed", "err", err)
+				slog.Error("[event-queue][postgres] event queue listener failed", "err", err)
 				return
 			}
 

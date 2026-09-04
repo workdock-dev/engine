@@ -73,7 +73,7 @@ func (h *HarnessHandler) GetConfigFile(config agent_session_interfaces.HarnessCo
 		data, err := json.Marshal(h.config.Permission)
 
 		if err != nil {
-			slog.Error("failed to marshal opencode config permissions", "err", err)
+			slog.Error("[harness][opencode] failed to marshal config permissions", "err", err)
 			return "", nil, err
 		}
 
@@ -84,7 +84,7 @@ func (h *HarnessHandler) GetConfigFile(config agent_session_interfaces.HarnessCo
 		data, err := json.Marshal(h.config.Provider)
 
 		if err != nil {
-			slog.Error("failed to marshal opencode config provider", "err", err)
+			slog.Error("[harness][opencode] failed to marshal config provider", "err", err)
 			return "", nil, err
 		}
 
@@ -108,7 +108,7 @@ func (h *HarnessHandler) GetConfigFile(config agent_session_interfaces.HarnessCo
 		})
 
 		if err != nil {
-			slog.Error("failed to marshal opencode model provider", "err", err)
+			slog.Error("[harness][opencode] failed to marshal model provider", "err", err)
 			return "", nil, err
 		}
 
@@ -134,7 +134,7 @@ func (h *HarnessHandler) GetConfigFile(config agent_session_interfaces.HarnessCo
 		data, err := json.Marshal(mcp)
 
 		if err != nil {
-			slog.Error("failed to marshal opencode custom mcps", "err", err)
+			slog.Error("[harness][opencode] failed to marshal custom mcps", "err", err)
 			return "", nil, err
 		}
 
@@ -145,7 +145,7 @@ func (h *HarnessHandler) GetConfigFile(config agent_session_interfaces.HarnessCo
 		data, err := json.Marshal(config.Permissions)
 
 		if err != nil {
-			slog.Error("failed to marshal opencode custom permissions", "err", err)
+			slog.Error("[harness][opencode] failed to marshal custom permissions", "err", err)
 			return "", nil, err
 		}
 
@@ -197,7 +197,6 @@ func (h *HarnessHandler) Parse(
 	// SendServerInternalError sends a geneeric server internal error
 	sendServerInternalError func(ctx context.Context) error,
 ) {
-
 	for {
 		select {
 		case message, ok := <-part:
@@ -205,19 +204,18 @@ func (h *HarnessHandler) Parse(
 				return
 			}
 
+			slog.Debug("[harness][opencode] parsed output")
 			var event types.WireEvent
 
 			if err := json.Unmarshal(message, &event); err != nil {
 				// TODO: Report error to span
-				slog.Error("failed to unmarshal opencode output", "err", err, "message", message, "event_identifier", sessionEventIdentifier)
+				slog.Error("[harness][opencode] failed to unmarshal output", "err", err, "message", message, "event_identifier", sessionEventIdentifier)
 			} else {
 				partType := event.Type
 
 				if partType == "tool_use" {
 					partType = "tool"
 				}
-
-				slog.Debug("OpenCode received message", "type", partType, "event_identifier", sessionEventIdentifier)
 
 				switch partType {
 				case "retry":
@@ -241,7 +239,7 @@ func (h *HarnessHandler) Parse(
 
 					if err := json.Unmarshal(event.Part, &p); err != nil {
 						// TODO: Report error to span
-						slog.Error("unmarshal reasoning", "event_identifier", sessionEventIdentifier, "error", err)
+						slog.Error("[harness][opencode] unmarshal reasoning", "event_identifier", sessionEventIdentifier, "error", err)
 						return
 					}
 
@@ -251,7 +249,7 @@ func (h *HarnessHandler) Parse(
 
 					if err := json.Unmarshal(event.Part, &p); err != nil {
 						// TODO: Report error to span
-						slog.Error("unmarshal text", "event_identifier", sessionEventIdentifier, "error", err)
+						slog.Error("[harness][opencode] unmarshal text", "event_identifier", sessionEventIdentifier, "error", err)
 						return
 					}
 
@@ -261,7 +259,7 @@ func (h *HarnessHandler) Parse(
 
 					if err := json.Unmarshal(event.Part, &p); err != nil {
 						// TODO: Report error to span
-						slog.Error("unmarshal tool", "event_identifier", sessionEventIdentifier, "error", err)
+						slog.Error("[harness][opencode] unmarshal tool", "event_identifier", sessionEventIdentifier, "error", err)
 						return
 					}
 
@@ -298,11 +296,11 @@ func (h *HarnessHandler) Parse(
 
 					if err := json.Unmarshal(event.Part, &p); err != nil {
 						// TODO: Report error to span
-						slog.Error("unmarshal step-finish", "event_identifier", sessionEventIdentifier, "error", err)
+						slog.Error("[harness][opencode] unmarshal step-finish", "event_identifier", sessionEventIdentifier, "error", err)
 						return
 					}
 
-					slog.Debug("OpenCoded finished",
+					slog.Debug("[harness][opencode] finished",
 						"event_identifier", sessionEventIdentifier,
 						"reason", p.Reason,
 						"reasoning", p.Tokens.Reasoning,
@@ -315,7 +313,7 @@ func (h *HarnessHandler) Parse(
 
 					sendResponse(ctx, "")
 				default:
-					slog.Warn("opencode received unexpected part type",
+					slog.Warn("[harness][opencode] received unexpected part type",
 						"event_identifier", sessionEventIdentifier,
 						"part_type", partType,
 					)

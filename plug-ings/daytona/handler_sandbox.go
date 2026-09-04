@@ -486,7 +486,7 @@ func (h *SandboxHandler) ExecuteCommand(
 	command string,
 	timeout time.Duration,
 ) (int, string, error) {
-	exec, err := sandbox.Process.ExecuteCommand(ctx, command, options.WithExecuteTimeout(timeout))
+	exec, err := sandbox.Process.ExecuteCommand(ctx, strings.ReplaceAll(command, USER_PLACERHOLDER, DAYTONA_USER), options.WithExecuteTimeout(timeout))
 
 	if err != nil {
 		slog.Error("[sandbox][daytona] failed to execute command", "err", err, "event_identifier", config.SessionEvent.Identifier)
@@ -531,7 +531,7 @@ func (h *SandboxHandler) ExecuteSessionCommand(
 	sandbox *daytona.Sandbox,
 	config *agent_session_interfaces.SandboxConfig,
 ) (map[string]any, error) {
-	result, err := sandbox.Process.ExecuteSessionCommand(ctx, config.Session.Identifier, config.HarnessCommand, true, false)
+	result, err := sandbox.Process.ExecuteSessionCommand(ctx, config.Session.Identifier, strings.ReplaceAll(config.HarnessCommand, USER_PLACERHOLDER, DAYTONA_USER), true, false)
 
 	if err != nil {
 		slog.Error("[sandbox][daytona] failed to execute session command", "err", err, "cmd", config.HarnessCommand, "event_identifier", config.SessionEvent.Identifier)

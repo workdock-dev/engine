@@ -50,7 +50,7 @@ func New(address string) (*Server, error) {
 	// mux.HandleFunc("POST /github/webhook", s.handleGitHubWebhook)
 	s.mux = mux
 
-	slog.Debug("http server created")
+	slog.Debug("[http-server] created")
 	return s, nil
 }
 
@@ -72,18 +72,18 @@ func (s *Server) Run(ctx context.Context) {
 
 	go func() {
 		<-ctx.Done()
-		slog.Info("shutting down http server")
+		slog.Info("[http-server] shutdown")
 
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		if err := s.srv.Shutdown(shutdownCtx); err != nil {
-			slog.Error("http server shutdown failed", "err", err)
+			slog.Error("[http-server] shutdown failed", "err", err)
 		}
 	}()
 
 	if err := s.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		slog.Error("failed running server", "err", err)
+		slog.Error("[http-server] failed running", "err", err)
 		os.Exit(1)
 	}
 }

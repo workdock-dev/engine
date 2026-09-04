@@ -74,7 +74,7 @@ func NewClient(config types.Config, forSecrets shared.ForSecrets) (*Client, erro
 		config.TokenUrl = ExchangeTokenEndpoint
 	}
 
-	slog.Debug("linear service created", "api_url", config.ApiUrl, "token_url", config.TokenUrl)
+	slog.Debug("[linear-client] created", "api_url", config.ApiUrl, "token_url", config.TokenUrl)
 	return &Client{
 		config:     config,
 		forSecrets: forSecrets,
@@ -136,12 +136,12 @@ func (s *Client) GetWorkspaceInfo(ctx context.Context, accessToken string) (*typ
 	}
 
 	if err := json.Unmarshal(body, &result); err != nil {
-		slog.Error("failed to unmarshal response", "err", err)
+		slog.Error("[linear-client] failed to unmarshal response", "err", err)
 		return nil, shared.ErrInternalServerError
 	}
 
 	if result.Viewer.Organization == nil {
-		slog.Error("no organization found in response")
+		slog.Error("[linear-client] no organization found in response")
 		return nil, shared.ErrInternalServerError
 	}
 
@@ -217,14 +217,14 @@ func (s *Client) CreateAgentActivity(ctx context.Context, accessToken string, in
 	}
 
 	if err := json.Unmarshal(body, &result); err != nil {
-		slog.Error("failed to unmarshall create agent activity result", "err", err)
+		slog.Error("[linear-client] failed to unmarshall create agent activity result", "err", err)
 		return err
 	}
 
-	slog.Debug("Agent activity sent", "success", result.Payload.Success)
+	slog.Debug("[linear-client] agent activity sent", "success", result.Payload.Success)
 
 	if !result.Payload.Success {
-		return errors.New("linear create activity returned unsuccess")
+		return errors.New("[linear-client] create activity returned unsuccess")
 	}
 
 	return nil
@@ -271,11 +271,11 @@ func (s *Client) GetIssue(ctx context.Context, accessToken string, issueId strin
 	}
 
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+		return nil, fmt.Errorf("[linear-client] failed to unmarshal response: %w", err)
 	}
 
 	if result.Issue == nil {
-		return nil, fmt.Errorf("issue not found: %s", issueId)
+		return nil, fmt.Errorf("[linear-client] issue not found: %s", issueId)
 	}
 
 	issueResult := &types.IssueStateResult{
@@ -338,11 +338,11 @@ func (s *Client) GetIssueLabels(ctx context.Context, accessToken string, issueId
 	}
 
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+		return nil, fmt.Errorf("[linear-client] failed to unmarshal response: %w", err)
 	}
 
 	if result.Issue == nil {
-		return nil, fmt.Errorf("issue not found: %s", issueId)
+		return nil, fmt.Errorf("[linear-client] issue not found: %s", issueId)
 	}
 
 	return result.Issue.Labels.Nodes, nil
@@ -362,14 +362,14 @@ func (s *Client) doRequest(ctx context.Context, query string, variables map[stri
 	reqBody, err := json.Marshal(graphQLRequest{Query: query, Variables: variables})
 
 	if err != nil {
-		slog.Error("failed to marshal linear graphql request", "err", err)
+		slog.Error("[linear-client] failed to marshal graphql request", "err", err)
 		return nil, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", s.config.ApiUrl, bytes.NewReader(reqBody))
 
 	if err != nil {
-		slog.Error("failed to create the linear graphql request", "err", err)
+		slog.Error("[linear-client] failed to create graphql request", "err", err)
 		return nil, err
 	}
 
@@ -390,13 +390,13 @@ func (s *Client) doRequest(ctx context.Context, query string, variables map[stri
 	body, err := io.ReadAll(resp.Body)
 
 	if err != nil {
-		slog.Error("failed to parse linear graphql response", "err", err)
+		slog.Error("[linear-client] failed to parse graphql response", "err", err)
 		return nil, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		err := errors.New("unexpected linear request status code")
-		slog.Error("failed linear graphql request", "err", err, "statusCode", resp.StatusCode, "query", query)
+		slog.Error("[linear-client] graphql request failed", "err", err, "statusCode", resp.StatusCode, "query", query)
 		return nil, err
 	}
 
@@ -410,7 +410,7 @@ func (s *Client) doRequest(ctx context.Context, query string, variables map[stri
 	if len(gqlResp.Errors) > 0 {
 		err := errors.New("linear graphql returned errors")
 		for _, err := range gqlResp.Errors {
-			slog.Error("failed linear graphql request", "err", err, "query", query)
+			slog.Error("[linear-client] graphql request failed", "err", err, "query", query)
 		}
 		return nil, err
 	}
@@ -438,7 +438,7 @@ func (s *Client) ExchangeCode(ctx context.Context, code string) (*types.TokenExc
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.config.TokenUrl, strings.NewReader(data.Encode()))
 
 	if err != nil {
-		slog.Error("failed to create token exchange request", "err", err)
+		slog.Error("[linear-client] failed to create token exchange request", "err", err)
 		return nil, shared.ErrInternalServerError
 	}
 
@@ -446,7 +446,7 @@ func (s *Client) ExchangeCode(ctx context.Context, code string) (*types.TokenExc
 	resp, err := http.DefaultClient.Do(req)
 
 	if err != nil {
-		slog.Error("failed exchanging linear oauth token", "err", err)
+		slog.Error("[linear-client] failed exchanging oauth token", "err", err)
 		return nil, shared.ErrInternalServerError
 	}
 
@@ -454,20 +454,20 @@ func (s *Client) ExchangeCode(ctx context.Context, code string) (*types.TokenExc
 	body, err := io.ReadAll(resp.Body)
 
 	if err != nil {
-		slog.Error("failed to read request body", "err", err)
+		slog.Error("[linear-client] failed to read request body", "err", err)
 		return nil, shared.ErrInternalServerError
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		err := errors.New(string(body))
-		slog.Error("failed exchanging linear oauth token", "err", err, "statusCode", resp.StatusCode)
+		slog.Error("[linear-client] failed exchanging oauth token", "err", err, "statusCode", resp.StatusCode)
 		return nil, shared.ErrInternalServerError
 	}
 
 	var result types.TokenExchanged
 
 	if err := json.Unmarshal(body, &result); err != nil {
-		slog.Error("failed to unmarshal token exchange response", "err", err)
+		slog.Error("[linear-client] failed to unmarshal token exchange response", "err", err)
 		return nil, shared.ErrInternalServerError
 	}
 
@@ -491,7 +491,7 @@ func (s *Client) exchangeRefreshToken(ctx context.Context, refreshToken string) 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.config.TokenUrl, strings.NewReader(data.Encode()))
 
 	if err != nil {
-		slog.Error("failed to create token refresh request", "err", err)
+		slog.Error("[linear-client] failed to create token refresh request", "err", err)
 		return nil, err
 	}
 
@@ -499,7 +499,7 @@ func (s *Client) exchangeRefreshToken(ctx context.Context, refreshToken string) 
 	resp, err := http.DefaultClient.Do(req)
 
 	if err != nil {
-		slog.Error("failed refreshing linear oauth token", "err", err)
+		slog.Error("[linear-client] failed refreshing oauth token", "err", err)
 		return nil, err
 	}
 
@@ -507,20 +507,20 @@ func (s *Client) exchangeRefreshToken(ctx context.Context, refreshToken string) 
 	body, err := io.ReadAll(resp.Body)
 
 	if err != nil {
-		slog.Error("failed to read request body", "err", err)
+		slog.Error("[linear-client] failed to read request body", "err", err)
 		return nil, err
 	}
 
 	if resp.StatusCode != http.StatusOK {
 		err := errors.New(string(body))
-		slog.Error("failed refreshing linear oauth token", "err", err, "statusCode", resp.StatusCode)
+		slog.Error("[linear-client] failed refreshing oauth token", "err", err, "statusCode", resp.StatusCode)
 		return nil, err
 	}
 
 	var result types.TokenExchanged
 
 	if err := json.Unmarshal(body, &result); err != nil {
-		slog.Error("failed to unmarshal token refresh response", "err", err)
+		slog.Error("[linear-client] failed to unmarshal token refresh response", "err", err)
 		return nil, err
 	}
 
