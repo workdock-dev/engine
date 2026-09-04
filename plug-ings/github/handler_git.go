@@ -42,23 +42,20 @@ var (
 )
 
 type GitHandler struct {
-	client interfaces.Client
-	// repository      interfaces.Repository
+	client          interfaces.Client
 	secretManager   shared.ForSecrets
 	installationUrl string
 }
 
 func NewGitHandler(
 	config types.Config,
-	// repository interfaces.Repository,
 	client interfaces.Client,
 	secretManager shared.ForSecrets,
 ) agent_session_interfaces.HandlerGit {
 	return &GitHandler{
 		installationUrl: config.AppInstallURL,
-		// repository:      repository,
-		client:        client,
-		secretManager: secretManager,
+		client:          client,
+		secretManager:   secretManager,
 	}
 }
 
@@ -93,6 +90,7 @@ func (h *GitHandler) GetGitAccess(ctx context.Context, connection *shared.GitHub
 		EnvVarName: GITHUB_ACCESS_TOKEN_ENV_VAR,
 		Secret:     token,
 		Hosts:      []string{"api.github.com", "github.com"},
+		Granted:    true,
 	}, nil
 }
 

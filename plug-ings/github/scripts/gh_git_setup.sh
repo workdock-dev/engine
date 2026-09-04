@@ -12,4 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-gh auth setup-git && git config --global http.sslCAInfo "/etc/$USER/netleash/ca.crt"
+gh auth setup-git && git config --global http.sslCAInfo "/etc/${USER}/netleash/ca.crt"
