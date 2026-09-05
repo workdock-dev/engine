@@ -411,7 +411,6 @@ func (s *TaskSchedulerSuite) TestRun_CancellationChannel() {
 	}
 	q.claimJob = job
 
-	cancelChCalled := make(chan struct{})
 	handler := func(ctx context.Context, j *types.EventJob) (types.EventJobStatus, error) {
 		q.claimJob = nil
 		<-ctx.Done()
@@ -444,7 +443,6 @@ func (s *TaskSchedulerSuite) TestRun_CancellationChannel() {
 
 	cancel()
 	<-done
-	_ = cancelChCalled
 }
 
 func (s *TaskSchedulerSuite) TestRun_ClaimErrorOther() {
