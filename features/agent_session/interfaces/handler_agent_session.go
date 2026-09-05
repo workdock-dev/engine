@@ -57,6 +57,6 @@ type HandlerAgentSession interface {
 	// SendGitConnectionRequest indicates the user to grant access to the git hosting provider
 	SendGitConnectionRequest(ctx context.Context, sessionId, accessToken, gitProvider, gitInstallURL string) error
 
-	// SendServerInternalError sends a geneeric server internal error
+	// SendServerInternalError sends a generic server internal error
 	SendServerInternalError(ctx context.Context, sessionId, accessToken string) error
 }

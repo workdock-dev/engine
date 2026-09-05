@@ -194,7 +194,7 @@ func (h *HarnessHandler) Parse(
 	// SendElicitation sends a collection of questions to be answer by the user
 	sendElicitation func(ctx context.Context, elicitation agent_session_types.AgentElicitation) error,
 
-	// SendServerInternalError sends a geneeric server internal error
+	// SendServerInternalError sends a generic server internal error
 	sendServerInternalError func(ctx context.Context) error,
 ) error {
 	for {
@@ -318,7 +318,7 @@ func (h *HarnessHandler) Parse(
 						"part_type", partType,
 					)
 
-					// TODO: Type to pase error message
+					// TODO: Typed parse of error message
 					sendResponse(ctx, fmt.Sprintf("An unexpected format has been received by the harness:\n\n%s", message))
 				}
 			}

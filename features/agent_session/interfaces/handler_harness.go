@@ -78,7 +78,7 @@ type HandlerHarness interface {
 		// sendElicitation sends a collection of questions to be answer by the user
 		sendElicitation func(ctx context.Context, elicitation types.AgentElicitation) error,
 
-		// sendServerInternalError sends a geneeric server internal error
+		// sendServerInternalError sends a generic server internal error
 		sendServerInternalError func(ctx context.Context) error,
 	) error
 }

@@ -355,8 +355,8 @@ func (s *GitHandlerSuite) TestGetCommands() {
 	s.NotEmpty(commands[0])
 }
 
-func (s *GitHandlerSuite) TestGetLatestChangesComand() {
-	s.Equal(GET_CHANGES, s.handler.GetLatestChangesComand())
+func (s *GitHandlerSuite) TestGetLatestChangesCommand() {
+	s.Equal(GET_CHANGES, s.handler.GetLatestChangesCommand())
 	s.NotEmpty(GET_CHANGES)
 }
 
@@ -542,10 +542,10 @@ func (s *WebhookSuite) TestVerifyWebhookSignature() {
 	valid := s.sign(body, testConfig.WebhookSecret)
 
 	tests := []struct {
-		name     string
+		name      string
 		signature string
-		body     []byte
-		want     bool
+		body      []byte
+		want      bool
 	}{
 		{name: "valid", signature: valid, body: body, want: true},
 		{name: "empty signature", signature: "", body: body, want: false},

@@ -51,11 +51,11 @@ func (m *mockOauthHandler) Callback(ctx context.Context, code, errCode string) (
 type mockSecretManager struct {
 	setFn func(ctx context.Context, secretPath, secretName, secretValue string) error
 
-	setCalled  int
-	setCtx     context.Context
-	setPath    string
-	setName    string
-	setValue   string
+	setCalled int
+	setCtx    context.Context
+	setPath   string
+	setName   string
+	setValue  string
 }
 
 func (m *mockSecretManager) Get(ctx context.Context, secretPath, secretName string) (string, error) {

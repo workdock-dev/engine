@@ -33,8 +33,8 @@ import (
 )
 
 const (
-	USER_PLACERHOLDER = "${USER}"
-	DAYTONA_USER      = "daytona"
+	USER_PLACEHOLDER = "${USER}"
+	DAYTONA_USER     = "daytona"
 )
 
 type SandboxHandler struct {
@@ -223,7 +223,7 @@ func (h *SandboxHandler) Run(
 
 	slog.Debug("[sandbox][daytona] files uploaded")
 	for path, data := range config.FileUploads {
-		if err := h.uploadFile(ctx, sandbox, config, data, strings.ReplaceAll(path, USER_PLACERHOLDER, DAYTONA_USER)); err != nil {
+		if err := h.uploadFile(ctx, sandbox, config, data, strings.ReplaceAll(path, USER_PLACEHOLDER, DAYTONA_USER)); err != nil {
 			return shutdown, err
 		}
 	}
@@ -232,13 +232,13 @@ func (h *SandboxHandler) Run(
 	// * Create an execution process since interacting with the AI takes time    *
 	// *-------------------------------------------------------------------------*
 
-	slog.Debug("[sandbox][daytona] execution sesion created")
+	slog.Debug("[sandbox][daytona] execution session created")
 	if err := h.createExecutionSession(ctx, sandbox, config); err != nil {
 		return shutdown, err
 	}
 
 	execSessionCreated = true
-	slog.Debug("[sandbox][daytona] execution sesion running", "cmd", config.HarnessCommand)
+	slog.Debug("[sandbox][daytona] execution session running", "cmd", config.HarnessCommand)
 	result, err := h.executeSessionCommand(ctx, sandbox, config)
 
 	if err != nil {
@@ -482,7 +482,7 @@ func (h *SandboxHandler) shutdown(ctx context.Context, sandbox *daytona.Sandbox,
 }
 
 func (h *SandboxHandler) uploadFile(ctx context.Context, sandbox *daytona.Sandbox, config *agent_session_interfaces.SandboxConfig, data []byte, path string) error {
-	if err := sandbox.FileSystem.UploadFile(ctx, data, strings.ReplaceAll(path, USER_PLACERHOLDER, DAYTONA_USER)); err != nil {
+	if err := sandbox.FileSystem.UploadFile(ctx, data, strings.ReplaceAll(path, USER_PLACEHOLDER, DAYTONA_USER)); err != nil {
 		slog.Error("[sandbox][daytona] failed to upload file", "err", err, "path", path, "event_identifier", config.SessionEvent.Identifier)
 		return err
 	}
@@ -508,7 +508,7 @@ func (h *SandboxHandler) executeCommand(
 	command string,
 	timeout time.Duration,
 ) (int, string, error) {
-	exec, err := sandbox.Process.ExecuteCommand(ctx, strings.ReplaceAll(command, USER_PLACERHOLDER, DAYTONA_USER), options.WithExecuteTimeout(timeout))
+	exec, err := sandbox.Process.ExecuteCommand(ctx, strings.ReplaceAll(command, USER_PLACEHOLDER, DAYTONA_USER), options.WithExecuteTimeout(timeout))
 
 	if err != nil {
 		slog.Error("[sandbox][daytona] failed to execute command", "err", err, "event_identifier", config.SessionEvent.Identifier)
@@ -553,7 +553,7 @@ func (h *SandboxHandler) executeSessionCommand(
 	sandbox *daytona.Sandbox,
 	config *agent_session_interfaces.SandboxConfig,
 ) (map[string]any, error) {
-	result, err := sandbox.Process.ExecuteSessionCommand(ctx, config.Session.Identifier, strings.ReplaceAll(config.HarnessCommand, USER_PLACERHOLDER, DAYTONA_USER), true, false)
+	result, err := sandbox.Process.ExecuteSessionCommand(ctx, config.Session.Identifier, strings.ReplaceAll(config.HarnessCommand, USER_PLACEHOLDER, DAYTONA_USER), true, false)
 
 	if err != nil {
 		slog.Error("[sandbox][daytona] failed to execute session command", "err", err, "cmd", config.HarnessCommand, "event_identifier", config.SessionEvent.Identifier)

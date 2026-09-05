@@ -803,7 +803,7 @@ func (c *controller) sandbox(
 				gitHandler.GetCommands(),
 				harnessHandler.GetCommands(),
 			),
-			ExitCommand:    gitHandler.GetLatestChangesComand(),
+			ExitCommand:    gitHandler.GetLatestChangesCommand(),
 			FileUploads:    fileUploads,
 			Secrets:        secrets,
 			GitName:        "workdock[bot]",
@@ -936,7 +936,7 @@ func (c *controller) harness(
 				return agentHandler.SendElicitation(ctx, session.Identifier, agentHandlerCredential, elicitation)
 			},
 
-			// sendServerInternalError sends a geneeric server internal error
+			// sendServerInternalError sends a generic server internal error
 			func(ctx context.Context) error {
 				return agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
 			},

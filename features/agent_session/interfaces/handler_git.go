@@ -42,9 +42,9 @@ type HandlerGit interface {
 	// requires to be run on every sandbox execution
 	GetCommands() []string
 
-	// GetLatestChangesComand returns the command to verify if a pull request or commit with push
+	// GetLatestChangesCommand returns the command to verify if a pull request or commit with push
 	// was created
-	GetLatestChangesComand() string
+	GetLatestChangesCommand() string
 
 	// GetGitAccess returns the git access configuration for the given provider
 	GetGitAccess(ctx context.Context, connection *types.GitConnection) (*GitAccess, error)

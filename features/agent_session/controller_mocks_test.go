@@ -168,7 +168,7 @@ func (m *mockGitHandler) GetCommands() []string {
 	return nil
 }
 
-func (m *mockGitHandler) GetLatestChangesComand() string {
+func (m *mockGitHandler) GetLatestChangesCommand() string {
 	if m.getLatestChangesCmdFn != nil {
 		return m.getLatestChangesCmdFn()
 	}

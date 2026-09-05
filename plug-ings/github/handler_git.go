@@ -76,7 +76,7 @@ func (h *GitHandler) GetCommands() []string {
 	}
 }
 
-func (h *GitHandler) GetLatestChangesComand() string {
+func (h *GitHandler) GetLatestChangesCommand() string {
 	return GET_CHANGES
 }
 
