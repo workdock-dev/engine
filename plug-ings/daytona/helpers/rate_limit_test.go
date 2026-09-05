@@ -282,6 +282,23 @@ func (s *RateLimitSuite) TestPreflight_BelowReserve_ResetPassed() {
 	s.NoError(err)
 }
 
+// TestPreflight_TimerCompletes covers the wait-completes-successfully path:
+// the budget is at the reserve threshold and the observed window is short
+// enough for Preflight to wait it out and proceed.
+func (s *RateLimitSuite) TestPreflight_TimerCompletes() {
+	h := http.Header{}
+	h.Set("X-RateLimit-Remaining-authenticated", "1")
+	h.Set("X-RateLimit-Reset-authenticated", "1")
+	rateLimits.observe(h)
+
+	start := time.Now()
+	err := Preflight(context.Background(), ThrottlerAuthenticated, "test op")
+	elapsed := time.Since(start)
+
+	s.NoError(err)
+	s.GreaterOrEqual(elapsed, 900*time.Millisecond)
+}
+
 // --- RetryRateLimited tests ---
 
 func (s *RateLimitSuite) TestRetryRateLimited_SuccessFirstTry() {
@@ -351,6 +368,31 @@ func (s *RateLimitSuite) TestRetryRateLimited_ContextCancelled() {
 	})
 
 	s.Error(err)
+}
+
+// TestRetryRateLimited_RateLimitThenSuccess uses Retry-After:1 so each of the
+// 4 waits costs 1s.
+
+func (s *RateLimitSuite) TestRetryRateLimited_AllAttemptsExhausted() {
+	// Every attempt hits a 429 with Retry-After-authenticated: 1, so the loop
+	// runs rateLimitRetries times, breaks on the last attempt and returns the
+	// rate-limit error (the "giving up" path) without waiting for it.
+	headers := http.Header{}
+	headers.Set("Retry-After-authenticated", "1")
+
+	callCount := 0
+	_, err := RetryRateLimited(context.Background(), ThrottlerAuthenticated, "test", func() (string, error) {
+		callCount++
+		return "", &sdkerrors.DaytonaError{
+			Message:    "rate limited",
+			StatusCode: http.StatusTooManyRequests,
+			Headers:    headers,
+		}
+	})
+
+	s.Error(err)
+	s.ErrorIs(err, sdkerrors.ErrRateLimit)
+	s.Equal(rateLimitRetries, callCount)
 }
 
 func (s *RateLimitSuite) TestRetryRateLimited_ObservesHeaders() {
