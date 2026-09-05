@@ -431,8 +431,8 @@ func (c *WEventConsumer) handleCheckSuite(event *types.WebhookEvent) error {
 		return nil
 	}
 
-	if event.CheckRun.Conclusion == nil {
-		slog.Warn("[webhook][github] check run event without conclusion", "action", event.Action)
+	if event.CheckSuite.Conclusion == nil {
+		slog.Warn("[webhook][github] check suite event without conclusion", "action", event.Action)
 		return nil
 	}
 
@@ -440,7 +440,7 @@ func (c *WEventConsumer) handleCheckSuite(event *types.WebhookEvent) error {
 		return nil
 	}
 
-	if *event.CheckRun.Conclusion != "failure" && *event.CheckRun.Conclusion != "timed_out" {
+	if *event.CheckSuite.Conclusion != "failure" && *event.CheckSuite.Conclusion != "timed_out" {
 		return nil
 	}
 
