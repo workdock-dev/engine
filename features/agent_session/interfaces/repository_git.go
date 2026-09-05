@@ -21,7 +21,7 @@ import (
 )
 
 type RepositoryGit interface {
-	GetGitHubConnection(ctx context.Context, repoFullName string) (*types.GitConnection, error)
-	UpsertGitHubConnection(ctx context.Context, connection *types.GitConnection) error
-	ResetGitHubConnection(ctx context.Context, installationId string, repos []string) error
+	GetConnection(ctx context.Context, repoFullName string) (*types.GitConnection, error)
+	UpsertConnection(ctx context.Context, connection *types.GitConnection) error
+	ResetConnection(ctx context.Context, installationId string, repos []string) error
 }

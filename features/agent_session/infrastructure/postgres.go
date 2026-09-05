@@ -231,7 +231,7 @@ func (p *postgres) GetAgentSessionEventByGitRef(ctx context.Context, ref string,
 	return &row, nil
 }
 
-func (p *postgres) GetGitHubConnection(ctx context.Context, repoFullName string) (*types.GitConnection, error) {
+func (p *postgres) GetConnection(ctx context.Context, repoFullName string) (*types.GitConnection, error) {
 	var row types.GitConnection
 
 	err := p.client.
@@ -360,7 +360,7 @@ func (p *postgres) UpdateSessionEventResult(ctx context.Context, event *types.Se
 
 }
 
-func (p *postgres) UpsertGitHubConnection(ctx context.Context, githubConnection *types.GitConnection) error {
+func (p *postgres) UpsertConnection(ctx context.Context, githubConnection *types.GitConnection) error {
 	err := p.client.
 		QueryRow(
 			ctx,
@@ -382,7 +382,7 @@ func (p *postgres) UpsertGitHubConnection(ctx context.Context, githubConnection 
 	return nil
 }
 
-func (p *postgres) ResetGitHubConnection(ctx context.Context, installationId string, repos []string) error {
+func (p *postgres) ResetConnection(ctx context.Context, installationId string, repos []string) error {
 	_, err := p.client.Exec(ctx, ResetGitHubConnectionSql, installationId, repos)
 
 	if err != nil {

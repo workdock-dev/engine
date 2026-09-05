@@ -364,7 +364,7 @@ func (c *controller) onGitResetConnection() {
 		}
 
 		slog.Debug("[agent-session] deleted git connection")
-		return c.git.ResetGitHubConnection(ctx, payload.InstallationId, payload.Repos)
+		return c.git.ResetConnection(ctx, payload.InstallationId, payload.Repos)
 	})
 }
 
@@ -393,7 +393,7 @@ func (c *controller) onGitCompleteConnection() {
 			}
 
 			slog.Debug("[agent-session] git connection completed", "repo", repo)
-			if err := c.git.UpsertGitHubConnection(ctx, connection); err != nil {
+			if err := c.git.UpsertConnection(ctx, connection); err != nil {
 				return err
 			}
 
@@ -666,7 +666,7 @@ func (c *controller) verifyGitAccess(
 	}
 
 	connection, err := telemetry.Span(ctx, c.tracer, "session.get_git_connection", func(ctx context.Context) (*types.GitConnection, error) {
-		return c.git.GetGitHubConnection(ctx, *session.RepoFullName)
+		return c.git.GetConnection(ctx, *session.RepoFullName)
 	})
 
 	if err != nil {
@@ -678,7 +678,7 @@ func (c *controller) verifyGitAccess(
 	// (push branches, create PRs) require an authenticated Git.
 	if connection == nil || !connection.Connected || connection.InstallationId == nil {
 		if err := telemetry.SpanErr(ctx, c.tracer, "session.upsert_git_connection", func(ctx context.Context) error {
-			return c.git.UpsertGitHubConnection(
+			return c.git.UpsertConnection(
 				ctx, &types.GitConnection{
 					SessionEventIdentifier: &sessionEvent.Identifier,
 					RepoFullName:           *session.RepoFullName,
@@ -708,7 +708,7 @@ func (c *controller) verifyGitAccess(
 
 	if err != nil {
 		if errors.Is(err, shared.ErrGitHubInstallationUnavailable) {
-			if err := c.git.ResetGitHubConnection(ctx, *connection.InstallationId, []string{*session.RepoFullName}); err != nil {
+			if err := c.git.ResetConnection(ctx, *connection.InstallationId, []string{*session.RepoFullName}); err != nil {
 				return nil, err
 			}
 
