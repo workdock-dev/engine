@@ -18,3 +18,8 @@ type TaskSchedulerConfig struct {
 	Workers     int `yaml:"workers"`
 	MaxAttempts int `yaml:"max_attempts"`
 }
+
+type HarnessLivenessProbeConfig struct {
+	MaxMisses     int64 `yaml:"max_misses"`
+	PeriodSeconds int64 `yaml:"period_seconds"`
+}

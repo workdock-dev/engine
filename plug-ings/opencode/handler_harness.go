@@ -196,12 +196,12 @@ func (h *HarnessHandler) Parse(
 
 	// SendServerInternalError sends a geneeric server internal error
 	sendServerInternalError func(ctx context.Context) error,
-) {
+) error {
 	for {
 		select {
 		case message, ok := <-part:
 			if !ok {
-				return
+				return nil
 			}
 
 			slog.Debug("[harness][opencode] parsed output")
@@ -240,7 +240,7 @@ func (h *HarnessHandler) Parse(
 					if err := json.Unmarshal(event.Part, &p); err != nil {
 						// TODO: Report error to span
 						slog.Error("[harness][opencode] unmarshal reasoning", "event_identifier", sessionEventIdentifier, "error", err)
-						return
+						return err
 					}
 
 					sendThought(ctx, p.Text)
@@ -250,7 +250,7 @@ func (h *HarnessHandler) Parse(
 					if err := json.Unmarshal(event.Part, &p); err != nil {
 						// TODO: Report error to span
 						slog.Error("[harness][opencode] unmarshal text", "event_identifier", sessionEventIdentifier, "error", err)
-						return
+						return err
 					}
 
 					sendResponse(ctx, p.Text)
@@ -260,7 +260,7 @@ func (h *HarnessHandler) Parse(
 					if err := json.Unmarshal(event.Part, &p); err != nil {
 						// TODO: Report error to span
 						slog.Error("[harness][opencode] unmarshal tool", "event_identifier", sessionEventIdentifier, "error", err)
-						return
+						return err
 					}
 
 					if p.Tool == "question" {
@@ -297,7 +297,7 @@ func (h *HarnessHandler) Parse(
 					if err := json.Unmarshal(event.Part, &p); err != nil {
 						// TODO: Report error to span
 						slog.Error("[harness][opencode] unmarshal step-finish", "event_identifier", sessionEventIdentifier, "error", err)
-						return
+						return err
 					}
 
 					slog.Debug("[harness][opencode] finished",
@@ -324,7 +324,7 @@ func (h *HarnessHandler) Parse(
 			}
 
 		case <-ctx.Done():
-			return
+			return ctx.Err()
 		}
 	}
 }

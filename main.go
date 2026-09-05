@@ -67,10 +67,11 @@ type MCPConfig struct {
 }
 
 type Config struct {
-	ServiceName   string                                  `yaml:"service_name"`
-	ServerAddress string                                  `yaml:"server_address"`
-	TaskScheduler agent_session_types.TaskSchedulerConfig `yaml:"task_scheduler"`
-	MCPs          []MCPConfig                             `yaml:"mcps"`
+	ServiceName          string                                         `yaml:"service_name"`
+	ServerAddress        string                                         `yaml:"server_address"`
+	TaskScheduler        agent_session_types.TaskSchedulerConfig        `yaml:"task_scheduler"`
+	HarnessLivenessProbe agent_session_types.HarnessLivenessProbeConfig `yaml:"harness_liveness_probe"`
+	MCPs                 []MCPConfig                                    `yaml:"mcps"`
 
 	// plug-ings configuration
 	Linear   linear_types.Config   `yaml:"linear"`
@@ -259,6 +260,7 @@ func main() {
 		err := agent_session.New(
 			ctx,
 			cfg.TaskScheduler,
+			cfg.HarnessLivenessProbe,
 			agent_session.AgentHandlerRegistry{
 				string(shared.PlatformProvider_Linear): linearAgentSessionHandler,
 			},

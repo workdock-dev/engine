@@ -80,5 +80,5 @@ type HandlerHarness interface {
 
 		// sendServerInternalError sends a geneeric server internal error
 		sendServerInternalError func(ctx context.Context) error,
-	)
+	) error
 }

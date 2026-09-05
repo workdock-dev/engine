@@ -23,6 +23,10 @@ task_scheduler:
   workers: 3
   max_attempts: 2
 
+harness_liveness_probe:
+  max_misses: 3
+  period_seconds: 30
+
 mcps:
   - name: "My MCP"
     url: "https://example.com"

@@ -24,7 +24,8 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
-	"sync"
+	"sync/atomic"
+	"time"
 	"uuid"
 
 	"github.com/workdock-dev/engine/features/agent_session/infrastructure"
@@ -34,6 +35,7 @@ import (
 	"github.com/workdock-dev/engine/shared/telemetry"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -59,6 +61,7 @@ type HarnessHandlerRegistry map[string]interfaces.HandlerHarness
 // git hosting platform, harness, and sandbox
 type controller struct {
 	taskSchedulerConfig       types.TaskSchedulerConfig
+	livenessProbeConfig       types.HarnessLivenessProbeConfig
 	eventBus                  *shared.EventBus
 	secretManager             shared.SecretManager
 	agentHandlerRegistry      AgentHandlerRegistry
@@ -82,6 +85,7 @@ type controller struct {
 func New(
 	ctx context.Context,
 	taskSchedulerConfig types.TaskSchedulerConfig,
+	livenessProbeConfig types.HarnessLivenessProbeConfig,
 	agentHandlerRegistry AgentHandlerRegistry,
 	gitHostingHandlerRegistry GitHandlerRegistry,
 	sandboxHandlerRegistry SandboxHandlerRegistry,
@@ -96,6 +100,7 @@ func New(
 ) error {
 	r := &controller{
 		taskSchedulerConfig:       taskSchedulerConfig,
+		livenessProbeConfig:       livenessProbeConfig,
 		eventBus:                  eventBus,
 		secretManager:             secretManager,
 		agentHandlerRegistry:      agentHandlerRegistry,
@@ -532,13 +537,11 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 		return types.EventJobStatus_Failed, err
 	}
 
-	// TODO: Implement/harness liveness probe
-
 	// *-------------------------------------------------------------------------*
 	// * Process harness output, blocks until work is completed or an error      *
 	// *-------------------------------------------------------------------------*
 	slog.Debug("[agent-session] harness running")
-	c.harness(
+	if err := c.harness(
 		ctx,
 		stdout,
 		stderr,
@@ -547,7 +550,9 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 		harnessHandler,
 		session,
 		sessionEvent,
-	)
+	); err != nil {
+		return types.EventJobStatus_Failed, err
+	}
 
 	return types.EventJobStatus_Succeeded, nil
 }
@@ -827,12 +832,8 @@ func (c *controller) harness(
 	harnessHandler interfaces.HandlerHarness,
 	session *types.Session,
 	sessionEvent *types.SessionEvent,
-) {
-	var out []byte
+) error {
 	var messageSpan trace.Span
-	var stdErrBuilder strings.Builder
-
-	part := make(chan []byte, 100)
 
 	// Start and end messages tracks the span of each harness message, allow us
 	// to detect when the time it took the harness to generate each message. Helpful
@@ -856,11 +857,67 @@ func (c *controller) harness(
 
 	defer endMessage()
 
-	var wg sync.WaitGroup
+	var out []byte
+	var stdErrBuilder strings.Builder
+	var missed atomic.Int64
 
-	// configure the harness parser and connects it to the agent handler
-	wg.Go(func() {
-		harnessHandler.Parse(
+	wg, ctx := errgroup.WithContext(ctx)
+	missed.Store(-1)
+	part := make(chan []byte, 100)
+	done := make(chan struct{})
+
+	heartbeat := func() {
+		missed.Store(-1)
+	}
+
+	// *-------------------------------------------------------------------------*
+	// * Runs the harness liveness prove                                         *
+	// *-------------------------------------------------------------------------*
+
+	if c.livenessProbeConfig.MaxMisses > 0 && c.livenessProbeConfig.PeriodSeconds > 0 {
+		wg.Go(func() error {
+			ticker := time.NewTicker(time.Second * time.Duration(c.livenessProbeConfig.PeriodSeconds))
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-done:
+					return nil
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-ticker.C:
+					m := missed.Add(1)
+
+					if m == 0 {
+						continue
+					}
+
+					slog.Warn("harness health check missed",
+						"event_identifier", sessionEvent.Identifier,
+						"missed", m,
+						"max", c.livenessProbeConfig.MaxMisses,
+					)
+
+					if m >= c.livenessProbeConfig.MaxMisses {
+						slog.Error("harness declared unhealthy",
+							"event_identifier", sessionEvent.Identifier,
+							"missed_checks", m,
+						)
+
+						return shared.ErrHarnessUnhealthy
+					}
+				}
+			}
+		})
+	}
+
+	// *-------------------------------------------------------------------------*
+	// * Parse the outputs base on the harness parse and forwards it to the      *
+	// * agent session                                                           *
+	// *-------------------------------------------------------------------------*
+
+	wg.Go(func() error {
+		return harnessHandler.Parse(
 			ctx,
 			part,
 			sessionEvent.Identifier,
@@ -892,8 +949,15 @@ func (c *controller) harness(
 		)
 	})
 
-	wg.Go(func() {
+	// *-------------------------------------------------------------------------*
+	// * Get the stdout and stderr from the running harness withing the sandbox  *
+	// * and forwards it to the harness parser                                   *
+	// *-------------------------------------------------------------------------*
+
+	wg.Go(func() error {
 		defer close(part)
+		defer close(done)
+
 		for stdout != nil || stderr != nil {
 			select {
 			case chunk, ok := <-stdout:
@@ -907,7 +971,7 @@ func (c *controller) harness(
 							select {
 							case part <- out:
 							case <-ctx.Done():
-								return
+								return ctx.Err()
 							}
 						}
 
@@ -918,9 +982,8 @@ func (c *controller) harness(
 					continue
 				}
 
-				// o.lastEvent.Store(time.Now().UnixNano())
-
 				// We received the first chunk of a new message.
+				heartbeat()
 				startMessage()
 				out = append(out, chunk...)
 
@@ -938,7 +1001,7 @@ func (c *controller) harness(
 						select {
 						case part <- message:
 						case <-ctx.Done():
-							return
+							return ctx.Err()
 						}
 					}
 
@@ -958,22 +1021,35 @@ func (c *controller) harness(
 					continue
 				}
 
-				// o.lastEvent.Store(time.Now().UnixNano())
+				heartbeat()
 
 				if _, err := stdErrBuilder.Write([]byte(chunk)); err != nil {
 					slog.Error("[agent-session] failed to write to stderr builder", "err", err, "event_identifier", sessionEvent.Identifier)
 				}
 
 			case <-ctx.Done():
-				return
+				return ctx.Err()
 			}
 		}
+
+		return nil
 	})
 
-	wg.Wait()
+	if err := wg.Wait(); err != nil {
+		if errors.Is(err, shared.ErrHarnessUnhealthy) {
+			if str := stdErrBuilder.String(); str != "" {
+				agentHandler.SendResponse(context.WithoutCancel(ctx), session.Identifier, agentHandlerCredential, str)
+				slog.Error("[agent-session] harness stderr", "event_identifier", sessionEvent.Identifier, "err", str)
+			}
+		}
+
+		return err
+	}
 
 	if str := stdErrBuilder.String(); str != "" {
-		agentHandler.SendResponse(ctx, session.Identifier, agentHandlerCredential, str)
+		agentHandler.SendResponse(context.WithoutCancel(ctx), session.Identifier, agentHandlerCredential, str)
 		slog.Error("[agent-session] harness stderr", "event_identifier", sessionEvent.Identifier, "err", str)
 	}
+
+	return nil
 }
