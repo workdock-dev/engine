@@ -66,7 +66,7 @@ func NewClient(config types.Config) (*GitHubClient, error) {
 	keyData, err := os.ReadFile(config.PrivateKeyPath)
 
 	if err != nil {
-		slog.Error("failed to read private key file", "path", config.PrivateKeyPath, "err", err)
+		slog.Error("[github-client] failed to read private key file", "path", config.PrivateKeyPath, "err", err)
 		return nil, err
 	}
 
@@ -74,7 +74,7 @@ func NewClient(config types.Config) (*GitHubClient, error) {
 
 	if block == nil {
 		err := ErrInvalidPEM
-		slog.Error("failed to decode PEM block from private key", "path", config.PrivateKeyPath, "err", err)
+		slog.Error("[github-client] failed to decode PEM block from private key", "path", config.PrivateKeyPath, "err", err)
 		return nil, err
 	}
 
@@ -84,7 +84,7 @@ func NewClient(config types.Config) (*GitHubClient, error) {
 		rsaKey, rsaErr := x509.ParsePKCS1PrivateKey(block.Bytes)
 
 		if rsaErr != nil {
-			slog.Error("failed to parse private key", "path", config.PrivateKeyPath, "err", err, "err2", rsaErr)
+			slog.Error("[github-client] failed to parse private key", "path", config.PrivateKeyPath, "err", err, "err2", rsaErr)
 			return nil, err
 		}
 
@@ -95,11 +95,11 @@ func NewClient(config types.Config) (*GitHubClient, error) {
 
 	if !ok {
 		err := ErrNotRSAKey
-		slog.Error("private key is not an RSA key", "path", config.PrivateKeyPath, "error", err)
+		slog.Error("[github-client] private key is not an RSA key", "path", config.PrivateKeyPath, "error", err)
 		return nil, err
 	}
 
-	slog.Debug("github service created")
+	slog.Debug("[github-client] created")
 	return &GitHubClient{
 		config:     config,
 		privateKey: rsaKey,
@@ -136,7 +136,7 @@ func (s *GitHubClient) GenerateJWT() (string, error) {
 	signed, err := token.SignedString(s.privateKey)
 
 	if err != nil {
-		slog.Error("failed to sign JWT", "error", err)
+		slog.Error("[github-client] failed to sign JWT", "error", err)
 		return "", err
 	}
 
@@ -157,7 +157,7 @@ func (s *GitHubClient) IsRepositoryPublic(ctx context.Context, repo string) (boo
 
 	if !ok || owner == "" || name == "" {
 		err := fmt.Errorf("invalid repository format: expected owner/repo")
-		slog.Error("failed to verify if repository is public", "err", err)
+		slog.Error("[github-client] failed to verify if repository is public", "err", err)
 		return false, err
 	}
 
@@ -165,7 +165,7 @@ func (s *GitHubClient) IsRepositoryPublic(ctx context.Context, repo string) (boo
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 
 	if err != nil {
-		slog.Error("failed to create request for verifying if repo is public", "err", err)
+		slog.Error("[github-client] failed to create request for verifying if repo is public", "err", err)
 		return false, err
 	}
 
@@ -175,7 +175,7 @@ func (s *GitHubClient) IsRepositoryPublic(ctx context.Context, repo string) (boo
 	resp, err := s.httpClient.Do(req)
 
 	if err != nil {
-		slog.Error("failed request when verifying if repo is public", "err", err)
+		slog.Error("[github-client] failed request when verifying if repo is public", "err", err)
 		return false, err
 	}
 
@@ -190,7 +190,7 @@ func (s *GitHubClient) IsRepositoryPublic(ctx context.Context, repo string) (boo
 		var repo repository
 
 		if err := json.NewDecoder(resp.Body).Decode(&repo); err != nil {
-			slog.Error("failed unmarshalling repo is public response", "err", err)
+			slog.Error("[github-client] failed unmarshalling repo is public response", "err", err)
 			return false, err
 		}
 
@@ -202,7 +202,7 @@ func (s *GitHubClient) IsRepositoryPublic(ctx context.Context, repo string) (boo
 
 	default:
 		err := fmt.Errorf("github api returned %s", resp.Status)
-		slog.Error("failed sending request got github api", "err", err)
+		slog.Error("[github-client] failed sending request got github api", "err", err)
 		return false, err
 	}
 }
@@ -223,7 +223,7 @@ func (s *GitHubClient) CreateInstallationAccessToken(installationId int) (*types
 	jwt, err := s.GenerateJWT()
 
 	if err != nil {
-		slog.Error("failed to generate JWT for installation access token", "installation_id", installationId, "err", err)
+		slog.Error("[github-client] failed to generate JWT for installation access token", "installation_id", installationId, "err", err)
 		return nil, err
 	}
 
@@ -231,7 +231,7 @@ func (s *GitHubClient) CreateInstallationAccessToken(installationId int) (*types
 	req, err := http.NewRequest("POST", url, bytes.NewReader(nil))
 
 	if err != nil {
-		slog.Error("failed to create request for installation access token", "installation_id", installationId, "err", err)
+		slog.Error("[github-client] failed to create request for installation access token", "installation_id", installationId, "err", err)
 		return nil, err
 	}
 
@@ -242,7 +242,7 @@ func (s *GitHubClient) CreateInstallationAccessToken(installationId int) (*types
 	resp, err := s.httpClient.Do(req)
 
 	if err != nil {
-		slog.Error("failed to request installation access token", "installation_id", installationId, "err", err)
+		slog.Error("[github-client] failed to request installation access token", "installation_id", installationId, "err", err)
 		return nil, err
 	}
 
@@ -250,12 +250,12 @@ func (s *GitHubClient) CreateInstallationAccessToken(installationId int) (*types
 	body, err := io.ReadAll(resp.Body)
 
 	if err != nil {
-		slog.Error("failed to read installation access token response", "installation_id", installationId, "err", err)
+		slog.Error("[github-client] failed to read installation access token response", "installation_id", installationId, "err", err)
 		return nil, err
 	}
 
 	if resp.StatusCode != http.StatusCreated {
-		slog.Error("unexpected status code for installation access token", "installation_id", installationId, "status", resp.StatusCode, "body", string(body))
+		slog.Error("[github-client] unexpected status code for installation access token", "installation_id", installationId, "status", resp.StatusCode, "body", string(body))
 
 		if resp.StatusCode == http.StatusNotFound {
 			return nil, fmt.Errorf("%w: unexpected status %d: %s", shared.ErrGitHubInstallationUnavailable, resp.StatusCode, string(body))
@@ -267,11 +267,11 @@ func (s *GitHubClient) CreateInstallationAccessToken(installationId int) (*types
 	var token types.InstallationAccessToken
 
 	if err := json.Unmarshal(body, &token); err != nil {
-		slog.Error("failed to unmarshal installation access token", "installation_id", installationId, "err", err)
+		slog.Error("[github-client] failed to unmarshal installation access token", "installation_id", installationId, "err", err)
 		return nil, err
 	}
 
-	slog.Debug("installation access token created", "installation_id", installationId, "expires_at", token.ExpiresAt)
+	slog.Debug("[github-client] installation access token created", "installation_id", installationId, "expires_at", token.ExpiresAt)
 	return &token, nil
 }
 
@@ -290,21 +290,21 @@ func (s *GitHubClient) Webhook(ctx context.Context, req shared.WebhookRequest) (
 	rawBody, err := io.ReadAll(req.Body)
 
 	if err != nil {
-		slog.Error("failed to read request body", "err", err)
+		slog.Error("[github-client] failed to read request body", "err", err)
 		return nil, shared.ErrBadRequest
 	}
 
 	signature := req.Get("X-Hub-Signature-256")
 
 	if !s.verifyWebhookSignature(signature, rawBody) {
-		slog.Error("failed verifying github webhook signature")
+		slog.Error("[github-client] failed verifying github webhook signature")
 		return nil, shared.ErrUnAuthorized
 	}
 
 	eventType := req.Get("X-GitHub-Event")
 
 	if eventType == "" {
-		slog.Error("missing X-GitHub-Event header")
+		slog.Error("[github-client] missing X-GitHub-Event header")
 		return nil, shared.ErrBadRequest
 	}
 
@@ -313,7 +313,7 @@ func (s *GitHubClient) Webhook(ctx context.Context, req shared.WebhookRequest) (
 	var event types.WebhookEvent
 
 	if err := json.Unmarshal(rawBody, &event); err != nil {
-		slog.Error("failed to unmarshal webhook payload", "err", err)
+		slog.Error("[github-client] failed to unmarshal webhook payload", "err", err)
 		return nil, shared.ErrBadRequest
 	}
 

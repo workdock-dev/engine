@@ -29,7 +29,7 @@ var ErrJobNotRunnable = errors.New("job is not runnable")
 type Queue interface {
 	Claim(ctx context.Context, owner string, nextAttemptAt time.Time) (*types.EventJob, error)
 	Heartbeat(ctx context.Context, id string, leaseDuration time.Duration) error
-	Complete(ctx context.Context, id string) error
+	Complete(ctx context.Context, id string, status types.EventJobStatus) error
 	Retry(ctx context.Context, id string, cause error, retryGracePeriod time.Duration) error
 	Fail(ctx context.Context, id string, cause error) error
 	Listen(ctx context.Context) (<-chan struct{}, <-chan string, error)

@@ -68,7 +68,7 @@ func (s *Server) Mux() *http.ServeMux {
 // unrecoverable runtime error.
 func (s *Server) Run(ctx context.Context) {
 	s.srv = &http.Server{Addr: s.address, Handler: s.mux}
-	slog.Info("HTTP Server Started", "address", s.address)
+	slog.Info("[http-server] started", "address", s.address)
 
 	go func() {
 		<-ctx.Done()

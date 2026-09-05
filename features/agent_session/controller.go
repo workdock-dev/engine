@@ -130,6 +130,7 @@ func (c *controller) init() error {
 
 	c.taskScheduler = taskScheduler
 	c.onAgentSessionPrompt()
+	c.onAgentSessionResume()
 	c.onAgentSessionStop()
 	c.onIssueChange()
 	c.onPullRequestCommented()
@@ -216,23 +217,47 @@ func (c *controller) onAgentSessionPrompt() {
 		}
 
 		if (session.RepoFullName != nil && *session.RepoFullName != repo) || (session.RepoFullName == nil && repo != "") {
+			slog.Debug("[agent-session] update session repo", "event_identifier", sessionEvent.Identifier)
 			session.RepoFullName = &repo
 			if err := c.session.UpsertAgentSession(ctx, session); err != nil {
 				return err
 			}
 		}
 
+		slog.Debug("[agent-session] created session event for prompt", "event_identifier", sessionEvent.Identifier)
 		sessionEvent.Reason = shared.AgentSessionEventReason_Prompt
 		if err := c.session.CreateSessionEvent(ctx, sessionEvent); err != nil {
 			return err
 		}
 
-		slog.Debug("[agent-session] created session event", "event_identifier", sessionEvent.Identifier)
 		return nil
 	})
 }
 
-// onAgentSessionStop Configured domain event for agent session stop                          *
+// onAgentSessionResume Configured domain event for agent session resume
+func (c *controller) onAgentSessionResume() {
+	c.eventBus.Subscribe(shared.EventType_AgentSessionResume, func(ctx context.Context, event shared.DomainEvent) error {
+		e, ok := event.(shared.AgentSessionResumeEvent)
+
+		if !ok {
+			return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_AgentSessionResume, event.EventType())
+		}
+
+		sessionEvent, err := c.session.GetAgentSessionEvent(ctx, e.SessionEventIdentifier)
+
+		if err != nil {
+			return err
+		}
+
+		if sessionEvent == nil {
+			return fmt.Errorf("[agent-session] session event not found %s", e.SessionEventIdentifier)
+		}
+
+		return c.session.ResumeSessionEvent(ctx, sessionEvent)
+	})
+}
+
+// onAgentSessionStop Configured domain event for agent session stop
 func (c *controller) onAgentSessionStop() {
 	c.eventBus.Subscribe(shared.EventType_AgentSessionStop, func(ctx context.Context, event shared.DomainEvent) error {
 		e, ok := event.(shared.AgentSessionStopEvent)
@@ -253,6 +278,7 @@ func (c *controller) onAgentSessionStop() {
 			return err
 		}
 
+		slog.Debug("[agent-session] stopped")
 		provider.SendResponse(ctx, e.SessionIdentifier, credentials, "Request stopped")
 		_, err = c.session.CancelSession(ctx, e.SessionIdentifier, "cancelled by user")
 
@@ -304,6 +330,7 @@ func (c *controller) onPullRequestCommented() {
 			return fmt.Errorf("[agent-session] session not found: %s", sessionEvent.SessionIdentifier)
 		}
 
+		slog.Debug("[agent-session] created session event for pull request comment review")
 		if err := c.session.CreateSessionEvent(ctx, &shared.SessionEvent{
 			SessionIdentifier: session.Identifier,
 			Identifier:        uuid.NewV7().String(),
@@ -329,12 +356,14 @@ func (c *controller) onGitResetConnection() {
 		}
 
 		if payload.Delete {
+			slog.Debug("[agent-session] deleted git access secret")
 			// TODO: Remove this hardcoded value
 			if err := c.secretManager.Delete(ctx, "/github/installations", payload.InstallationId); err != nil {
 				return err
 			}
 		}
 
+		slog.Debug("[agent-session] deleted git connection")
 		return c.git.ResetGitHubConnection(ctx, payload.InstallationId, payload.Repos)
 	})
 }
@@ -363,8 +392,17 @@ func (c *controller) onGitCompleteConnection() {
 				InstallationId: &payload.InstallationId,
 			}
 
+			slog.Debug("[agent-session] git connection completed", "repo", repo)
 			if err := c.git.UpsertGitHubConnection(ctx, connection); err != nil {
 				return err
+			}
+
+			// When set, it means this session event was paused until the user
+			// granted git access. Now we need to continue it
+			if connection.SessionEventIdentifier != nil {
+				c.eventBus.Publish(ctx, shared.AgentSessionResumeEvent{
+					SessionEventIdentifier: *connection.SessionEventIdentifier,
+				})
 			}
 		}
 
@@ -374,13 +412,13 @@ func (c *controller) onGitCompleteConnection() {
 
 // execute provisions and coordinates all the components to successfully run the
 // agent session's request based on a scheduled job
-func (c *controller) execute(ctx context.Context, job *types.EventJob) error {
+func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.EventJobStatus, error) {
 	sessionEvent, err := telemetry.Span(ctx, c.tracer, "session.get_event", func(ctx context.Context) (*shared.SessionEvent, error) {
 		return c.session.GetAgentSessionEvent(ctx, job.SessionEventIdentifier)
 	})
 
 	if err != nil || sessionEvent == nil {
-		return err
+		return types.EventJobStatus_Failed, err
 	}
 
 	session, err := telemetry.Span(ctx, c.tracer, "session.get", func(ctx context.Context) (*shared.Session, error) {
@@ -388,7 +426,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) error {
 	})
 
 	if err != nil || session == nil {
-		return err
+		return types.EventJobStatus_Failed, err
 	}
 
 	// *-------------------------------------------------------------------------*
@@ -398,7 +436,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) error {
 	agentHandler, gitHandler, sandboxHandler, harnessHandler, err := c.getHandlers(session)
 
 	if err != nil {
-		return err
+		return types.EventJobStatus_Failed, err
 	}
 
 	// *-------------------------------------------------------------------------*
@@ -410,7 +448,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) error {
 	})
 
 	if err != nil {
-		return err
+		return types.EventJobStatus_Failed, err
 	}
 
 	// DO NOT REMOVE!
@@ -426,24 +464,24 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) error {
 
 	if err != nil {
 		agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
-		return err
+		return types.EventJobStatus_Failed, err
 	}
 
 	// *-------------------------------------------------------------------------*
 	// * Verify git access                                                       *
 	// *-------------------------------------------------------------------------*
 	slog.Debug("[agent-session] verify git access")
-	gitAccess, err := c.verifyGitAccess(ctx, agentHandler, agentHandlerCredential, gitHandler, session)
+	gitAccess, err := c.verifyGitAccess(ctx, agentHandler, agentHandlerCredential, gitHandler, session, sessionEvent)
 
 	if err != nil {
 		agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
-		return err
+		return types.EventJobStatus_Failed, err
 	}
 
 	// Cannot continue, requires git access
 	if session.RepoFullName != nil && gitAccess == nil {
 		slog.Debug("[agent-session] git acess required")
-		return nil
+		return types.EventJobStatus_AwaitingAction, nil
 	}
 
 	// *-------------------------------------------------------------------------*
@@ -491,7 +529,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) error {
 
 	if err != nil {
 		agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
-		return err
+		return types.EventJobStatus_Failed, err
 	}
 
 	// TODO: Implement/harness liveness probe
@@ -511,7 +549,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) error {
 		sessionEvent,
 	)
 
-	return nil
+	return types.EventJobStatus_Succeeded, nil
 }
 
 func (c *controller) getHandlers(session *shared.Session) (
@@ -620,6 +658,7 @@ func (c *controller) verifyGitAccess(
 	agentHandlerCredential string,
 	gitHandler interfaces.HandlerGit,
 	session *shared.Session,
+	sessionEvent *shared.SessionEvent,
 ) (*interfaces.GitAccess, error) {
 	// no repo, no access required
 	if session.RepoFullName == nil {
@@ -641,7 +680,7 @@ func (c *controller) verifyGitAccess(
 		if err := telemetry.SpanErr(ctx, c.tracer, "session.upsert_git_connection", func(ctx context.Context) error {
 			return c.git.UpsertGitHubConnection(
 				ctx, &shared.GitHubConnection{
-					SessionEventIdentifier: &session.Identifier,
+					SessionEventIdentifier: &sessionEvent.Identifier,
 					RepoFullName:           *session.RepoFullName,
 					Connected:              false,
 					InstallationId:         nil,
@@ -858,7 +897,6 @@ func (c *controller) harness(
 		for stdout != nil || stderr != nil {
 			select {
 			case chunk, ok := <-stdout:
-				slog.Debug(chunk)
 				if !ok {
 					stdout = nil
 

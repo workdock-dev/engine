@@ -59,6 +59,8 @@ func (b *InMemoryEventBus) Publish(ctx context.Context, event shared.DomainEvent
 	for _, handler := range handlers {
 		if err := handler(ctx, event); err != nil {
 			slog.Error("[event-bus] handler failed", "event_type", event.EventType(), "err", err)
+		} else {
+			slog.Debug("[event-bus] event handled")
 		}
 	}
 

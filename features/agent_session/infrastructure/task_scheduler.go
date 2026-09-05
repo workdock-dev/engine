@@ -282,7 +282,7 @@ func (s *TaskScheduler) execute(ctx context.Context, job *types.EventJob, starte
 	}()
 
 	slog.Debug("[task-scheduler] processing job", "event_identifier", job.SessionEventIdentifier)
-	err := s.handler(ctx, job)
+	status, err := s.handler(ctx, job)
 	cancel()
 
 	duration := float64(time.Since(startedAt)) / float64(time.Millisecond)
@@ -341,10 +341,10 @@ func (s *TaskScheduler) execute(ctx context.Context, job *types.EventJob, starte
 		return
 	}
 
-	slog.Debug("[task-scheduler] job processed", "event_identifier", job.SessionEventIdentifier, "success", "true")
+	slog.Debug("[task-scheduler] job processed", "event_identifier", job.SessionEventIdentifier, "status", status)
 
 	err = telemetry.SpanErr(ctx, s.tracer, "job.complete", func(ctx context.Context) error {
-		return s.extQueue.Complete(ctx, job.SessionEventIdentifier)
+		return s.extQueue.Complete(ctx, job.SessionEventIdentifier, status)
 	})
 
 	if err != nil {
@@ -352,7 +352,7 @@ func (s *TaskScheduler) execute(ctx context.Context, job *types.EventJob, starte
 		span.SetStatus(codes.Error, "complete state not set")
 		s.metrics.recordJob(ctx, ResultFailed, errorType(err), duration)
 	} else {
-		span.SetAttributes(attribute.String("job.result", "success"))
+		span.SetAttributes(attribute.String("job.result", string(status)))
 		span.SetStatus(codes.Ok, "")
 		s.metrics.recordJob(ctx, ResultSucceeded, "", duration)
 	}

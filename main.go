@@ -284,16 +284,15 @@ func main() {
 	})
 
 	if cfg.Otlp != nil && cfg.Otlp.Slog != nil {
-		fmt.Println("otlp slog enabled, all logs are routed to your otlp provider")
+		fmt.Println("[service] otlp slog enabled, all logs are routed to your otlp provider")
 	}
 
-	fmt.Printf("Server started, service.name: %s\n", serviceName)
+	slog.Info("[service] started", "service.name", serviceName)
 
 	server.Run(ctx)
-	slog.Info("http server stopped")
-
 	wg.Wait()
-	slog.Info("workers stopped, goodbye")
+
+	slog.Info("[service] stopped")
 }
 
 func exit(err error) {

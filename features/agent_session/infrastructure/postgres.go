@@ -50,6 +50,9 @@ var (
 	//go:embed sql/insert_job.sql
 	InsertJobSql string
 
+	//go:embed sql/resume.sql
+	ResumeJobSql string
+
 	//go:embed sql/upsert_agent_session.sql
 	UpsertAgentSessionSql string
 
@@ -95,11 +98,11 @@ func (p *postgres) GetOrganization(ctx context.Context, identifier string) (*sha
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			slog.Debug("organization doesn't exist in the database", "identifier", identifier)
+			slog.Debug("[agent-session][postgres] organization doesn't exist in the database", "identifier", identifier)
 			return nil, nil
 		}
 
-		slog.Error("failed to get organization by identifier", "err", err, "identifier", identifier)
+		slog.Error("[agent-session][postgres] failed to get organization by identifier", "err", err, "identifier", identifier)
 		return nil, err
 	}
 
@@ -122,11 +125,11 @@ func (p *postgres) GetAgentSession(ctx context.Context, identifier string) (*sha
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			slog.Debug("agent session doesn't exist in the database", "identifier", identifier)
+			slog.Debug("[agent-session][postgres] agent session doesn't exist in the database", "identifier", identifier)
 			return nil, nil
 		}
 
-		slog.Error("failed to get agent session by identifier", "err", err, "identifier", identifier)
+		slog.Error("[agent-session][postgres] failed to get agent session by identifier", "err", err, "identifier", identifier)
 		return nil, err
 	}
 
@@ -137,7 +140,7 @@ func (p *postgres) GetAgentSessionsByIssueId(ctx context.Context, issueId string
 	rows, err := p.client.Query(ctx, GetAgentSessionsByIssueIdSql, issueId)
 
 	if err != nil {
-		slog.Error("failed to get agent sessions by issue id", "err", err, "issue_id", issueId)
+		slog.Error("[agent-session][postgres] failed to get agent sessions by issue id", "err", err, "issue_id", issueId)
 		return nil, err
 	}
 
@@ -156,7 +159,7 @@ func (p *postgres) GetAgentSessionsByIssueId(ctx context.Context, issueId string
 			&row.Creator,
 			&row.RepoFullName,
 		); err != nil {
-			slog.Error("failed to scan agent session row", "err", err, "issue_id", issueId)
+			slog.Error("[agent-session][postgres] failed to scan agent session row", "err", err, "issue_id", issueId)
 			return nil, err
 		}
 
@@ -164,7 +167,7 @@ func (p *postgres) GetAgentSessionsByIssueId(ctx context.Context, issueId string
 	}
 
 	if err := rows.Err(); err != nil {
-		slog.Error("failed to iterate agent session rows", "err", err, "issue_id", issueId)
+		slog.Error("[agent-session][postgres] failed to iterate agent session rows", "err", err, "issue_id", issueId)
 		return nil, err
 	}
 
@@ -188,11 +191,11 @@ func (p *postgres) GetAgentSessionEvent(ctx context.Context, identifier string) 
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			slog.Debug("agent session event doesn't exist in the database", "identifier", identifier)
+			slog.Debug("[agent-session][postgres] agent session event doesn't exist in the database", "identifier", identifier)
 			return nil, nil
 		}
 
-		slog.Error("failed to get agent session event by identifier", "err", err, "identifier", identifier)
+		slog.Error("[agent-session][postgres] failed to get agent session event by identifier", "err", err, "identifier", identifier)
 		return nil, err
 	}
 
@@ -216,11 +219,11 @@ func (p *postgres) GetAgentSessionEventByGitRef(ctx context.Context, ref string,
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			slog.Debug("agent session event doesn't exist in the database", "git_ref", ref)
+			slog.Debug("[agent-session][postgres] agent session event doesn't exist in the database", "git_ref", ref)
 			return nil, nil
 		}
 
-		slog.Error("failed to get agent session event by identifier", "err", err, "ref", ref)
+		slog.Error("[agent-session][postgres] failed to get agent session event by identifier", "err", err, "ref", ref)
 		return nil, err
 	}
 
@@ -241,11 +244,11 @@ func (p *postgres) GetGitHubConnection(ctx context.Context, repoFullName string)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			slog.Debug("github connection doesn't exist in the database", "repo_full_name", repoFullName)
+			slog.Debug("[agent-session][postgres] github connection doesn't exist in the database", "repo_full_name", repoFullName)
 			return nil, nil
 		}
 
-		slog.Error("failed to get github connection by repo full name", "err", err, "repo_full_name", repoFullName)
+		slog.Error("[agent-session][postgres] failed to get github connection by repo full name", "err", err, "repo_full_name", repoFullName)
 		return nil, err
 	}
 
@@ -256,7 +259,7 @@ func (p *postgres) CreateSessionEvent(ctx context.Context, event *shared.Session
 	tx, err := p.client.Begin(ctx)
 
 	if err != nil {
-		slog.Error("failed to being db transaction", "err", err, "event_identifier", event.Identifier)
+		slog.Error("[agent-session][postgres] failed to being db transaction", "err", err, "event_identifier", event.Identifier)
 		return err
 	}
 
@@ -271,32 +274,47 @@ func (p *postgres) CreateSessionEvent(ctx context.Context, event *shared.Session
 		event.Result,
 		event.Reason,
 	); err != nil {
-		slog.Error("failed to insert session event", "event_identifier", event.Identifier, "err", err)
+		slog.Error("[agent-session][postgres] failed to insert session event", "event_identifier", event.Identifier, "err", err)
 
 		if err := tx.Rollback(ctx); err != nil {
-			slog.Error("failed to rollback transaction", "event_identifier", event.Identifier, "err", err)
+			slog.Error("[agent-session][postgres] failed to rollback transaction", "event_identifier", event.Identifier, "err", err)
 		}
 
 		return err
 	}
 
 	if _, err := tx.Exec(ctx, InsertJobSql, event.Identifier, event.SessionIdentifier); err != nil {
-		slog.Error("failed to job", "event_identifier", event.Identifier, "err", err)
+		slog.Error("[agent-session][postgres] failed to job", "event_identifier", event.Identifier, "err", err)
 
 		if err := tx.Rollback(ctx); err != nil {
-			slog.Error("failed to rollback transaction", "event_identifier", event.Identifier, "err", err)
+			slog.Error("[agent-session][postgres] failed to rollback transaction", "event_identifier", event.Identifier, "err", err)
 		}
 
 		return err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		slog.Error("failed to commit transaction", "event_identifier", event.Identifier, "err", err)
+		slog.Error("[agent-session][postgres] failed to commit transaction", "event_identifier", event.Identifier, "err", err)
 
 		if err := tx.Rollback(ctx); err != nil {
-			slog.Error("failed to rollback transaction", "event_identifier", event.Identifier, "err", err)
+			slog.Error("[agent-session][postgres] failed to rollback transaction", "event_identifier", event.Identifier, "err", err)
 		}
 
+		return err
+	}
+
+	return nil
+}
+
+func (p *postgres) ResumeSessionEvent(ctx context.Context, event *shared.SessionEvent) error {
+	_, err := p.client.Exec(
+		ctx,
+		ResumeJobSql,
+		event.Identifier,
+	)
+
+	if err != nil {
+		slog.Error("[agent-session][postgres] failed to resume session event", "err", err, "event_identifier", event.Identifier)
 		return err
 	}
 
@@ -316,7 +334,7 @@ func (p *postgres) UpsertAgentSession(ctx context.Context, session *shared.Sessi
 	)
 
 	if err != nil {
-		slog.Error("failed to upsert agent session", "err", err, "org_identifier", session.OrganizationIdentifier, "provider", session.Provider, "session_identifier", session.Identifier)
+		slog.Error("[agent-session][postgres] failed to upsert agent session", "err", err, "org_identifier", session.OrganizationIdentifier, "provider", session.Provider, "session_identifier", session.Identifier)
 		return err
 	}
 
@@ -333,7 +351,7 @@ func (p *postgres) UpdateSessionEventResult(ctx context.Context, event *shared.S
 	)
 
 	if err != nil {
-		slog.Error("failed to update session event result", "err", err, "event_identifier", event.Identifier)
+		slog.Error("[agent-session][postgres] failed to update session event result", "err", err, "event_identifier", event.Identifier)
 		return err
 	}
 
@@ -356,7 +374,7 @@ func (p *postgres) UpsertGitHubConnection(ctx context.Context, githubConnection 
 		)
 
 	if err != nil {
-		slog.Error("failed to upsert github connection", "err", err, "event_identifier", githubConnection.SessionEventIdentifier, "repo", githubConnection.RepoFullName)
+		slog.Error("[agent-session][postgres] failed to upsert github connection", "err", err, "event_identifier", githubConnection.SessionEventIdentifier, "repo", githubConnection.RepoFullName)
 		return err
 	}
 
@@ -367,7 +385,7 @@ func (p *postgres) ResetGitHubConnection(ctx context.Context, installationId str
 	_, err := p.client.Exec(ctx, ResetGitHubConnectionSql, installationId, repos)
 
 	if err != nil {
-		slog.Error("failed to reset github connection", "err", err, "installation_id", installationId)
+		slog.Error("[agent-session][postgres] failed to reset github connection", "err", err, "installation_id", installationId)
 		return err
 	}
 
@@ -378,7 +396,7 @@ func (p *postgres) CancelSession(ctx context.Context, queuedBy, reason string) (
 	tags, err := p.client.Exec(ctx, CancelSql, queuedBy, reason)
 
 	if err != nil {
-		slog.Error("failed to cancel jobs queued by", "queued_by", queuedBy, "err", err)
+		slog.Error("[agent-session][postgres] failed to cancel jobs queued by", "queued_by", queuedBy, "err", err)
 		return 0, err
 	}
 

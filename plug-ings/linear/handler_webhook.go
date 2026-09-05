@@ -226,7 +226,7 @@ func (c *WEventConsumer) Consume(_ context.Context, event *webhook.VerifiedWEven
 			return err
 		}
 
-		if payload.AgentActivity.Signal == types.SignalType_Stop {
+		if payload.AgentActivity != nil && payload.AgentActivity.Signal == types.SignalType_Stop {
 			c.eventBus.Publish(context.Background(), shared.AgentSessionStopEvent{
 				Provider:               string(shared.PlatformProvider_Linear),
 				OrganizationIdentifier: payload.OrganizationID,

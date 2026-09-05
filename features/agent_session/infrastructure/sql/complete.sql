@@ -14,7 +14,7 @@
 
 UPDATE public.jobs
 SET
-    status = 'succeeded',
+    status = $2,
     lease_owner = null,
     lease_expires_at = null,
     last_error = null,

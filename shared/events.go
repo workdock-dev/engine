@@ -17,6 +17,7 @@ package shared
 const (
 	EventType_IssueChange             = "issue.changed"
 	EventType_AgentSessionPrompt      = "agent_session.prompt"
+	EventType_AgentSessionResume      = "agent_session.resume"
 	EventType_AgentSessionStop        = "agent_session.stop"
 	EventType_OrganizationCreate      = "organization.create"
 	EventType_GitResetConnection      = "git.reset_connection"
@@ -57,6 +58,16 @@ type AgentSessionStopEvent struct {
 
 func (e AgentSessionStopEvent) EventType() string {
 	return EventType_AgentSessionStop
+}
+
+// *--------------------------------------------------------------------------*
+
+type AgentSessionResumeEvent struct {
+	SessionEventIdentifier string
+}
+
+func (e AgentSessionResumeEvent) EventType() string {
+	return EventType_AgentSessionResume
 }
 
 // *--------------------------------------------------------------------------*

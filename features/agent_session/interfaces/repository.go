@@ -26,6 +26,7 @@ type Repository interface {
 	GetAgentSessionEvent(ctx context.Context, identifier string) (*shared.SessionEvent, error)
 	GetAgentSessionEventByGitRef(ctx context.Context, identifier string, repoFullName string) (*shared.SessionEvent, error)
 	CreateSessionEvent(ctx context.Context, event *shared.SessionEvent) error
+	ResumeSessionEvent(ctx context.Context, event *shared.SessionEvent) error
 	UpsertAgentSession(ctx context.Context, session *shared.Session) error
 	UpdateSessionEventResult(ctx context.Context, event *shared.SessionEvent) error
 	CancelSession(ctx context.Context, queuedBy, reason string) (int, error)

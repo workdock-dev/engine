@@ -24,17 +24,18 @@ import (
 	"time"
 )
 
-type JobHandler func(ctx context.Context, job *EventJob) error
-
 type EventJobStatus string
 
+type JobHandler func(ctx context.Context, job *EventJob) (EventJobStatus, error)
+
 const (
-	EventJobStatus_Queued    EventJobStatus = "queued"
-	EventJobStatus_Running   EventJobStatus = "running"
-	EventJobStatus_Retry     EventJobStatus = "retry"
-	EventJobStatus_Succeeded EventJobStatus = "succeeded"
-	EventJobStatus_Failed    EventJobStatus = "failed"
-	EventJobStatus_Cancelled EventJobStatus = "cancelled"
+	EventJobStatus_Queued         EventJobStatus = "queued"
+	EventJobStatus_Running        EventJobStatus = "running"
+	EventJobStatus_Retry          EventJobStatus = "retry"
+	EventJobStatus_AwaitingAction EventJobStatus = "awaiting_action"
+	EventJobStatus_Succeeded      EventJobStatus = "succeeded"
+	EventJobStatus_Failed         EventJobStatus = "failed"
+	EventJobStatus_Cancelled      EventJobStatus = "cancelled"
 )
 
 // EventJob is the durable unit of work. It references a persisted SessionEvent
