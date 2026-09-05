@@ -1,0 +1,7 @@
+### Latest User Comment (Highest Priority)
+
+The following message is the most recent instruction from the user.
+
+It may clarify, refine, override, or replace previous requirements. When it conflicts with earlier information, follow this message.
+
+%s

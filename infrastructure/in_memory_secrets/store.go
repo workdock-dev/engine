@@ -13,8 +13,8 @@
 // limitations under the License.
 
 // Package in_memory_secrets provides an in-process implementation of
-// ports.ForSecrets. It is intended for development and benchmarking so that
-// the engine can run without reaching an external secrets manager.
+// shared.SecretManager. It is intended for development and benchmarking so
+// that the engine can run without reaching an external secrets manager.
 package in_memory_secrets
 
 import (
@@ -26,6 +26,10 @@ import (
 
 // ModeMemory is the secrets provider mode value that selects this store.
 const ModeMemory = "memory"
+
+type Config struct {
+	Secrets map[string]map[string]string `yaml:"secrets"`
+}
 
 // Store is a thread-safe, process-local secret store keyed by (path, name).
 type Store struct {
