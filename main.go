@@ -25,47 +25,89 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lmittmann/tint"
-	"github.com/workdock-dev/engine/api"
-	"github.com/workdock-dev/engine/application"
-	"github.com/workdock-dev/engine/application/async"
-	"github.com/workdock-dev/engine/application/git_hosting_platforms/github"
-	"github.com/workdock-dev/engine/application/harnesses/opencode"
-	"github.com/workdock-dev/engine/application/work_platforms/linear"
-	"github.com/workdock-dev/engine/domain/ports"
-	"github.com/workdock-dev/engine/domain/types"
-	"github.com/workdock-dev/engine/infrastructure/daytona_client"
-	"github.com/workdock-dev/engine/infrastructure/github_client"
+	"github.com/workdock-dev/engine/features/agent_session"
+	agent_session_infrastructure "github.com/workdock-dev/engine/features/agent_session/infrastructure"
+	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
+	agent_session_types "github.com/workdock-dev/engine/features/agent_session/types"
+	oauth20 "github.com/workdock-dev/engine/features/oauth2.0"
+	"github.com/workdock-dev/engine/features/organization"
+	organization_infrastructure "github.com/workdock-dev/engine/features/organization/infrastructure"
+	"github.com/workdock-dev/engine/features/webhook"
 	"github.com/workdock-dev/engine/infrastructure/in_memory_secrets"
 	"github.com/workdock-dev/engine/infrastructure/infisical_client"
-	"github.com/workdock-dev/engine/infrastructure/linear_client"
 	"github.com/workdock-dev/engine/infrastructure/otlp_client"
-	"github.com/workdock-dev/engine/infrastructure/postgres_client"
+	"github.com/workdock-dev/engine/infrastructure/server"
+	"github.com/workdock-dev/engine/plug-ings/daytona"
+	daytona_types "github.com/workdock-dev/engine/plug-ings/daytona/types"
+	"github.com/workdock-dev/engine/plug-ings/github"
+	github_infra "github.com/workdock-dev/engine/plug-ings/github/infrastructure"
+	github_types "github.com/workdock-dev/engine/plug-ings/github/types"
+	"github.com/workdock-dev/engine/plug-ings/linear"
+	linear_infra "github.com/workdock-dev/engine/plug-ings/linear/infrastructure"
+	linear_types "github.com/workdock-dev/engine/plug-ings/linear/types"
+	"github.com/workdock-dev/engine/plug-ings/opencode"
+	opencode_types "github.com/workdock-dev/engine/plug-ings/opencode/types"
+	"github.com/workdock-dev/engine/shared"
 	"gopkg.in/yaml.v3"
 )
 
-type Config struct {
-	ServiceName        string                                  `yaml:"service_name"`
-	ServerAddress      string                                  `yaml:"server_address"`
-	Workers            int                                     `yaml:"workers"`
-	WorkerLeaseSeconds int                                     `yaml:"worker_lease_seconds"`
-	DaytonaConfig      daytona_client.SandboxConfig            `yaml:"daytona"`
-	Linear             linear_client.LinearServiceConfig       `yaml:"linear"`
-	Opencode           opencode.ConfigExternal                 `yaml:"opencode"`
-	Infisical          infisical_client.InfisicalServiceConfig `yaml:"infisical"`
-	Secrets            SecretsConfig                           `yaml:"secrets"`
-	Postgres           postgres_client.PostgresServiceConfig   `yaml:"postgres"`
-	Github             github_client.GitHubClientConfig        `yaml:"github"`
-	Otlp               *otlp_client.Config                     `yaml:"otlp"`
+type PostgresConfig struct {
+	DatabaseUrl string `yaml:"database_url"`
 }
 
-// SecretsConfig selects the secrets provider the engine wires as
-// ports.ForSecrets. An empty Mode (or "infisical") uses Infisical;
-// Mode == in_memory_secrets.ModeMemory uses an in-process store seeded from
-// MemorySecrets, which is keyed by secret path and then by secret name.
-type SecretsConfig struct {
-	Mode          string                       `yaml:"mode"`
-	MemorySecrets map[string]map[string]string `yaml:"memory_secrets"`
+type MCPConfig struct {
+	Name       string   `yaml:"name"`
+	Url        string   `yaml:"url"`
+	AuthKey    string   `yaml:"auth_key"`
+	AuthSecret string   `yaml:"auth_secret"`
+	Hosts      []string `yaml:"hosts"`
+}
+
+type Config struct {
+	ServiceName          string                                         `yaml:"service_name"`
+	ServerAddress        string                                         `yaml:"server_address"`
+	TaskScheduler        agent_session_types.TaskSchedulerConfig        `yaml:"task_scheduler"`
+	HarnessLivenessProbe agent_session_types.HarnessLivenessProbeConfig `yaml:"harness_liveness_probe"`
+	MCPs                 []MCPConfig                                    `yaml:"mcps"`
+
+	// plug-ings configuration
+	Linear   linear_types.Config   `yaml:"linear"`
+	Daytona  daytona_types.Config  `yaml:"daytona"`
+	Opencode opencode_types.Config `yaml:"opencode"`
+	Github   github_types.Config   `yaml:"github"`
+
+	// infrastructure configuration
+	Postgres        PostgresConfig                           `yaml:"postgres"`
+	Infisical       *infisical_client.InfisicalServiceConfig `yaml:"infisical"`
+	InMemorySecrets *in_memory_secrets.Config                `yaml:"in_memory_secrets"`
+	Otlp            *otlp_client.Config                      `yaml:"otlp"`
+}
+
+type MCPFromConfigFile struct {
+	config *Config
+}
+
+func (m *MCPFromConfigFile) GetMCPList() []agent_session_interfaces.MCPConfig {
+	if m.config.MCPs == nil {
+		return nil
+	}
+
+	list := make([]agent_session_interfaces.MCPConfig, len(m.config.MCPs))
+
+	for i, mcp := range m.config.MCPs {
+		list[i] = agent_session_interfaces.MCPConfig{
+			Name:       mcp.Name,
+			Url:        mcp.Url,
+			AuthKey:    mcp.AuthKey,
+			AuthSecret: mcp.AuthSecret,
+			Hosts:      mcp.Hosts,
+		}
+	}
+
+	return list
 }
 
 func loadConfig(path string) (*Config, error) {
@@ -85,6 +127,10 @@ func loadConfig(path string) (*Config, error) {
 }
 
 func main() {
+	// *-------------------------------------------------------------------------*
+	// * Load config                                                             *
+	// *-------------------------------------------------------------------------*
+
 	cfg, err := loadConfig("config.yaml")
 
 	if err != nil {
@@ -92,15 +138,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	if cfg.Workers <= 0 {
-		cfg.Workers = 3
-	}
-
 	serviceName := fmt.Sprintf("workdock-%s", uuid.NewString())
 
 	if cfg.ServiceName != "" {
 		serviceName = cfg.ServiceName
 	}
+
+	// *-------------------------------------------------------------------------*
+	// * Setup logging                                                           *
+	// *-------------------------------------------------------------------------*
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -120,126 +166,134 @@ func main() {
 		slog.SetDefault(logger)
 	}
 
-	var secretManager ports.ForSecrets
+	// *-------------------------------------------------------------------------*
+	// * Setup secrets manager                                                   *
+	// *-------------------------------------------------------------------------*
 
-	switch cfg.Secrets.Mode {
-	case in_memory_secrets.ModeMemory:
-		secretManager = in_memory_secrets.NewWithSeeds(cfg.Secrets.MemorySecrets)
-		slog.Info("using in-memory secrets provider")
-	default:
-		infisicalClient, err := infisical_client.New(ctx, cfg.Infisical)
+	var secretManager shared.SecretManager
+
+	if cfg.Infisical != nil {
+		infisicalClient, err := infisical_client.New(ctx, *cfg.Infisical)
 		exit(err)
 		secretManager = infisicalClient
+	} else if cfg.InMemorySecrets != nil {
+		secretManager = in_memory_secrets.NewWithSeeds(cfg.InMemorySecrets.Secrets)
+		slog.Info("using in-memory secrets provider")
 	}
 
-	// Create infrastructure
-	linearClient, err := linear_client.New(cfg.Linear, secretManager)
+	// *-------------------------------------------------------------------------*
+	// * Setup infrastructure                                                    *
+	// *-------------------------------------------------------------------------*
+
+	eventBus := shared.NewEventBus()
+
+	linearClient, err := linear_infra.NewClient(cfg.Linear, secretManager)
 	exit(err)
 
-	githubClient, err := github_client.New(cfg.Github)
+	githubClient, err := github_infra.NewClient(cfg.Github)
 	exit(err)
 
-	postgresClient, err := postgres_client.New(ctx, cfg.Postgres)
+	postgres, err := pgxpool.New(context.Background(), cfg.Postgres.DatabaseUrl)
 	exit(err)
 
-	postgresEventQueue, err := postgres_client.NewEventQueue(ctx, postgresClient)
+	postgresRawConn, err := pgx.Connect(ctx, cfg.Postgres.DatabaseUrl)
 	exit(err)
 
-	// Create app
-	app := application.New()
-	application.WithEventBus(app, async.NewInMemoryEventBus())
-	application.WithSecretManager(app, secretManager)
-	application.WithQueue(app, postgresEventQueue)
-	application.WithOrganizationRepository(app, postgresClient)
-	application.WithSessionRepository(app, postgresClient)
-	application.WithGitHubRepository(app, postgresClient)
-
-	// Create application platforms
-	opencodeHarness := func(consturctor ports.NewHarnessConstructor) (ports.ForHarnessPlatform, error) {
-		sessionEventId := "not-set"
-		if consturctor.SessionEvent != nil {
-			sessionEventId = consturctor.SessionEvent.Identifier
-		}
-
-		sandbox, err := daytona_client.NewSandbox(
-			cfg.DaytonaConfig,
-			consturctor.Session.Identifier,
-			sessionEventId,
-		)
-
-		if err != nil {
-			return nil, err
-		}
-
-		return opencode.New(opencode.Config{
-			ConfigExternal: cfg.Opencode,
-			Sandbox:        sandbox,
-			Parts:          consturctor.Parts,
-			Session:        consturctor.Session,
-			SessionEvent:   consturctor.SessionEvent,
-			Prompt:         consturctor.Prompt,
-			Secrets:        consturctor.Secrets,
-		}, app)
-	}
-
-	githubPlatform := github.New(github.GitHubPlatformConfig{
-		Client:       githubClient,
-		BotLoginName: cfg.Github.BotLoginId,
-	}, app)
-
-	linearPlatform := linear.New(linear.Config{
-		Client:              linearClient,
-		GitHubAppInstallURL: cfg.Github.AppInstallURL,
-	}, app)
-
-	// Git hosting registry
-	application.WithGitHostingPlatformRegistry(app, ports.GitHostingPlatformRegistry{
-		types.PlatformProvider_GitHub: githubPlatform,
-	})
-
-	// Webhook registry
-	application.WithWebhooksRegistry(app, ports.WebhooksRegistry{
-		types.PlatformProvider_GitHub: githubPlatform,
-		types.PlatformProvider_Linear: linearPlatform,
-	})
-
-	// Harness registry
-	application.WithHarnessRegistry(app, ports.HarnessPlatformRegistry{
-		types.HarnessProvider_OpenCode: opencodeHarness,
-	})
-
-	// Work platform registry
-	application.WithWorkPlatformRegistry(app, ports.WorkPlatformRegistry{
-		types.PlatformProvider_Linear: linearPlatform,
-	})
-
-	// Complete the application initialization
-	app.Init()
-
-	server, err := api.NewHTTPServer(cfg.ServerAddress, *app)
+	server, err := server.New(cfg.ServerAddress)
 	exit(err)
+
+	// *-------------------------------------------------------------------------*
+	// * Setup plug-ings                                                         *
+	// *-------------------------------------------------------------------------*
+
+	linearAgentSessionHandler := linear.NewAgentSessionHandler(linearClient, secretManager)
+	githubGitHandler := github.NewGitHandler(cfg.Github, githubClient, secretManager)
+	daytonaSandboxHandler := daytona.NewSandboxHandler(cfg.Daytona)
+	opencodeHarnessHandler := opencode.NewHarnessHandler(cfg.Opencode)
+
+	// *-------------------------------------------------------------------------*
+	// * Setup application                                                       *
+	// *-------------------------------------------------------------------------*
+
+	webhook.New(
+		"POST /github/webhook",
+		server.Mux(),
+		github.NewWEventTransformer(),
+		github.NewWEventVerifier(cfg.Github),
+		github.NewWEventConsumer(cfg.Github, githubClient, eventBus),
+	)
+
+	oauth20.New(
+		"linear",
+		server.Mux(),
+		linear.NewOAuth20Handler(cfg.Linear, linearClient),
+		secretManager,
+		eventBus,
+	)
+	webhook.New(
+		"POST /linear/webhook",
+		server.Mux(),
+		linear.NewWEventTransformer(),
+		linear.NewWEventVerifier(cfg.Linear),
+		linear.NewWEventConsumer(eventBus),
+	)
+
+	organization.New(
+		eventBus,
+		organization_infrastructure.NewPostgres(postgres),
+	)
+
+	// *-------------------------------------------------------------------------*
+	// * Start application                                                       *
+	// *-------------------------------------------------------------------------*
 
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		if err := app.Run(ctx, async.TaskSchedulerConfig{
-			Workers:       cfg.Workers,
-			LeaseDuration: time.Duration(cfg.WorkerLeaseSeconds) * time.Second,
-		}); err != nil {
-			return
-		}
+
+		// *-------------------------------------------------------------------------*
+		// * Setup core application feature                                          *
+		// *-------------------------------------------------------------------------*
+
+		agentSessionPostgres := agent_session_infrastructure.NewPostgres(postgres)
+		agentSessionPostgresQueue := agent_session_infrastructure.NewEventQueue(postgres, postgresRawConn)
+
+		err := agent_session.New(
+			ctx,
+			cfg.TaskScheduler,
+			cfg.HarnessLivenessProbe,
+			agent_session.AgentHandlerRegistry{
+				string(shared.PlatformProvider_Linear): linearAgentSessionHandler,
+			},
+			agent_session.GitHandlerRegistry{
+				string(shared.PlatformProvider_GitHub): githubGitHandler,
+			},
+			agent_session.SandboxHandlerRegistry{
+				string(shared.PlatformProvider_Daytona): daytonaSandboxHandler,
+			},
+			agent_session.HarnessHandlerRegistry{
+				string(shared.HarnessProvider_OpenCode): opencodeHarnessHandler,
+			},
+			&MCPFromConfigFile{config: cfg},
+			eventBus,
+			secretManager,
+			agentSessionPostgres,
+			agentSessionPostgres,
+			agentSessionPostgres,
+			agentSessionPostgresQueue,
+		)
+		exit(err)
 	})
 
 	if cfg.Otlp != nil && cfg.Otlp.Slog != nil {
-		fmt.Println("otlp slog enabled, all logs are routed to your otlp provider")
+		fmt.Println("[service] otlp slog enabled, all logs are routed to your otlp provider")
 	}
 
-	fmt.Printf("Server started, service.name: %s\n", serviceName)
+	slog.Info("[service] started", "service.name", serviceName)
 
 	server.Run(ctx)
-	slog.Info("http server stopped")
-
 	wg.Wait()
-	slog.Info("workers stopped, goodbye")
+
+	slog.Info("[service] stopped")
 }
 
 func exit(err error) {

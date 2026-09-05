@@ -35,7 +35,7 @@ type InfisicalServiceConfig struct {
 	SiteURL      string `yaml:"site_url"`
 }
 
-type InfisicalService struct {
+type InfisicalClient struct {
 	config InfisicalServiceConfig
 	client sdk.InfisicalClientInterface
 }
@@ -52,7 +52,7 @@ type InfisicalService struct {
 //
 // Service initialization fails if authentication with Infisical cannot be
 // established.
-func New(ctx context.Context, config InfisicalServiceConfig) (*InfisicalService, error) {
+func New(ctx context.Context, config InfisicalServiceConfig) (*InfisicalClient, error) {
 	if config.SiteURL == "" {
 		config.SiteURL = SiteUrl
 	}
@@ -65,7 +65,7 @@ func New(ctx context.Context, config InfisicalServiceConfig) (*InfisicalService,
 	_, err := client.Auth().UniversalAuthLogin(config.ClientId, config.ClientSecret)
 
 	if err != nil {
-		slog.Error("failed to authenticate against inifisical using universal auth",
+		slog.Error("[secret-manager][infisical] failed to authenticate using universal auth",
 			"err", err,
 			"clientId", config.ClientId,
 			"env", config.Environment,
@@ -75,8 +75,8 @@ func New(ctx context.Context, config InfisicalServiceConfig) (*InfisicalService,
 		return nil, err
 	}
 
-	slog.Debug("infisical service created")
-	return &InfisicalService{
+	slog.Debug("[secret-manager][infisical] client created")
+	return &InfisicalClient{
 		client: client,
 		config: config,
 	}, nil
@@ -89,7 +89,7 @@ func New(ctx context.Context, config InfisicalServiceConfig) (*InfisicalService,
 //   - Returns the current value of the secret for use by application components.
 //
 // The caller is responsible for interpreting the secret's contents.
-func (s *InfisicalService) Get(ctx context.Context, secretPath, secretName string) (string, error) {
+func (s *InfisicalClient) Get(ctx context.Context, secretPath, secretName string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -102,7 +102,7 @@ func (s *InfisicalService) Get(ctx context.Context, secretPath, secretName strin
 	})
 
 	if err != nil {
-		slog.Error("failed to retrieve secret", "secretName", secretName, "secretPath", secretPath, "err", err)
+		slog.Error("[secret-manager][infisical] failed to retrieve secret", "secretName", secretName, "secretPath", secretPath, "err", err)
 		return "", err
 	}
 
@@ -118,7 +118,7 @@ func (s *InfisicalService) Get(ctx context.Context, secretPath, secretName strin
 //
 // After a successful call, the stored secret reflects the provided value
 // regardless of whether it was newly created or updated.
-func (s *InfisicalService) Set(ctx context.Context, secretPath, secretName, secretValue string) error {
+func (s *InfisicalClient) Set(ctx context.Context, secretPath, secretName, secretValue string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -143,7 +143,7 @@ func (s *InfisicalService) Set(ctx context.Context, secretPath, secretName, secr
 			})
 
 			if err != nil {
-				slog.Error("failed to create secret", "secretName", secretName, "secretPath", secretPath, "err", err)
+				slog.Error("[secret-manager][infisical] failed to create secret", "secretName", secretName, "secretPath", secretPath, "err", err)
 				return err
 			}
 
@@ -151,7 +151,7 @@ func (s *InfisicalService) Set(ctx context.Context, secretPath, secretName, secr
 		}
 
 		err := fmt.Errorf("failed to check secret %s: %w", secretName, retrieveErr)
-		slog.Error("failed to set secret", "secretName", secretName, "secretPath", secretPath, "err", err)
+		slog.Error("[secret-manager][infisical] failed to set secret", "secretName", secretName, "secretPath", secretPath, "err", err)
 		return err
 	}
 
@@ -164,7 +164,7 @@ func (s *InfisicalService) Set(ctx context.Context, secretPath, secretName, secr
 	})
 
 	if err != nil {
-		return fmt.Errorf("failed to update secret %s: %w", secretName, err)
+		return fmt.Errorf("[secret-manager][infisical] failed to update secret %s: %w", secretName, err)
 	}
 
 	return nil
@@ -175,7 +175,7 @@ func (s *InfisicalService) Set(ctx context.Context, secretPath, secretName, secr
 //   - Deletes the secret by its path and name within the configured project
 //     and environment.
 //   - Treats a missing secret as already deleted (no error).
-func (s *InfisicalService) Delete(ctx context.Context, secretPath, secretName string) error {
+func (s *InfisicalClient) Delete(ctx context.Context, secretPath, secretName string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -194,7 +194,7 @@ func (s *InfisicalService) Delete(ctx context.Context, secretPath, secretName st
 			return nil
 		}
 
-		slog.Error("failed to delete secret", "secretName", secretName, "secretPath", secretPath, "err", err)
+		slog.Error("[secret-manager][infisical] failed to delete secret", "secretName", secretName, "secretPath", secretPath, "err", err)
 		return err
 	}
 

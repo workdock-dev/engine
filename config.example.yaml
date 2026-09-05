@@ -12,13 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-server_address: ":8080"
-workers: 3
+# *---------------------------------------------------------------------------*
+# * APPLICATION CONFIGURATION                                                 *
+# *---------------------------------------------------------------------------*
 
-# When NOT set defaults to infisical
-# secrets:
-#   mode: memory
-#   memory_secrets: {}
+service_name: "workdock"
+server_address: ":8080"
+
+task_scheduler:
+  workers: 3
+  max_attempts: 2
+
+harness_liveness_probe:
+  max_misses: 3
+  period_seconds: 30
+
+mcps:
+  - name: "My MCP"
+    url: "https://example.com"
+    auth_key: "MY_MCP_AUTH_SECRET_ENV_VAR_NAME"
+    auth_secret: "your-mcp-api-key"
+    hosts: ["example.com"]
+
+# *---------------------------------------------------------------------------*
+# * PLUGINGS CONFIGURATION                                                    *
+# *---------------------------------------------------------------------------*
 
 linear:
   server_url: "your-sever-url"
@@ -39,25 +57,34 @@ daytona:
   api_url: "https://app.daytona.io/api"
   api_key: "your-api-key"
   target: "us"
+  secrets:
+    - name: OPENROUTER_API_KEY
+      value: your-secret-api-key
+      hosts: ["*.openrouter.ai"]
 
 opencode:
-  destroy_on_dispose: false
-  liveness_timeout_seconds: 30
-  max_health_misses: 3
+  version: 1.18.27
   model: openrouter/openai/gpt-oss-20b:free
   permission:
     "external_directory": "deny"
     "*": "allow"
-  secrets: # if possible by the sandbox, will be configured as a secret e.g. https://www.daytona.io/docs/secrets
-    OPENROUTER_API_KEY:
-      value: your-secret-api-key
-      hosts: ["*.openrouter.ai"]
   provider:
     openrouter:
       options:
         apiKey: "{env:OPENROUTER_API_KEY}"
       models:
         openai/gpt-oss-20b:free: {}
+
+github:
+  bot_login_id: "workdock[bot]"
+  client_id: "your-client-id"
+  private_key_path: "./github-app.pem"
+  webhook_secret: "your-webhook-secret"
+  app_install_url: "https://github.com/apps/your-app-name/installations/new"
+
+# *---------------------------------------------------------------------------*
+# * INFRASTRUCTURE CONFIGURATION                                              *
+# *---------------------------------------------------------------------------*
 
 infisical:
   client_id: "your-client-id"
@@ -66,15 +93,13 @@ infisical:
   environment: "dev"
   site_url: "https://app.infisical.com"
 
+# in_memory_secrets:
+#   secrets:
+#     foo:
+#       baz: secret-value
+
 postgres:
   database_url: "postgresql://postgres:postgres@127.0.0.1:5432/workdock"
-
-github:
-  bot_login_id: "workdock[bot]"
-  client_id: "your-client-id"
-  private_key_path: "./github-app.pem"
-  webhook_secret: "your-webhook-secret"
-  app_install_url: "https://github.com/apps/your-app-name/installations/new"
 
 # otlp:
 #   endpoint: "ingest.us2.signoz.cloud:443"

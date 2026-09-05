@@ -25,7 +25,7 @@ import (
 
 type InfisicalServiceSuite struct {
 	suite.Suite
-	service *InfisicalService
+	service *InfisicalClient
 	secrets *mockSecrets
 }
 
@@ -35,7 +35,7 @@ func TestInfisicalServiceSuite(t *testing.T) {
 
 func (s *InfisicalServiceSuite) SetupTest() {
 	s.secrets = &mockSecrets{}
-	s.service = &InfisicalService{
+	s.service = &InfisicalClient{
 		config: InfisicalServiceConfig{
 			ClientId:     "client-id",
 			ClientSecret: "client-secret",
