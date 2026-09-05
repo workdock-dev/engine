@@ -101,12 +101,3 @@ type AgentOption struct {
 	Label       string `json:"label"`
 	Description string `json:"description"`
 }
-
-const (
-	GitHubUrl = "https://github.com/"
-)
-
-type ExternalURL struct {
-	Label string
-	URL   string
-}
