@@ -169,7 +169,7 @@ func main() {
 	// * Setup secrets manager                                                   *
 	// *-------------------------------------------------------------------------*
 
-	var secretManager shared.ForSecrets
+	var secretManager shared.SecretManager
 
 	if cfg.Infisical != nil {
 		infisicalClient, err := infisical_client.New(ctx, *cfg.Infisical)

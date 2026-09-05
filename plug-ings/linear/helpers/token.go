@@ -28,11 +28,11 @@ import (
 )
 
 type TokenHandler struct {
-	secretManager shared.ForSecrets
+	secretManager shared.SecretManager
 	client        interfaces.Client
 }
 
-func NewTokenHandler(secretManager shared.ForSecrets, client interfaces.Client) *TokenHandler {
+func NewTokenHandler(secretManager shared.SecretManager, client interfaces.Client) *TokenHandler {
 	return &TokenHandler{
 		secretManager: secretManager,
 		client:        client,

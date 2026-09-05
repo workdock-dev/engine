@@ -43,14 +43,14 @@ var (
 
 type GitHandler struct {
 	client          interfaces.Client
-	secretManager   shared.ForSecrets
+	secretManager   shared.SecretManager
 	installationUrl string
 }
 
 func NewGitHandler(
 	config types.Config,
 	client interfaces.Client,
-	secretManager shared.ForSecrets,
+	secretManager shared.SecretManager,
 ) agent_session_interfaces.HandlerGit {
 	return &GitHandler{
 		installationUrl: config.AppInstallURL,

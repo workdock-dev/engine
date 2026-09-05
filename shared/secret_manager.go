@@ -16,7 +16,7 @@ package shared
 
 import "context"
 
-type ForSecrets interface {
+type SecretManager interface {
 	Get(ctx context.Context, secretPath, secretName string) (string, error)
 	Set(ctx context.Context, secretPath, secretName, secretValue string) error
 	Delete(ctx context.Context, secretPath, secretName string) error

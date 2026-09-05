@@ -39,7 +39,7 @@ const githubTokenRefreshWindow = 5 * time.Minute
 // credentials are persisted back to the secrets store before returning.
 func getGitHubAccessToken(
 	ctx context.Context,
-	secretManager shared.ForSecrets,
+	secretManager shared.SecretManager,
 	client interfaces.Client,
 	installationId string,
 ) (string, error) {

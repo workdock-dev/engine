@@ -13,8 +13,8 @@
 // limitations under the License.
 
 // Package in_memory_secrets provides an in-process implementation of
-// ports.ForSecrets. It is intended for development and benchmarking so that
-// the engine can run without reaching an external secrets manager.
+// shared.SecretManager. It is intended for development and benchmarking so
+// that the engine can run without reaching an external secrets manager.
 package in_memory_secrets
 
 import (

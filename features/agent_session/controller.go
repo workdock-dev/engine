@@ -60,7 +60,7 @@ type HarnessHandlerRegistry map[string]interfaces.HandlerHarness
 type controller struct {
 	taskSchedulerConfig       types.TaskSchedulerConfig
 	eventBus                  *shared.EventBus
-	secretManager             shared.ForSecrets
+	secretManager             shared.SecretManager
 	agentHandlerRegistry      AgentHandlerRegistry
 	gitHostingHandlerRegistry GitHandlerRegistry
 	sandboxHandlerRegistry    SandboxHandlerRegistry
@@ -88,7 +88,7 @@ func New(
 	harnessHandlerRegistry HarnessHandlerRegistry,
 	mcpHandler interfaces.HandlerMCP,
 	eventBus *shared.EventBus,
-	secretManager shared.ForSecrets,
+	secretManager shared.SecretManager,
 	organization interfaces.RepositoryOrg,
 	session interfaces.Repository,
 	git interfaces.RepositoryGit,

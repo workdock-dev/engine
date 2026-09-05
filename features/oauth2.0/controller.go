@@ -53,7 +53,7 @@ type OauthHandler interface {
 type controller struct {
 	provider      string
 	handler       OauthHandler
-	secretManager shared.ForSecrets
+	secretManager shared.SecretManager
 	eventBus      *shared.EventBus
 }
 
@@ -61,7 +61,7 @@ func New(
 	provider string,
 	mux *http.ServeMux,
 	handler OauthHandler,
-	secretManager shared.ForSecrets,
+	secretManager shared.SecretManager,
 	eventBus *shared.EventBus,
 ) {
 	c := &controller{

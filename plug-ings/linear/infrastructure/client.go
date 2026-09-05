@@ -52,9 +52,9 @@ type graphQLError struct {
 }
 
 type Client struct {
-	config     types.Config
-	httpClient *http.Client
-	forSecrets shared.ForSecrets
+	config        types.Config
+	httpClient    *http.Client
+	secretManager shared.SecretManager
 }
 
 // NewClient initializes the Linear service and its dependencies.
@@ -65,7 +65,7 @@ type Client struct {
 //
 // The service does not perform any connectivity or credential validation during
 // initialization.
-func NewClient(config types.Config, forSecrets shared.ForSecrets) (*Client, error) {
+func NewClient(config types.Config, secretManager shared.SecretManager) (*Client, error) {
 	if config.ApiUrl == "" {
 		config.ApiUrl = GraphqlEndpoint
 	}
@@ -76,9 +76,9 @@ func NewClient(config types.Config, forSecrets shared.ForSecrets) (*Client, erro
 
 	slog.Debug("[linear-client] created", "api_url", config.ApiUrl, "token_url", config.TokenUrl)
 	return &Client{
-		config:     config,
-		forSecrets: forSecrets,
-		httpClient: &http.Client{},
+		config:        config,
+		secretManager: secretManager,
+		httpClient:    &http.Client{},
 	}, nil
 }
 
