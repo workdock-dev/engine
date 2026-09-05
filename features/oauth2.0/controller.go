@@ -72,12 +72,7 @@ func New(
 	}
 
 	mux.HandleFunc(fmt.Sprintf("GET /%s/oauth/authorize", provider), func(w http.ResponseWriter, r *http.Request) {
-		url, err := c.authorize()
-
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
+		url := c.authorize()
 
 		http.Redirect(w, r, url, http.StatusFound)
 	})
@@ -95,9 +90,9 @@ func New(
 	})
 }
 
-func (c *controller) authorize() (string, error) {
+func (c *controller) authorize() string {
 	slog.Debug("[oauth20] authorize")
-	return c.handler.GetAuthorizationURL(), nil
+	return c.handler.GetAuthorizationURL()
 }
 
 func (c *controller) callback(r *http.Request) (string, error) {
