@@ -24,6 +24,9 @@ import (
 	"github.com/stretchr/testify/suite"
 	"github.com/workdock-dev/engine/features/agent_session/interfaces"
 	"github.com/workdock-dev/engine/features/agent_session/types"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
 )
 
 type TaskSchedulerSuite struct {
@@ -578,15 +581,228 @@ func (s *TaskSchedulerSuite) TestRun_CancellableChannelClosed() {
 }
 
 // ---------------------------------------------------------------------------
+// Metrics initialization and heartbeat tests
+// ---------------------------------------------------------------------------
+
+type failingMeterProvider struct {
+	metric.MeterProvider
+}
+
+func (p *failingMeterProvider) Meter(name string, opts ...metric.MeterOption) metric.Meter {
+	return &failingMeter{}
+}
+
+type failingMeter struct {
+	metric.Meter
+}
+
+// Every instrument creation fails. OTel's global meter replays previously
+// registered instruments through setDelegate, which handles creation errors
+// gracefully via its error handler, so returning an error everywhere is safe.
+
+func (m *failingMeter) Int64ObservableGauge(name string, opts ...metric.Int64ObservableGaugeOption) (metric.Int64ObservableGauge, error) {
+	return nil, errMeterUnavailable
+}
+
+func (m *failingMeter) Int64ObservableCounter(name string, opts ...metric.Int64ObservableCounterOption) (metric.Int64ObservableCounter, error) {
+	return nil, errMeterUnavailable
+}
+
+func (m *failingMeter) Int64ObservableUpDownCounter(name string, opts ...metric.Int64ObservableUpDownCounterOption) (metric.Int64ObservableUpDownCounter, error) {
+	return nil, errMeterUnavailable
+}
+
+func (m *failingMeter) Int64Counter(name string, opts ...metric.Int64CounterOption) (metric.Int64Counter, error) {
+	return nil, errMeterUnavailable
+}
+
+func (m *failingMeter) Int64UpDownCounter(name string, opts ...metric.Int64UpDownCounterOption) (metric.Int64UpDownCounter, error) {
+	return nil, errMeterUnavailable
+}
+
+func (m *failingMeter) Int64Histogram(name string, opts ...metric.Int64HistogramOption) (metric.Int64Histogram, error) {
+	return nil, errMeterUnavailable
+}
+
+func (m *failingMeter) Int64Gauge(name string, opts ...metric.Int64GaugeOption) (metric.Int64Gauge, error) {
+	return nil, errMeterUnavailable
+}
+
+func (m *failingMeter) Float64ObservableGauge(name string, opts ...metric.Float64ObservableGaugeOption) (metric.Float64ObservableGauge, error) {
+	return nil, errMeterUnavailable
+}
+
+func (m *failingMeter) Float64ObservableCounter(name string, opts ...metric.Float64ObservableCounterOption) (metric.Float64ObservableCounter, error) {
+	return nil, errMeterUnavailable
+}
+
+func (m *failingMeter) Float64ObservableUpDownCounter(name string, opts ...metric.Float64ObservableUpDownCounterOption) (metric.Float64ObservableUpDownCounter, error) {
+	return nil, errMeterUnavailable
+}
+
+func (m *failingMeter) Float64Counter(name string, opts ...metric.Float64CounterOption) (metric.Float64Counter, error) {
+	return nil, errMeterUnavailable
+}
+
+func (m *failingMeter) Float64UpDownCounter(name string, opts ...metric.Float64UpDownCounterOption) (metric.Float64UpDownCounter, error) {
+	return nil, errMeterUnavailable
+}
+
+func (m *failingMeter) Float64Histogram(name string, opts ...metric.Float64HistogramOption) (metric.Float64Histogram, error) {
+	return nil, errMeterUnavailable
+}
+
+func (m *failingMeter) Float64Gauge(name string, opts ...metric.Float64GaugeOption) (metric.Float64Gauge, error) {
+	return nil, errMeterUnavailable
+}
+
+var errMeterUnavailable = errors.New("meter unavailable")
+
+func (s *TaskSchedulerSuite) TestNewTaskScheduler_MetricsInitError() {
+	// The global default meter provider cannot be restored after delegating to
+	// a failing one (otel's delegation happens once), so restore to a fresh
+	// no-op provider to keep the rest of the suite isolated.
+	noopProvider := noop.NewMeterProvider()
+	otel.SetMeterProvider(&failingMeterProvider{})
+	defer otel.SetMeterProvider(noopProvider)
+
+	q := &mockQueue{runnable: make(chan struct{}, 1), cancellable: make(chan string, 1)}
+	handler := func(ctx context.Context, job *types.EventJob) (types.EventJobStatus, error) {
+		return types.EventJobStatus_Succeeded, nil
+	}
+
+	sched, err := NewTaskScheduler(q, types.TaskSchedulerConfig{}, handler)
+
+	s.Nil(sched)
+	s.Error(err)
+	s.ErrorContains(err, "meter unavailable")
+}
+
+// withFastHeartbeat shrinks the scheduler's heartbeat interval to 50ms so
+// heartbeats can be observed within a test window.
+func withFastHeartbeat(sched *TaskScheduler) {
+	sched.heartbeatInterval = 50 * time.Millisecond
+}
+
+func (s *TaskSchedulerSuite) TestRun_HeartbeatSuccess() {
+	q := newMockQueueChannels(1)
+	job := &types.EventJob{
+		SessionEventIdentifier: "evt-heartbeat",
+		QueuedBy:               "sess-1",
+		Attempts:               0,
+	}
+	q.claimJob = job
+
+	handlerReleased := make(chan struct{})
+	handlerStarted := make(chan struct{})
+	handler := func(ctx context.Context, j *types.EventJob) (types.EventJobStatus, error) {
+		q.claimJob = nil
+		close(handlerStarted)
+		// Stay running long enough for the 50ms heartbeat ticker to fire.
+		time.Sleep(200 * time.Millisecond)
+		close(handlerReleased)
+		return types.EventJobStatus_Succeeded, nil
+	}
+
+	sched, err := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
+	s.Require().NoError(err)
+	withFastHeartbeat(sched)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- sched.Run(ctx)
+	}()
+
+	q.notifyRunnable()
+
+	select {
+	case <-handlerStarted:
+	case <-time.After(2 * time.Second):
+		s.Fail("handler did not start in time")
+	}
+
+	select {
+	case <-handlerReleased:
+	case <-time.After(2 * time.Second):
+		s.Fail("handler did not finish in time")
+	}
+
+	q.waitForTerminal()
+
+	// Heartbeat failures are tolerated (logged only); a healthy heartbeat
+	// must not trigger any terminal state change beyond the completion.
+	q.assertCompleted(s.T(), "evt-heartbeat", types.EventJobStatus_Succeeded)
+
+	cancel()
+	<-done
+}
+
+func (s *TaskSchedulerSuite) TestRun_HeartbeatErrorIsTolerated() {
+	q := newMockQueueChannels(1)
+	q.heartbeatErr = errors.New("heartbeat failed")
+	job := &types.EventJob{
+		SessionEventIdentifier: "evt-heartbeat-err",
+		QueuedBy:               "sess-1",
+		Attempts:               0,
+	}
+	q.claimJob = job
+
+	handlerStarted := make(chan struct{})
+	handlerReleased := make(chan struct{})
+	handler := func(ctx context.Context, j *types.EventJob) (types.EventJobStatus, error) {
+		q.claimJob = nil
+		close(handlerStarted)
+		time.Sleep(200 * time.Millisecond)
+		close(handlerReleased)
+		return types.EventJobStatus_Succeeded, nil
+	}
+
+	sched, err := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
+	s.Require().NoError(err)
+	withFastHeartbeat(sched)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- sched.Run(ctx)
+	}()
+
+	q.notifyRunnable()
+
+	select {
+	case <-handlerStarted:
+	case <-time.After(2 * time.Second):
+		s.Fail("handler did not start in time")
+	}
+
+	select {
+	case <-handlerReleased:
+	case <-time.After(2 * time.Second):
+		s.Fail("handler did not finish in time")
+	}
+
+	q.waitForTerminal()
+
+	// A failing heartbeat only records a span event: the job still completes.
+	q.assertCompleted(s.T(), "evt-heartbeat-err", types.EventJobStatus_Succeeded)
+	s.False(q.failed())
+
+	cancel()
+	<-done
+}
+
+// ---------------------------------------------------------------------------
 // Mock queue for scheduler tests
 // ---------------------------------------------------------------------------
 
 type mockQueue struct {
-	runnable    chan struct{}
-	cancellable chan string
-	claimJob    *types.EventJob
-	claimErr    error
-	completeErr error
+	runnable     chan struct{}
+	cancellable  chan string
+	claimJob     *types.EventJob
+	claimErr     error
+	completeErr  error
+	heartbeatErr error
 
 	mu                sync.Mutex
 	completedIds      []string
@@ -685,7 +901,14 @@ func (m *mockQueue) Claim(ctx context.Context, owner string, nextAttemptAt time.
 }
 
 func (m *mockQueue) Heartbeat(ctx context.Context, id string, leaseDuration time.Duration) error {
-	return nil
+	return m.heartbeatErr
+}
+
+// failed reports whether the Fail method was ever invoked.
+func (m *mockQueue) failed() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.failedIds) > 0
 }
 
 func (m *mockQueue) Complete(ctx context.Context, id string, status types.EventJobStatus) error {

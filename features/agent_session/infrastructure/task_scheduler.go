@@ -33,12 +33,15 @@ import (
 )
 
 const (
-	DefaultWorkers           = 3
-	DefaultMaxAttempts       = 2
-	DefaultHeartbeatInterval = time.Minute
-	DefaultLeaseDuration     = time.Minute * 5
-	DefaultRetryGracePeriod  = time.Minute
+	DefaultWorkers          = 3
+	DefaultMaxAttempts      = 2
+	DefaultLeaseDuration    = time.Minute * 5
+	DefaultRetryGracePeriod = time.Minute
 )
+
+// DefaultHeartbeatInterval is a variable so tests can shrink the interval to
+// observe heartbeats within a reasonable test window.
+var DefaultHeartbeatInterval = time.Minute
 
 var (
 	errShutdownRequeue    = errors.New("scheduler shutdown")
@@ -57,6 +60,10 @@ type TaskScheduler struct {
 	tracer           trace.Tracer
 	busyWorkers      atomic.Int64
 	metrics          *SchedulerMetrics
+
+	// heartbeatInterval controls the job lease heartbeat period. It defaults
+	// to DefaultHeartbeatInterval and is overridable in tests.
+	heartbeatInterval time.Duration
 }
 
 // NewTaskScheduler creates a new TaskScheduler with sensible defaults when
@@ -72,14 +79,15 @@ func NewTaskScheduler(queue interfaces.Queue, config types.TaskSchedulerConfig, 
 	}
 
 	s := &TaskScheduler{
-		serviceId:        uuid.NewString(),
-		config:           config,
-		cond:             *sync.NewCond(&sync.Mutex{}),
-		lastNotification: time.Now(),
-		extQueue:         queue,
-		handler:          handler,
-		closed:           false,
-		tracer:           otel.Tracer("workdock.task_scheduler"),
+		serviceId:         uuid.NewString(),
+		config:            config,
+		cond:              *sync.NewCond(&sync.Mutex{}),
+		lastNotification:  time.Now(),
+		extQueue:          queue,
+		handler:           handler,
+		closed:            false,
+		tracer:            otel.Tracer("workdock.task_scheduler"),
+		heartbeatInterval: DefaultHeartbeatInterval,
 	}
 
 	metrics, err := NewMetrics(otel.Meter("workdock.task_scheduler"), s)
@@ -257,7 +265,7 @@ func (s *TaskScheduler) execute(ctx context.Context, job *types.EventJob, starte
 	hCtx, cancel := context.WithCancel(ctx)
 
 	go func() {
-		t := time.NewTicker(time.Duration(DefaultHeartbeatInterval))
+		t := time.NewTicker(s.heartbeatInterval)
 		defer t.Stop()
 
 		for {

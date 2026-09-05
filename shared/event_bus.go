@@ -45,6 +45,20 @@ func (b *EventBus) Subscribe(eventType string, handler EventHandler) {
 	b.handlers[eventType] = append(b.handlers[eventType], handler)
 }
 
+// HandlerAt returns the handler registered at the given index for the event
+// type, and whether one exists. It is primarily useful for inspecting
+// subscriptions in tests.
+func (b *EventBus) HandlerAt(eventType string, index int) (EventHandler, bool) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	if index < 0 || index >= len(b.handlers[eventType]) {
+		return nil, false
+	}
+
+	return b.handlers[eventType][index], true
+}
+
 // Publish synchronously invokes every handler subscribed to the event's type.
 func (b *EventBus) Publish(ctx context.Context, event DomainEvent) error {
 	slog.Debug("[event-bus] event published", "event_type", event.EventType())

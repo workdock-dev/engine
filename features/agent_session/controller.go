@@ -608,22 +608,16 @@ func (c *controller) getPrompt(
 		return "", err
 	}
 
-	prompt, err := telemetry.Span(ctx, c.tracer, "session.create_prompt", func(ctx context.Context) (string, error) {
+	return telemetry.Span1(ctx, c.tracer, "session.create_prompt", func(ctx context.Context) string {
 		return c.createPrompt(session, sessionEvent, promptContext)
-	})
-
-	if err != nil {
-		return "", err
-	}
-
-	return prompt, nil
+	}), nil
 }
 
 func (c *controller) createPrompt(
 	session *types.Session,
 	sessionEvent *types.SessionEvent,
 	promptContext *interfaces.PromptContext,
-) (string, error) {
+) string {
 	repo := ""
 
 	if session != nil && session.RepoFullName != nil {
@@ -654,7 +648,7 @@ func (c *controller) createPrompt(
 		p += fmt.Sprintf(PromptTemplate_LatestUserComment, *promptContext.Context)
 	}
 
-	return p, nil
+	return p
 }
 
 func (c *controller) verifyGitAccess(
@@ -1023,9 +1017,7 @@ func (c *controller) harness(
 
 				heartbeat()
 
-				if _, err := stdErrBuilder.Write([]byte(chunk)); err != nil {
-					slog.Error("[agent-session] failed to write to stderr builder", "err", err, "event_identifier", sessionEvent.Identifier)
-				}
+				stdErrBuilder.Write([]byte(chunk))
 
 			case <-ctx.Done():
 				return ctx.Err()

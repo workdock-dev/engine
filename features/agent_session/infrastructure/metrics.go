@@ -165,13 +165,9 @@ func errorType(err error) string {
 
 	t := reflect.TypeOf(err)
 
-	if t != nil {
-		if t.Name() != "" {
-			return t.Name()
-		}
-
-		return t.String()
+	if t.Name() != "" {
+		return t.Name()
 	}
 
-	return "unknown"
+	return t.String()
 }

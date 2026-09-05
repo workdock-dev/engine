@@ -16,6 +16,7 @@ package infrastructure
 
 import (
 	"context"
+	"reflect"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -110,6 +111,84 @@ func (r *mockRow) Scan(dest ...any) error {
 	if r.scanFn != nil {
 		return r.scanFn(dest...)
 	}
+	return nil
+}
+
+// --- pgx.Rows mock ---
+
+type mockRowValues struct {
+	values  []any
+	scanErr error
+}
+
+type mockRows struct {
+	rows    []mockRowValues
+	rowsErr error
+	closed  bool
+}
+
+func (r *mockRows) Next() bool {
+	return len(r.rows) > 0
+}
+
+func (r *mockRows) Scan(dest ...any) error {
+	row := r.rows[0]
+	r.rows = r.rows[1:]
+
+	if row.scanErr != nil {
+		return row.scanErr
+	}
+
+	for i, v := range row.values {
+		if v == nil {
+			continue
+		}
+
+		d := reflect.ValueOf(dest[i])
+		if d.Kind() == reflect.Ptr {
+			// Follow one level of indirection for nullable columns
+			// (e.g. **string for a *string field).
+			if d.Elem().Kind() == reflect.Ptr {
+				out := reflect.New(reflect.TypeOf(v))
+				out.Elem().Set(reflect.ValueOf(v))
+				d.Elem().Set(out)
+				continue
+			}
+
+			d.Elem().Set(reflect.ValueOf(v))
+		} else {
+			d.Set(reflect.ValueOf(v))
+		}
+	}
+
+	return nil
+}
+
+func (r *mockRows) Err() error {
+	return r.rowsErr
+}
+
+func (r *mockRows) Close() {
+	r.closed = true
+}
+
+func (r *mockRows) Values() ([]any, error) {
+	return nil, nil
+}
+
+func (r *mockRows) RawValues() [][]byte {
+	return nil
+}
+
+func (r *mockRows) CommandTag() pgconn.CommandTag {
+	return pgconn.CommandTag{}
+}
+
+func (r *mockRows) FieldDescriptions() []pgconn.FieldDescription {
+	return nil
+}
+
+func (r *mockRows) Conn() *pgx.Conn {
 	return nil
 }
 

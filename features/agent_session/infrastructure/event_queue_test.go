@@ -341,3 +341,101 @@ func (s *EventQueueSuite) TestClose_Error() {
 	err := s.queue.Close(context.Background())
 	s.Error(err)
 }
+
+// --- Constructor ---
+
+func (s *EventQueueSuite) TestNewEventQueue() {
+	queue := NewEventQueue(s.pool, s.conn)
+
+	s.Require().NotNil(queue)
+	s.Equal(s.pool, queue.client)
+	s.Equal(s.conn, queue.conn)
+}
+
+// --- Listen notification error paths ---
+
+func (s *EventQueueSuite) TestListen_NotificationErrorStopsListener() {
+	s.conn.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+		return pgconn.CommandTag{}, nil
+	}
+	s.conn.waitForNotificationFn = func(ctx context.Context) (*pgconn.Notification, error) {
+		// A notification error while the context is still live aborts the listener.
+		return nil, fmt.Errorf("connection lost")
+	}
+
+	runnableCh, cancellableCh, err := s.queue.Listen(context.Background())
+	s.Require().NoError(err)
+
+	select {
+	case _, ok := <-runnableCh:
+		s.False(ok, "runnable channel should be closed")
+	case <-time.After(2 * time.Second):
+		s.Fail("timed out waiting for runnable channel to close")
+	}
+
+	select {
+	case _, ok := <-cancellableCh:
+		s.False(ok, "cancellable channel should be closed")
+	case <-time.After(2 * time.Second):
+		s.Fail("timed out waiting for cancellable channel to close")
+	}
+}
+
+func (s *EventQueueSuite) TestListen_DuplicateClaimableNotificationsSkipped() {
+	s.conn.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+		return pgconn.CommandTag{}, nil
+	}
+	callCount := 0
+	s.conn.waitForNotificationFn = func(ctx context.Context) (*pgconn.Notification, error) {
+		callCount++
+		switch callCount {
+		case 1, 2: // two claimable notifications; the second must hit the default branch
+			return &pgconn.Notification{Channel: "jobs_claimable"}, nil
+		default:
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	runnableCh, _, err := s.queue.Listen(ctx)
+	s.Require().NoError(err)
+
+	select {
+	case <-runnableCh:
+	case <-time.After(time.Second):
+		s.Fail("timed out waiting for first claimable notification")
+	}
+
+	// The channel has capacity 1 and was never drained: the duplicate must not
+	// have deadlocked the listener.
+}
+
+func (s *EventQueueSuite) TestListen_DuplicateCancelledNotificationsSkipped() {
+	s.conn.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+		return pgconn.CommandTag{}, nil
+	}
+	callCount := 0
+	s.conn.waitForNotificationFn = func(ctx context.Context) (*pgconn.Notification, error) {
+		callCount++
+		switch callCount {
+		case 1, 2: // two cancellations; the second must hit the default branch
+			return &pgconn.Notification{Channel: "jobs_cancelled", Payload: "evt-1"}, nil
+		default:
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	_, cancellableCh, err := s.queue.Listen(ctx)
+	s.Require().NoError(err)
+
+	select {
+	case <-cancellableCh:
+	case <-time.After(time.Second):
+		s.Fail("timed out waiting for first cancellation notification")
+	}
+}
