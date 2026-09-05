@@ -21,8 +21,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/textproto"
-	"strings"
 	"testing"
 	"time"
 
@@ -84,21 +82,6 @@ func (s *LinearServiceSuite) newServiceNoServer(apiURL, tokenURL string) *Client
 	}, nil)
 	s.Require().NoError(err)
 	return svc
-}
-
-func (s *LinearServiceSuite) newWebhookRequest(body string, signature string, remoteAddr string, extraHeaders map[string]string) shared.WebhookRequest {
-	headers := map[string][]string{}
-	for k, v := range extraHeaders {
-		headers[textproto.CanonicalMIMEHeaderKey(k)] = []string{v}
-	}
-	if signature != "" {
-		headers[textproto.CanonicalMIMEHeaderKey("Linear-Signature")] = []string{signature}
-	}
-	return shared.WebhookRequest{
-		Body:       io.NopCloser(strings.NewReader(body)),
-		RemoteAddr: remoteAddr,
-		Headers:    headers,
-	}
 }
 
 // okJSONHandler returns a handler that responds with 200 and the given JSON body.
