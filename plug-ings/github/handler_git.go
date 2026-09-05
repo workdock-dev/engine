@@ -95,12 +95,12 @@ func (h *GitHandler) GetGitAccess(ctx context.Context, connection *agent_session
 	}, nil
 }
 
-func (h *GitHandler) ParseLatestChangesResult(changes string) *shared.PullRequest {
+func (h *GitHandler) ParseLatestChangesResult(changes string) *agent_session_types.PullRequest {
 	if changes == "" {
 		return nil
 	}
 
-	var pr shared.PullRequest
+	var pr agent_session_types.PullRequest
 
 	if err := json.Unmarshal([]byte(changes), &pr); err != nil {
 		slog.Error("failed to unmarshal pull request metadata", "err", err)

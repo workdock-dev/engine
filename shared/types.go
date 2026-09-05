@@ -30,10 +30,3 @@ type Organization struct {
 	Provider   PlatformProvider
 	Name       string
 }
-
-type PullRequest struct {
-	HeadRefName string `json:"headRefName"`
-	HeadRefOID  string `json:"headRefOid"`
-	Number      int    `json:"number"`
-	URL         string `json:"url"`
-}

@@ -18,7 +18,6 @@ import (
 	"context"
 
 	"github.com/workdock-dev/engine/features/agent_session/types"
-	"github.com/workdock-dev/engine/shared"
 )
 
 type GitAccess struct {
@@ -52,5 +51,5 @@ type HandlerGit interface {
 
 	// ParseLatestChangesResult receives the changes procude by the latest changes command
 	// and parse it to a concrete domain type
-	ParseLatestChangesResult(changes string) *shared.PullRequest
+	ParseLatestChangesResult(changes string) *types.PullRequest
 }

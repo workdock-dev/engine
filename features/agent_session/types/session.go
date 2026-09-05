@@ -54,7 +54,14 @@ type SessionEvent struct {
 }
 
 type SessionEventResult struct {
-	PullRequest *shared.PullRequest
+	PullRequest *PullRequest
+}
+
+type PullRequest struct {
+	HeadRefName string `json:"headRefName"`
+	HeadRefOID  string `json:"headRefOid"`
+	Number      int    `json:"number"`
+	URL         string `json:"url"`
 }
 
 type GitConnection struct {
