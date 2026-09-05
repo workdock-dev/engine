@@ -17,12 +17,8 @@ package infrastructure
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
 	"crypto/rsa"
-	"crypto/sha256"
-	"crypto/subtle"
 	"crypto/x509"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -114,7 +110,7 @@ func (s *GitHubClient) baseURL() string {
 	return defaultBaseURL
 }
 
-// GenerateJWT creates a short-lived JWT that identifies this application as a
+// generateJWT creates a short-lived JWT that identifies this application as a
 // GitHub App when calling the GitHub API.
 //
 //   - Generates a signed JWT using the configured GitHub App private key.
@@ -123,7 +119,7 @@ func (s *GitHubClient) baseURL() string {
 //
 // The generated token has a limited lifetime in accordance with GitHub's
 // authentication requirements.
-func (s *GitHubClient) GenerateJWT() (string, error) {
+func (s *GitHubClient) generateJWT() (string, error) {
 	now := time.Now()
 
 	claims := jwt.MapClaims{
@@ -220,7 +216,7 @@ func (s *GitHubClient) IsRepositoryPublic(ctx context.Context, repo string) (boo
 // automatically, requiring a new token to be generated when it is no longer
 // valid.
 func (s *GitHubClient) CreateInstallationAccessToken(installationId int) (*types.InstallationAccessToken, error) {
-	jwt, err := s.GenerateJWT()
+	jwt, err := s.generateJWT()
 
 	if err != nil {
 		slog.Error("[github-client] failed to generate JWT for installation access token", "installation_id", installationId, "err", err)
@@ -273,83 +269,4 @@ func (s *GitHubClient) CreateInstallationAccessToken(installationId int) (*types
 
 	slog.Debug("[github-client] installation access token created", "installation_id", installationId, "expires_at", token.ExpiresAt)
 	return &token, nil
-}
-
-// Webhook validates and parses an incoming GitHub webhook request.
-//
-//   - Verifies the webhook signature to ensure the request originated from
-//     GitHub and has not been tampered with.
-//   - Extracts the webhook event type and deserializes the payload into the
-//     application's domain model.
-//   - Preserves the raw payload for downstream processing that may require the
-//     original webhook contents.
-//
-// Requests that fail signature verification or are missing required webhook
-// metadata are rejected and treated as invalid.
-func (s *GitHubClient) Webhook(ctx context.Context, req shared.WebhookRequest) (*types.WebhookEvent, error) {
-	rawBody, err := io.ReadAll(req.Body)
-
-	if err != nil {
-		slog.Error("[github-client] failed to read request body", "err", err)
-		return nil, shared.ErrBadRequest
-	}
-
-	signature := req.Get("X-Hub-Signature-256")
-
-	if !s.verifyWebhookSignature(signature, rawBody) {
-		slog.Error("[github-client] failed verifying github webhook signature")
-		return nil, shared.ErrUnAuthorized
-	}
-
-	eventType := req.Get("X-GitHub-Event")
-
-	if eventType == "" {
-		slog.Error("[github-client] missing X-GitHub-Event header")
-		return nil, shared.ErrBadRequest
-	}
-
-	deliveryID := req.Get("X-GitHub-Delivery")
-
-	var event types.WebhookEvent
-
-	if err := json.Unmarshal(rawBody, &event); err != nil {
-		slog.Error("[github-client] failed to unmarshal webhook payload", "err", err)
-		return nil, shared.ErrBadRequest
-	}
-
-	event.EventType = eventType
-	event.DeliveryID = deliveryID
-	return &event, nil
-}
-
-// verifyWebhookSignature validates that a webhook request was signed by GitHub.
-//
-//   - Computes the expected HMAC-SHA256 signature using the configured webhook
-//     secret.
-//   - Compares the computed signature with the one provided by GitHub using a
-//     constant-time comparison to prevent timing attacks.
-//
-// A successful verification confirms the request originated from a trusted
-// source and that the payload was not modified in transit.
-func (s *GitHubClient) verifyWebhookSignature(headerSignature string, body []byte) bool {
-	if headerSignature == "" {
-		return false
-	}
-
-	const prefix = "sha256="
-
-	if len(headerSignature) < len(prefix) || headerSignature[:len(prefix)] != prefix {
-		return false
-	}
-
-	expected, err := hex.DecodeString(headerSignature[len(prefix):])
-
-	if err != nil {
-		return false
-	}
-
-	mac := hmac.New(sha256.New, []byte(s.config.WebhookSecret))
-	mac.Write(body)
-
-	return subtle.ConstantTimeCompare(mac.Sum(nil), expected) == 1
 }

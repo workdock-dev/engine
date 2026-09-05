@@ -335,7 +335,7 @@ func (s *GitHubClientSuite) TestNew_ErrNotRSAKey() {
 
 func (s *GitHubClientSuite) TestGenerateJWT_Success() {
 	c := s.newClientWithKey(s.T())
-	token, err := c.GenerateJWT()
+	token, err := c.generateJWT()
 	s.NoError(err)
 	parts := strings.Split(token, ".")
 	s.Len(parts, 3, "JWT must have 3 dot-separated parts")
@@ -343,7 +343,7 @@ func (s *GitHubClientSuite) TestGenerateJWT_Success() {
 
 func (s *GitHubClientSuite) TestGenerateJWT_VerifyClaims() {
 	c := s.newClientWithKey(s.T())
-	token, err := c.GenerateJWT()
+	token, err := c.generateJWT()
 	s.NoError(err)
 
 	parsed, _, err := new(jwt.Parser).ParseUnverified(token, jwt.MapClaims{})
@@ -368,7 +368,7 @@ func (s *GitHubClientSuite) TestGenerateJWT_SigningError() {
 		},
 		D: new(big.Int),
 	}
-	_, err := c.GenerateJWT()
+	_, err := c.generateJWT()
 	s.Error(err)
 }
 
@@ -503,137 +503,6 @@ func (s *GitHubClientSuite) TestCreateToken_InvalidJSON() {
 
 	_, err := c.CreateInstallationAccessToken(1)
 	s.Error(err)
-}
-
-// --- Webhook() tests ---
-
-func (s *GitHubClientSuite) TestWebhook_Success() {
-	c := s.newClientWithKey(s.T())
-	payload := `{"action":"opened","installation":{"id":1},"pull_request":{"head":{"ref":"feat","repo":{"full_name":"o/r"}}}}`
-	sig := computeHMAC([]byte(payload), "test-secret")
-
-	req := shared.WebhookRequest{
-		Headers: map[string][]string{
-			"X-Hub-Signature-256": {sig},
-			"X-Github-Event":      {"pull_request"},
-			"X-Github-Delivery":   {"abc-123"},
-		},
-		Body: strings.NewReader(payload),
-	}
-
-	event, err := c.Webhook(context.Background(), req)
-	s.NoError(err)
-	s.Equal("pull_request", event.EventType)
-	s.Equal("abc-123", event.DeliveryID)
-	s.Equal("opened", event.Action)
-	s.Equal(1, event.Installation.ID)
-}
-
-func (s *GitHubClientSuite) TestWebhook_InvalidSignature() {
-	c := s.newClientWithKey(s.T())
-	payload := `{"action":"opened"}`
-
-	req := shared.WebhookRequest{
-		Headers: map[string][]string{
-			"X-Hub-Signature-256": {"sha256=0000000000000000000000000000000000000000000000000000000000000000"},
-			"X-Github-Event":      {"push"},
-		},
-		Body: strings.NewReader(payload),
-	}
-
-	_, err := c.Webhook(context.Background(), req)
-	s.ErrorIs(err, shared.ErrUnAuthorized)
-}
-
-func (s *GitHubClientSuite) TestWebhook_MissingSignature() {
-	c := s.newClientWithKey(s.T())
-	payload := `{"action":"opened"}`
-
-	req := shared.WebhookRequest{
-		Headers: map[string][]string{
-			"X-Github-Event": {"push"},
-		},
-		Body: strings.NewReader(payload),
-	}
-
-	_, err := c.Webhook(context.Background(), req)
-	s.ErrorIs(err, shared.ErrUnAuthorized)
-}
-
-func (s *GitHubClientSuite) TestWebhook_MissingEventType() {
-	c := s.newClientWithKey(s.T())
-	payload := `{"action":"opened"}`
-	sig := computeHMAC([]byte(payload), "test-secret")
-
-	req := shared.WebhookRequest{
-		Headers: map[string][]string{
-			"X-Hub-Signature-256": {sig},
-		},
-		Body: strings.NewReader(payload),
-	}
-
-	_, err := c.Webhook(context.Background(), req)
-	s.ErrorIs(err, shared.ErrBadRequest)
-}
-
-func (s *GitHubClientSuite) TestWebhook_InvalidPayload() {
-	c := s.newClientWithKey(s.T())
-	payload := `{not json`
-	sig := computeHMAC([]byte(payload), "test-secret")
-
-	req := shared.WebhookRequest{
-		Headers: map[string][]string{
-			"X-Hub-Signature-256": {sig},
-			"X-Github-Event":      {"push"},
-		},
-		Body: strings.NewReader(payload),
-	}
-
-	_, err := c.Webhook(context.Background(), req)
-	s.ErrorIs(err, shared.ErrBadRequest)
-}
-
-func (s *GitHubClientSuite) TestWebhook_BodyReadError() {
-	c := s.newClientWithKey(s.T())
-	req := shared.WebhookRequest{
-		Headers: map[string][]string{},
-		Body:    &errorReader{},
-	}
-
-	_, err := c.Webhook(context.Background(), req)
-	s.ErrorIs(err, shared.ErrBadRequest)
-}
-
-// --- verifyWebhookSignature() tests ---
-
-func (s *GitHubClientSuite) TestVerifySig_EmptyHeader() {
-	c := s.newClientWithKey(s.T())
-	s.False(c.verifyWebhookSignature("", []byte("body")))
-}
-
-func (s *GitHubClientSuite) TestVerifySig_MissingPrefix() {
-	c := s.newClientWithKey(s.T())
-	s.False(c.verifyWebhookSignature("abc123", []byte("body")))
-}
-
-func (s *GitHubClientSuite) TestVerifySig_InvalidHex() {
-	c := s.newClientWithKey(s.T())
-	s.False(c.verifyWebhookSignature("sha256=zzzz", []byte("body")))
-}
-
-func (s *GitHubClientSuite) TestVerifySig_Correct() {
-	c := s.newClientWithKey(s.T())
-	body := []byte("test payload")
-	sig := computeHMAC(body, "test-secret")
-	s.True(c.verifyWebhookSignature(sig, body))
-}
-
-func (s *GitHubClientSuite) TestVerifySig_WrongSecret() {
-	c := s.newClientWithKey(s.T())
-	mac := hmac.New(sha256.New, []byte("wrong-secret"))
-	mac.Write([]byte("body"))
-	sig := "sha256=" + hex.EncodeToString(mac.Sum(nil))
-	s.False(c.verifyWebhookSignature(sig, []byte("body")))
 }
 
 // --- baseURL() tests ---
