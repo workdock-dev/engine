@@ -43,7 +43,7 @@ var (
 	GetAgentSessionEventByGitRefSql string
 
 	//go:embed sql/get_git_connection.sql
-	GetGitHubConnectionSql string
+	GetGitConnectionSql string
 
 	//go:embed sql/insert_session_event.sql
 	InsertSessionEventSql string
@@ -61,10 +61,10 @@ var (
 	UpdateSessionEventResultSql string
 
 	//go:embed sql/upsert_git_connection.sql
-	UpsertGitHubConnectionSql string
+	UpsertGitConnectionSql string
 
 	//go:embed sql/reset_git_connection.sql
-	ResetGitHubConnectionSql string
+	ResetGitConnectionSql string
 
 	//go:embed sql/cancel.sql
 	CancelSql string
@@ -235,7 +235,7 @@ func (p *postgres) GetConnection(ctx context.Context, repoFullName string) (*typ
 	var row types.GitConnection
 
 	err := p.client.
-		QueryRow(ctx, GetGitHubConnectionSql, repoFullName).
+		QueryRow(ctx, GetGitConnectionSql, repoFullName).
 		Scan(
 			&row.SessionEventIdentifier,
 			&row.RepoFullName,
@@ -245,11 +245,11 @@ func (p *postgres) GetConnection(ctx context.Context, repoFullName string) (*typ
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			slog.Debug("[agent-session][postgres] github connection doesn't exist in the database", "repo_full_name", repoFullName)
+			slog.Debug("[agent-session][postgres] git connection doesn't exist in the database", "repo_full_name", repoFullName)
 			return nil, nil
 		}
 
-		slog.Error("[agent-session][postgres] failed to get github connection by repo full name", "err", err, "repo_full_name", repoFullName)
+		slog.Error("[agent-session][postgres] failed to get git connection by repo full name", "err", err, "repo_full_name", repoFullName)
 		return nil, err
 	}
 
@@ -360,22 +360,22 @@ func (p *postgres) UpdateSessionEventResult(ctx context.Context, event *types.Se
 
 }
 
-func (p *postgres) UpsertConnection(ctx context.Context, githubConnection *types.GitConnection) error {
+func (p *postgres) UpsertConnection(ctx context.Context, connection *types.GitConnection) error {
 	err := p.client.
 		QueryRow(
 			ctx,
-			UpsertGitHubConnectionSql,
-			githubConnection.SessionEventIdentifier,
-			githubConnection.RepoFullName,
-			githubConnection.Connected,
-			githubConnection.InstallationId,
+			UpsertGitConnectionSql,
+			connection.SessionEventIdentifier,
+			connection.RepoFullName,
+			connection.Connected,
+			connection.InstallationId,
 		).
 		Scan(
-			&githubConnection.SessionEventIdentifier,
+			&connection.SessionEventIdentifier,
 		)
 
 	if err != nil {
-		slog.Error("[agent-session][postgres] failed to upsert github connection", "err", err, "event_identifier", githubConnection.SessionEventIdentifier, "repo", githubConnection.RepoFullName)
+		slog.Error("[agent-session][postgres] failed to upsert git connection", "err", err, "event_identifier", connection.SessionEventIdentifier, "repo", connection.RepoFullName)
 		return err
 	}
 
@@ -383,10 +383,10 @@ func (p *postgres) UpsertConnection(ctx context.Context, githubConnection *types
 }
 
 func (p *postgres) ResetConnection(ctx context.Context, installationId string, repos []string) error {
-	_, err := p.client.Exec(ctx, ResetGitHubConnectionSql, installationId, repos)
+	_, err := p.client.Exec(ctx, ResetGitConnectionSql, installationId, repos)
 
 	if err != nil {
-		slog.Error("[agent-session][postgres] failed to reset github connection", "err", err, "installation_id", installationId)
+		slog.Error("[agent-session][postgres] failed to reset git connection", "err", err, "installation_id", installationId)
 		return err
 	}
 
