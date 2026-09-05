@@ -502,7 +502,7 @@ func (s *LinearServiceSuite) TestGetIssueLabels_NilIssue() {
 }
 
 func (s *LinearServiceSuite) TestGetIssueLabels_Success() {
-	labelsJSON := `repo=workdock-dev/engine`
+	labelsJSON := `{"data":{"issue":{"labelIds":["l1"],"labels":{"nodes":[{"id":"l1","name":"repo=workdock-dev/engine","color":"red","description":"a bug","isGroup":false}],"pageInfo":{"hasNextPage":false,"endCursor":"c1"}}}}}`
 	handler := okJSONHandler(labelsJSON)
 	svc := s.newService(handler)
 	labels, err := svc.GetIssueLabels(context.Background(), "token", "issue-1")

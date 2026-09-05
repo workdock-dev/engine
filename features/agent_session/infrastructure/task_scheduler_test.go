@@ -40,7 +40,9 @@ func TestTaskSchedulerSuite(t *testing.T) {
 
 func (s *TaskSchedulerSuite) TestNewTaskScheduler_DefaultConfig() {
 	q := &mockQueue{runnable: make(chan struct{}, 1), cancellable: make(chan string, 1)}
-	handler := func(ctx context.Context, job *types.EventJob) error { return nil }
+	handler := func(ctx context.Context, job *types.EventJob) (types.EventJobStatus, error) {
+		return types.EventJobStatus_Succeeded, nil
+	}
 
 	sched, err := NewTaskScheduler(q, types.TaskSchedulerConfig{}, handler)
 	s.NoError(err)
@@ -51,7 +53,9 @@ func (s *TaskSchedulerSuite) TestNewTaskScheduler_DefaultConfig() {
 
 func (s *TaskSchedulerSuite) TestNewTaskScheduler_CustomConfig() {
 	q := &mockQueue{runnable: make(chan struct{}, 1), cancellable: make(chan string, 1)}
-	handler := func(ctx context.Context, job *types.EventJob) error { return nil }
+	handler := func(ctx context.Context, job *types.EventJob) (types.EventJobStatus, error) {
+		return types.EventJobStatus_Succeeded, nil
+	}
 
 	sched, err := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 8, MaxAttempts: 5}, handler)
 	s.NoError(err)
@@ -61,7 +65,9 @@ func (s *TaskSchedulerSuite) TestNewTaskScheduler_CustomConfig() {
 
 func (s *TaskSchedulerSuite) TestNewTaskScheduler_ServiceIdUnique() {
 	q := &mockQueue{runnable: make(chan struct{}, 1), cancellable: make(chan string, 1)}
-	handler := func(ctx context.Context, job *types.EventJob) error { return nil }
+	handler := func(ctx context.Context, job *types.EventJob) (types.EventJobStatus, error) {
+		return types.EventJobStatus_Succeeded, nil
+	}
 
 	s1, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{}, handler)
 	s2, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{}, handler)
@@ -78,7 +84,9 @@ func (s *TaskSchedulerSuite) TestRun_ListenError() {
 		runnable:    make(chan struct{}, 1),
 		cancellable: make(chan string, 1),
 	}
-	handler := func(ctx context.Context, job *types.EventJob) error { return nil }
+	handler := func(ctx context.Context, job *types.EventJob) (types.EventJobStatus, error) {
+		return types.EventJobStatus_Succeeded, nil
+	}
 
 	sched, err := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1}, handler)
 	s.Require().NoError(err)
@@ -90,7 +98,9 @@ func (s *TaskSchedulerSuite) TestRun_ListenError() {
 
 func (s *TaskSchedulerSuite) TestRun_ShutdownCleanly() {
 	q := newMockQueueChannels(1)
-	handler := func(ctx context.Context, job *types.EventJob) error { return nil }
+	handler := func(ctx context.Context, job *types.EventJob) (types.EventJobStatus, error) {
+		return types.EventJobStatus_Succeeded, nil
+	}
 
 	sched, err := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1}, handler)
 	s.Require().NoError(err)
@@ -116,8 +126,8 @@ func (s *TaskSchedulerSuite) TestRun_ClaimErrorJobNotRunnable() {
 	q := newMockQueueChannels(1)
 	q.claimErr = interfaces.ErrJobNotRunnable
 
-	handler := func(ctx context.Context, job *types.EventJob) error {
-		return nil
+	handler := func(ctx context.Context, job *types.EventJob) (types.EventJobStatus, error) {
+		return types.EventJobStatus_Succeeded, nil
 	}
 
 	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1}, handler)
@@ -138,9 +148,9 @@ func (s *TaskSchedulerSuite) TestRun_ClaimReturnsNil() {
 	q := newMockQueueChannels(1)
 	q.claimJob = nil
 
-	handler := func(ctx context.Context, job *types.EventJob) error {
+	handler := func(ctx context.Context, job *types.EventJob) (types.EventJobStatus, error) {
 		s.Fail("handler should not be called")
-		return nil
+		return types.EventJobStatus_Succeeded, nil
 	}
 
 	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1}, handler)
@@ -172,10 +182,10 @@ func (s *TaskSchedulerSuite) TestRun_ExecutionSuccess() {
 	q.claimJob = job
 
 	handlerCalled := make(chan struct{})
-	handler := func(ctx context.Context, j *types.EventJob) error {
+	handler := func(ctx context.Context, j *types.EventJob) (types.EventJobStatus, error) {
 		q.claimJob = nil
 		close(handlerCalled)
-		return nil
+		return types.EventJobStatus_Succeeded, nil
 	}
 
 	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
@@ -195,7 +205,46 @@ func (s *TaskSchedulerSuite) TestRun_ExecutionSuccess() {
 	}
 
 	q.waitForTerminal()
-	q.assertCompleted(s.T(), "evt-1")
+	q.assertCompleted(s.T(), "evt-1", types.EventJobStatus_Succeeded)
+
+	cancel()
+	<-done
+}
+
+func (s *TaskSchedulerSuite) TestRun_ExecutionAwaitingAction() {
+	q := newMockQueueChannels(1)
+	job := &types.EventJob{
+		SessionEventIdentifier: "evt-awaiting-action",
+		QueuedBy:               "sess-1",
+		Attempts:               0,
+	}
+	q.claimJob = job
+
+	handlerCalled := make(chan struct{})
+	handler := func(ctx context.Context, j *types.EventJob) (types.EventJobStatus, error) {
+		q.claimJob = nil
+		close(handlerCalled)
+		return types.EventJobStatus_AwaitingAction, nil
+	}
+
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- sched.Run(ctx)
+	}()
+
+	q.notifyRunnable()
+
+	select {
+	case <-handlerCalled:
+	case <-time.After(2 * time.Second):
+		s.Fail("handler was not called in time")
+	}
+
+	q.waitForTerminal()
+	q.assertCompleted(s.T(), "evt-awaiting-action", types.EventJobStatus_AwaitingAction)
 
 	cancel()
 	<-done
@@ -211,9 +260,9 @@ func (s *TaskSchedulerSuite) TestRun_ExecutionRetry() {
 	q.claimJob = job
 
 	handlerErr := errors.New("transient failure")
-	handler := func(ctx context.Context, j *types.EventJob) error {
+	handler := func(ctx context.Context, j *types.EventJob) (types.EventJobStatus, error) {
 		q.claimJob = nil
-		return handlerErr
+		return types.EventJobStatus_Failed, handlerErr
 	}
 
 	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 3}, handler)
@@ -242,9 +291,9 @@ func (s *TaskSchedulerSuite) TestRun_ExecutionFail() {
 	q.claimJob = job
 
 	handlerErr := errors.New("permanent failure")
-	handler := func(ctx context.Context, j *types.EventJob) error {
+	handler := func(ctx context.Context, j *types.EventJob) (types.EventJobStatus, error) {
 		q.claimJob = nil
-		return handlerErr
+		return types.EventJobStatus_Failed, handlerErr
 	}
 
 	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
@@ -274,12 +323,12 @@ func (s *TaskSchedulerSuite) TestRun_HandlerCancelled() {
 
 	handlerStarted := make(chan struct{})
 	handlerDone := make(chan struct{})
-	handler := func(ctx context.Context, j *types.EventJob) error {
+	handler := func(ctx context.Context, j *types.EventJob) (types.EventJobStatus, error) {
 		q.claimJob = nil
 		close(handlerStarted)
 		<-ctx.Done()
 		close(handlerDone)
-		return ctx.Err()
+		return types.EventJobStatus_Failed, ctx.Err()
 	}
 
 	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
@@ -309,12 +358,15 @@ func (s *TaskSchedulerSuite) TestRun_HandlerCancelled() {
 	q.mu.Lock()
 	completed := q.completedIds
 	failed := q.failedIds
-	retried := q.retriedIds
 	q.mu.Unlock()
 
 	s.Empty(completed)
 	s.Empty(failed)
-	s.Empty(retried)
+
+	// The parent context was cancelled (e.g. scheduler shutdown), so the job
+	// must be released back to the queue for another attempt.
+	q.waitForTerminal()
+	q.assertRetried(s.T(), "evt-cancel", errShutdownRequeue)
 
 	<-done
 }
@@ -329,9 +381,9 @@ func (s *TaskSchedulerSuite) TestRun_CompleteError() {
 	q.claimJob = job
 	q.completeErr = errors.New("complete failed")
 
-	handler := func(ctx context.Context, j *types.EventJob) error {
+	handler := func(ctx context.Context, j *types.EventJob) (types.EventJobStatus, error) {
 		q.claimJob = nil
-		return nil
+		return types.EventJobStatus_Succeeded, nil
 	}
 
 	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
@@ -344,7 +396,7 @@ func (s *TaskSchedulerSuite) TestRun_CompleteError() {
 
 	q.notifyRunnable()
 	q.waitForTerminal()
-	q.assertCompleted(s.T(), "evt-complete-err")
+	q.assertCompleted(s.T(), "evt-complete-err", types.EventJobStatus_Succeeded)
 
 	cancel()
 	<-done
@@ -360,10 +412,10 @@ func (s *TaskSchedulerSuite) TestRun_CancellationChannel() {
 	q.claimJob = job
 
 	cancelChCalled := make(chan struct{})
-	handler := func(ctx context.Context, j *types.EventJob) error {
+	handler := func(ctx context.Context, j *types.EventJob) (types.EventJobStatus, error) {
 		q.claimJob = nil
 		<-ctx.Done()
-		return ctx.Err()
+		return types.EventJobStatus_Failed, ctx.Err()
 	}
 
 	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
@@ -399,9 +451,9 @@ func (s *TaskSchedulerSuite) TestRun_ClaimErrorOther() {
 	q := newMockQueueChannels(1)
 	q.claimErr = errors.New("some other error")
 
-	handler := func(ctx context.Context, job *types.EventJob) error {
+	handler := func(ctx context.Context, job *types.EventJob) (types.EventJobStatus, error) {
 		s.Fail("handler should not be called")
-		return nil
+		return types.EventJobStatus_Succeeded, nil
 	}
 
 	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1}, handler)
@@ -428,11 +480,11 @@ func (s *TaskSchedulerSuite) TestRun_ShutdownCancelsRunningJobs() {
 	q.claimJob = job
 
 	handlerStarted := make(chan struct{})
-	handler := func(ctx context.Context, j *types.EventJob) error {
+	handler := func(ctx context.Context, j *types.EventJob) (types.EventJobStatus, error) {
 		q.claimJob = nil
 		close(handlerStarted)
 		<-ctx.Done()
-		return ctx.Err()
+		return types.EventJobStatus_Failed, ctx.Err()
 	}
 
 	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
@@ -471,7 +523,9 @@ func (s *TaskSchedulerSuite) TestRun_RunnableChannelClosed() {
 		cancellable: cancellable,
 	}
 
-	handler := func(ctx context.Context, job *types.EventJob) error { return nil }
+	handler := func(ctx context.Context, job *types.EventJob) (types.EventJobStatus, error) {
+		return types.EventJobStatus_Succeeded, nil
+	}
 	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1}, handler)
 
 	ctx := context.Background()
@@ -491,95 +545,9 @@ func (s *TaskSchedulerSuite) TestRun_RunnableChannelClosed() {
 	}
 }
 
-func (s *TaskSchedulerSuite) TestRun_ExecuteHeartbeatSuccess() {
-	q := newMockQueueChannels(1)
-	job := &types.EventJob{
-		SessionEventIdentifier: "evt-hb",
-		QueuedBy:               "sess-1",
-		Attempts:               0,
-	}
-	q.claimJob = job
-
-	handlerStarted := make(chan struct{})
-	blockCh := make(chan struct{})
-	handler := func(ctx context.Context, j *types.EventJob) error {
-		q.claimJob = nil
-		close(handlerStarted)
-		<-blockCh
-		return nil
-	}
-
-	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	done := make(chan error, 1)
-	go func() {
-		done <- sched.Run(ctx)
-	}()
-
-	q.notifyRunnable()
-
-	select {
-	case <-handlerStarted:
-	case <-time.After(2 * time.Second):
-		s.Fail("handler did not start in time")
-	}
-
-	s.True(q.waitForHeartbeats(1, 2*time.Second), "heartbeat was never called")
-	s.Greater(q.heartbeatCount(), 0)
-
-	close(blockCh)
-	q.waitForTerminal()
-	cancel()
-	<-done
-}
-
-func (s *TaskSchedulerSuite) TestRun_ExecuteHeartbeatError() {
-	q := newMockQueueChannels(1)
-	job := &types.EventJob{
-		SessionEventIdentifier: "evt-hb-err",
-		QueuedBy:               "sess-1",
-		Attempts:               0,
-	}
-	q.claimJob = job
-	q.heartbeatErr = errors.New("heartbeat failed")
-
-	handlerStarted := make(chan struct{})
-	blockCh := make(chan struct{})
-	handler := func(ctx context.Context, j *types.EventJob) error {
-		q.claimJob = nil
-		close(handlerStarted)
-		<-blockCh
-		return nil
-	}
-
-	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	done := make(chan error, 1)
-	go func() {
-		done <- sched.Run(ctx)
-	}()
-
-	q.notifyRunnable()
-
-	select {
-	case <-handlerStarted:
-	case <-time.After(2 * time.Second):
-		s.Fail("handler did not start in time")
-	}
-
-	s.True(q.waitForHeartbeats(1, 2*time.Second), "heartbeat was never called")
-
-	close(blockCh)
-	q.waitForTerminal()
-	cancel()
-	<-done
-}
+// NOTE: The heartbeat tests were removed. The scheduler hardcodes
+// DefaultHeartbeatInterval (one minute), so a heartbeat cannot be observed
+// within a reasonable test window anymore.
 
 func (s *TaskSchedulerSuite) TestRun_CancellableChannelClosed() {
 	runnable := make(chan struct{})
@@ -589,7 +557,9 @@ func (s *TaskSchedulerSuite) TestRun_CancellableChannelClosed() {
 		cancellable: cancellable,
 	}
 
-	handler := func(ctx context.Context, job *types.EventJob) error { return nil }
+	handler := func(ctx context.Context, job *types.EventJob) (types.EventJobStatus, error) {
+		return types.EventJobStatus_Succeeded, nil
+	}
 	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1}, handler)
 
 	ctx := context.Background()
@@ -614,20 +584,19 @@ func (s *TaskSchedulerSuite) TestRun_CancellableChannelClosed() {
 // ---------------------------------------------------------------------------
 
 type mockQueue struct {
-	runnable     chan struct{}
-	cancellable  chan string
-	claimJob     *types.EventJob
-	claimErr     error
-	completeErr  error
-	heartbeatErr error
+	runnable    chan struct{}
+	cancellable chan string
+	claimJob    *types.EventJob
+	claimErr    error
+	completeErr error
 
-	mu             sync.Mutex
-	completedIds   []string
-	retriedIds     []string
-	retryCauses    []error
-	failedIds      []string
-	failCauses     []error
-	heartbeatCalls int
+	mu                sync.Mutex
+	completedIds      []string
+	completedStatuses []types.EventJobStatus
+	retriedIds        []string
+	retryCauses       []error
+	failedIds         []string
+	failCauses        []error
 
 	terminalCh chan struct{}
 	listenErr  error
@@ -663,12 +632,16 @@ func (m *mockQueue) waitForTerminal() {
 	}
 }
 
-func (m *mockQueue) assertCompleted(t *testing.T, id string) {
+func (m *mockQueue) assertCompleted(t *testing.T, id string, expectedStatus types.EventJobStatus) {
 	t.Helper()
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for _, cid := range m.completedIds {
+	for i, cid := range m.completedIds {
 		if cid == id {
+			if m.completedStatuses[i] == expectedStatus {
+				return
+			}
+			t.Errorf("expected Complete to be called with status %q, got %q", expectedStatus, m.completedStatuses[i])
 			return
 		}
 	}
@@ -714,36 +687,13 @@ func (m *mockQueue) Claim(ctx context.Context, owner string, nextAttemptAt time.
 }
 
 func (m *mockQueue) Heartbeat(ctx context.Context, id string, leaseDuration time.Duration) error {
-	m.mu.Lock()
-	m.heartbeatCalls++
-	err := m.heartbeatErr
-	m.mu.Unlock()
-	return err
+	return nil
 }
 
-func (m *mockQueue) waitForHeartbeats(n int, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		m.mu.Lock()
-		calls := m.heartbeatCalls
-		m.mu.Unlock()
-		if calls >= n {
-			return true
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	return false
-}
-
-func (m *mockQueue) heartbeatCount() int {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.heartbeatCalls
-}
-
-func (m *mockQueue) Complete(ctx context.Context, id string) error {
+func (m *mockQueue) Complete(ctx context.Context, id string, status types.EventJobStatus) error {
 	m.mu.Lock()
 	m.completedIds = append(m.completedIds, id)
+	m.completedStatuses = append(m.completedStatuses, status)
 	err := m.completeErr
 	m.mu.Unlock()
 	m.signalTerminal()

@@ -128,9 +128,10 @@ func (s *EventQueueSuite) TestHeartbeat_ZeroRowsAffected() {
 func (s *EventQueueSuite) TestComplete_Success() {
 	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		s.Equal("event-1", args[0])
+		s.Equal(types.EventJobStatus_Succeeded, args[1])
 		return pgconn.NewCommandTag("UPDATE 1"), nil
 	}
-	err := s.queue.Complete(context.Background(), "event-1")
+	err := s.queue.Complete(context.Background(), "event-1", types.EventJobStatus_Succeeded)
 	s.NoError(err)
 }
 
@@ -138,7 +139,7 @@ func (s *EventQueueSuite) TestComplete_Error() {
 	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		return pgconn.CommandTag{}, fmt.Errorf("db error")
 	}
-	err := s.queue.Complete(context.Background(), "event-1")
+	err := s.queue.Complete(context.Background(), "event-1", types.EventJobStatus_Succeeded)
 	s.Error(err)
 }
 
@@ -146,7 +147,17 @@ func (s *EventQueueSuite) TestComplete_ZeroRowsAffected() {
 	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		return pgconn.NewCommandTag("UPDATE 0"), nil
 	}
-	err := s.queue.Complete(context.Background(), "event-1")
+	err := s.queue.Complete(context.Background(), "event-1", types.EventJobStatus_Succeeded)
+	s.NoError(err)
+}
+
+func (s *EventQueueSuite) TestComplete_AwaitingAction() {
+	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+		s.Equal("event-1", args[0])
+		s.Equal(types.EventJobStatus_AwaitingAction, args[1])
+		return pgconn.NewCommandTag("UPDATE 1"), nil
+	}
+	err := s.queue.Complete(context.Background(), "event-1", types.EventJobStatus_AwaitingAction)
 	s.NoError(err)
 }
 
