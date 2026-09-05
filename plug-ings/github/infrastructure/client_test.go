@@ -19,12 +19,9 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -104,12 +101,6 @@ func (s *GitHubClientSuite) newClientWithKey(t *testing.T) *GitHubClient {
 		privateKey: rsaKey,
 		httpClient: &http.Client{},
 	}
-}
-
-func computeHMAC(body []byte, secret string) string {
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(body)
-	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
 func (s *GitHubClientSuite) newClientWithServer(t *testing.T, handler http.HandlerFunc) (*GitHubClient, *httptest.Server) {

@@ -16,9 +16,6 @@ package infrastructure
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -87,12 +84,6 @@ func (s *LinearServiceSuite) newServiceNoServer(apiURL, tokenURL string) *Client
 	}, nil)
 	s.Require().NoError(err)
 	return svc
-}
-
-func computeHMAC(secret string, body []byte) string {
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(body)
-	return hex.EncodeToString(mac.Sum(nil))
 }
 
 func (s *LinearServiceSuite) newWebhookRequest(body string, signature string, remoteAddr string, extraHeaders map[string]string) shared.WebhookRequest {
