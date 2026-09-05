@@ -17,6 +17,7 @@ package interfaces
 import (
 	"context"
 
+	"github.com/workdock-dev/engine/features/agent_session/types"
 	"github.com/workdock-dev/engine/shared"
 )
 
@@ -47,7 +48,7 @@ type HandlerGit interface {
 	GetLatestChangesComand() string
 
 	// GetGitAccess returns the git access configuration for the given provider
-	GetGitAccess(ctx context.Context, connection *shared.GitHubConnection) (*GitAccess, error)
+	GetGitAccess(ctx context.Context, connection *types.GitConnection) (*GitAccess, error)
 
 	// ParseLatestChangesResult receives the changes procude by the latest changes command
 	// and parse it to a concrete domain type

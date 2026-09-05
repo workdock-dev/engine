@@ -14,19 +14,8 @@
 
 package shared
 
-import (
-	"encoding/json"
-)
-
 type PlatformProvider string
 type HarnessProvider string
-type AgentSessionEventReason string
-
-const (
-	AgentSessionEventReason_Prompt    AgentSessionEventReason = "user_prompt"
-	AgentSessionEventReason_PRComment AgentSessionEventReason = "pr_comment"
-	AgentSessionEventReason_CheckRun  AgentSessionEventReason = "check_run"
-)
 
 const (
 	PlatformProvider_Linear  PlatformProvider = "linear"
@@ -42,62 +31,9 @@ type Organization struct {
 	Name       string
 }
 
-type Session struct {
-	OrganizationIdentifier string
-	Identifier             string
-	Provider               PlatformProvider
-	IssueId                string
-	Creator                string
-	RepoFullName           *string
-}
-
-type Issue struct {
-	Title       string
-	Identifier  string
-	Description string
-}
-
-type SessionEvent struct {
-	SessionIdentifier string
-	Identifier        string
-	Payload           json.RawMessage
-	Seed              *string // TODO: Refactor this name to parent (session event's parent), this is set on event that generated pr review comments
-	GitRef            *string
-	Result            *SessionEventResult
-	Reason            AgentSessionEventReason // Indicate the origin/why this event
-}
-
-type SessionEventResult struct {
-	PullRequest *PullRequest
-}
-
-type GitHubConnection struct {
-	SessionEventIdentifier *string
-	RepoFullName           string
-	Connected              bool
-	InstallationId         *string
-}
-
 type PullRequest struct {
 	HeadRefName string `json:"headRefName"`
 	HeadRefOID  string `json:"headRefOid"`
 	Number      int    `json:"number"`
 	URL         string `json:"url"`
-}
-
-type AgentAction struct {
-	Name   string
-	Input  string
-	Output string
-}
-
-type AgentElicitation struct {
-	Question string
-	Options  []AgentOption
-	Multiple bool
-}
-
-type AgentOption struct {
-	Label       string `json:"label"`
-	Description string `json:"description"`
 }

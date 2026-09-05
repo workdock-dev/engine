@@ -17,7 +17,7 @@ package interfaces
 import (
 	"context"
 
-	"github.com/workdock-dev/engine/shared"
+	"github.com/workdock-dev/engine/features/agent_session/types"
 )
 
 type Provider struct {
@@ -73,10 +73,10 @@ type HandlerHarness interface {
 		sendResponse func(ctx context.Context, text string) error,
 
 		// sendACtion sends an action required to be executed by the user
-		sendAction func(ctx context.Context, action shared.AgentAction) error,
+		sendAction func(ctx context.Context, action types.AgentAction) error,
 
 		// sendElicitation sends a collection of questions to be answer by the user
-		sendElicitation func(ctx context.Context, elicitation shared.AgentElicitation) error,
+		sendElicitation func(ctx context.Context, elicitation types.AgentElicitation) error,
 
 		// sendServerInternalError sends a geneeric server internal error
 		sendServerInternalError func(ctx context.Context) error,

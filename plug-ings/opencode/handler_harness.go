@@ -23,8 +23,8 @@ import (
 	"strings"
 
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
+	agent_session_types "github.com/workdock-dev/engine/features/agent_session/types"
 	"github.com/workdock-dev/engine/plug-ings/opencode/types"
-	"github.com/workdock-dev/engine/shared"
 )
 
 const (
@@ -189,10 +189,10 @@ func (h *HarnessHandler) Parse(
 	sendResponse func(ctx context.Context, text string) error,
 
 	// SendACtion sends an action required to be executed by the user
-	sendAction func(ctx context.Context, action shared.AgentAction) error,
+	sendAction func(ctx context.Context, action agent_session_types.AgentAction) error,
 
 	// SendElicitation sends a collection of questions to be answer by the user
-	sendElicitation func(ctx context.Context, elicitation shared.AgentElicitation) error,
+	sendElicitation func(ctx context.Context, elicitation agent_session_types.AgentElicitation) error,
 
 	// SendServerInternalError sends a geneeric server internal error
 	sendServerInternalError func(ctx context.Context) error,
@@ -267,16 +267,16 @@ func (h *HarnessHandler) Parse(
 						questions := h.parseQuestions(p.State.Input)
 
 						for _, q := range questions {
-							options := make([]shared.AgentOption, 0, len(q.Options))
+							options := make([]agent_session_types.AgentOption, 0, len(q.Options))
 
 							for _, opt := range q.Options {
-								options = append(options, shared.AgentOption{
+								options = append(options, agent_session_types.AgentOption{
 									Label:       opt.Label,
 									Description: opt.Description,
 								})
 							}
 
-							sendElicitation(ctx, shared.AgentElicitation{
+							sendElicitation(ctx, agent_session_types.AgentElicitation{
 								Question: q.Question,
 								Multiple: q.Multiple,
 								Options:  options,
@@ -284,7 +284,7 @@ func (h *HarnessHandler) Parse(
 						}
 					} else {
 						input, output := h.parseToolPart(p)
-						sendAction(ctx, shared.AgentAction{
+						sendAction(ctx, agent_session_types.AgentAction{
 							Name:   p.Tool,
 							Input:  input,
 							Output: output,

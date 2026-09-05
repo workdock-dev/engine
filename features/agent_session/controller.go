@@ -225,7 +225,7 @@ func (c *controller) onAgentSessionPrompt() {
 		}
 
 		slog.Debug("[agent-session] created session event for prompt", "event_identifier", sessionEvent.Identifier)
-		sessionEvent.Reason = shared.AgentSessionEventReason_Prompt
+		sessionEvent.Reason = types.AgentSessionEventReason_Prompt
 		if err := c.session.CreateSessionEvent(ctx, sessionEvent); err != nil {
 			return err
 		}
@@ -331,13 +331,13 @@ func (c *controller) onPullRequestCommented() {
 		}
 
 		slog.Debug("[agent-session] created session event for pull request comment review")
-		if err := c.session.CreateSessionEvent(ctx, &shared.SessionEvent{
+		if err := c.session.CreateSessionEvent(ctx, &types.SessionEvent{
 			SessionIdentifier: session.Identifier,
 			Identifier:        uuid.NewV7().String(),
 			Payload:           sessionEvent.Payload,
 			Seed:              &sessionEvent.Identifier,
 			GitRef:            &e.GitRef,
-			Reason:            shared.AgentSessionEventReason_PRComment,
+			Reason:            types.AgentSessionEventReason_PRComment,
 		}); err != nil {
 			return err
 		}
@@ -386,7 +386,7 @@ func (c *controller) onGitCompleteConnection() {
 		}
 
 		for _, repo := range payload.Repos {
-			connection := &shared.GitHubConnection{
+			connection := &types.GitConnection{
 				RepoFullName:   repo,
 				Connected:      true,
 				InstallationId: &payload.InstallationId,
@@ -413,7 +413,7 @@ func (c *controller) onGitCompleteConnection() {
 // execute provisions and coordinates all the components to successfully run the
 // agent session's request based on a scheduled job
 func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.EventJobStatus, error) {
-	sessionEvent, err := telemetry.Span(ctx, c.tracer, "session.get_event", func(ctx context.Context) (*shared.SessionEvent, error) {
+	sessionEvent, err := telemetry.Span(ctx, c.tracer, "session.get_event", func(ctx context.Context) (*types.SessionEvent, error) {
 		return c.session.GetAgentSessionEvent(ctx, job.SessionEventIdentifier)
 	})
 
@@ -421,7 +421,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 		return types.EventJobStatus_Failed, err
 	}
 
-	session, err := telemetry.Span(ctx, c.tracer, "session.get", func(ctx context.Context) (*shared.Session, error) {
+	session, err := telemetry.Span(ctx, c.tracer, "session.get", func(ctx context.Context) (*types.Session, error) {
 		return c.session.GetAgentSession(ctx, sessionEvent.SessionIdentifier)
 	})
 
@@ -511,7 +511,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 
 			if pr != nil {
 				slog.Debug("[agent-session] update session result")
-				sessionEvent.Result = &shared.SessionEventResult{
+				sessionEvent.Result = &types.SessionEventResult{
 					PullRequest: pr,
 				}
 				sessionEvent.GitRef = &pr.HeadRefName
@@ -552,7 +552,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	return types.EventJobStatus_Succeeded, nil
 }
 
-func (c *controller) getHandlers(session *shared.Session) (
+func (c *controller) getHandlers(session *types.Session) (
 	interfaces.HandlerAgentSession,
 	interfaces.HandlerGit,
 	interfaces.HandlerSandbox,
@@ -592,8 +592,8 @@ func (c *controller) getHandlers(session *shared.Session) (
 func (c *controller) getPrompt(
 	ctx context.Context,
 	agentHandler interfaces.HandlerAgentSession,
-	session *shared.Session,
-	sessionEvent *shared.SessionEvent,
+	session *types.Session,
+	sessionEvent *types.SessionEvent,
 ) (string, error) {
 	promptContext, err := telemetry.Span(ctx, c.tracer, "session.get_prompt_context", func(ctx context.Context) (*interfaces.PromptContext, error) {
 		return agentHandler.GetPromptContext(sessionEvent)
@@ -615,8 +615,8 @@ func (c *controller) getPrompt(
 }
 
 func (c *controller) createPrompt(
-	session *shared.Session,
-	sessionEvent *shared.SessionEvent,
+	session *types.Session,
+	sessionEvent *types.SessionEvent,
 	promptContext *interfaces.PromptContext,
 ) (string, error) {
 	repo := ""
@@ -634,7 +634,7 @@ func (c *controller) createPrompt(
 	))
 
 	if sessionEvent != nil && sessionEvent.GitRef != nil && sessionEvent.Seed != nil {
-		if sessionEvent.Reason == shared.AgentSessionEventReason_CheckRun {
+		if sessionEvent.Reason == types.AgentSessionEventReason_CheckRun {
 			p += fmt.Sprintf(
 				PromptTemplate_PullRequestChecksFailed,
 				"The pull request checks have failed. Review the check failures, fix the issues, and ensure all checks pass before the pull request can be merged.",
@@ -657,15 +657,15 @@ func (c *controller) verifyGitAccess(
 	agentHandler interfaces.HandlerAgentSession,
 	agentHandlerCredential string,
 	gitHandler interfaces.HandlerGit,
-	session *shared.Session,
-	sessionEvent *shared.SessionEvent,
+	session *types.Session,
+	sessionEvent *types.SessionEvent,
 ) (*interfaces.GitAccess, error) {
 	// no repo, no access required
 	if session.RepoFullName == nil {
 		return nil, nil
 	}
 
-	connection, err := telemetry.Span(ctx, c.tracer, "session.get_git_connection", func(ctx context.Context) (*shared.GitHubConnection, error) {
+	connection, err := telemetry.Span(ctx, c.tracer, "session.get_git_connection", func(ctx context.Context) (*types.GitConnection, error) {
 		return c.git.GetGitHubConnection(ctx, *session.RepoFullName)
 	})
 
@@ -679,7 +679,7 @@ func (c *controller) verifyGitAccess(
 	if connection == nil || !connection.Connected || connection.InstallationId == nil {
 		if err := telemetry.SpanErr(ctx, c.tracer, "session.upsert_git_connection", func(ctx context.Context) error {
 			return c.git.UpsertGitHubConnection(
-				ctx, &shared.GitHubConnection{
+				ctx, &types.GitConnection{
 					SessionEventIdentifier: &sessionEvent.Identifier,
 					RepoFullName:           *session.RepoFullName,
 					Connected:              false,
@@ -743,8 +743,8 @@ func (c *controller) sandbox(
 	sandboxHandler interfaces.HandlerSandbox,
 	gitAccess *interfaces.GitAccess,
 	prompt string,
-	session *shared.Session,
-	sessionEvent *shared.SessionEvent,
+	session *types.Session,
+	sessionEvent *types.SessionEvent,
 ) (
 	<-chan string,
 	<-chan string,
@@ -825,8 +825,8 @@ func (c *controller) harness(
 	agentHandler interfaces.HandlerAgentSession,
 	agentHandlerCredential string,
 	harnessHandler interfaces.HandlerHarness,
-	session *shared.Session,
-	sessionEvent *shared.SessionEvent,
+	session *types.Session,
+	sessionEvent *types.SessionEvent,
 ) {
 	var out []byte
 	var messageSpan trace.Span
@@ -876,12 +876,12 @@ func (c *controller) harness(
 			},
 
 			// sendACtion sends an action required to be executed by the user
-			func(ctx context.Context, action shared.AgentAction) error {
+			func(ctx context.Context, action types.AgentAction) error {
 				return agentHandler.SendAction(ctx, session.Identifier, agentHandlerCredential, action)
 			},
 
 			// sendElicitation sends a collection of questions to be answer by the user
-			func(ctx context.Context, elicitation shared.AgentElicitation) error {
+			func(ctx context.Context, elicitation types.AgentElicitation) error {
 				return agentHandler.SendElicitation(ctx, session.Identifier, agentHandlerCredential, elicitation)
 			},
 

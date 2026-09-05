@@ -21,6 +21,7 @@ import (
 	"log/slog"
 
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
+	agent_session_types "github.com/workdock-dev/engine/features/agent_session/types"
 	"github.com/workdock-dev/engine/plug-ings/github/interfaces"
 	"github.com/workdock-dev/engine/plug-ings/github/types"
 	"github.com/workdock-dev/engine/shared"
@@ -79,7 +80,7 @@ func (h *GitHandler) GetLatestChangesComand() string {
 	return GET_CHANGES
 }
 
-func (h *GitHandler) GetGitAccess(ctx context.Context, connection *shared.GitHubConnection) (*agent_session_interfaces.GitAccess, error) {
+func (h *GitHandler) GetGitAccess(ctx context.Context, connection *agent_session_types.GitConnection) (*agent_session_interfaces.GitAccess, error) {
 	token, err := getGitHubAccessToken(ctx, h.secretManager, h.client, *connection.InstallationId)
 
 	if err != nil {

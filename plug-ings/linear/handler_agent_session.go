@@ -44,7 +44,7 @@ func NewAgentSessionHandler(
 	}
 }
 
-func (h *AgentSessionHandler) Ingest(event shared.DomainEvent) (*shared.Session, *shared.SessionEvent, error) {
+func (h *AgentSessionHandler) Ingest(event shared.DomainEvent) (*agent_session_types.Session, *agent_session_types.SessionEvent, error) {
 	agentSessionEvent, ok := event.(shared.AgentSessionPromptEvent)
 
 	if !ok {
@@ -81,7 +81,7 @@ func (h *AgentSessionHandler) Ingest(event shared.DomainEvent) (*shared.Session,
 		return nil, nil, err
 	}
 
-	session := &shared.Session{
+	session := &agent_session_types.Session{
 		OrganizationIdentifier: linearEvent.OrganizationID,
 		Identifier:             linearEvent.AgentSession.ID,
 		Provider:               shared.PlatformProvider_Linear,
@@ -90,7 +90,7 @@ func (h *AgentSessionHandler) Ingest(event shared.DomainEvent) (*shared.Session,
 		RepoFullName:           nil,
 	}
 
-	sessionEvent := &shared.SessionEvent{
+	sessionEvent := &agent_session_types.SessionEvent{
 		SessionIdentifier: session.Identifier,
 		Identifier:        key,
 		Payload:           payload,
@@ -107,7 +107,7 @@ func (h *AgentSessionHandler) GetCredentials(ctx context.Context, orgId string) 
 	return h.tokenHandler.GetLinearAccessToken(ctx, orgId)
 }
 
-func (h *AgentSessionHandler) GetPromptContext(sessionEvent *shared.SessionEvent) (*agent_session_interfaces.PromptContext, error) {
+func (h *AgentSessionHandler) GetPromptContext(sessionEvent *agent_session_types.SessionEvent) (*agent_session_interfaces.PromptContext, error) {
 	var linearEvent types.AgentSessionEventData
 
 	if err := json.Unmarshal(sessionEvent.Payload, &linearEvent); err != nil {
@@ -129,7 +129,7 @@ func (h *AgentSessionHandler) GetPromptContext(sessionEvent *shared.SessionEvent
 	return &agent_session_interfaces.PromptContext{
 		Prompt:  linearEvent.PromptContext,
 		Context: context,
-		Issue: shared.Issue{
+		Issue: agent_session_types.Issue{
 			Title:       linearEvent.AgentSession.Issue.Title,
 			Identifier:  linearEvent.AgentSession.Issue.Identifier,
 			Description: linearEvent.AgentSession.Issue.Description,
@@ -157,7 +157,7 @@ func (h *AgentSessionHandler) SendResponse(ctx context.Context, sessionId, acces
 	})
 }
 
-func (h *AgentSessionHandler) SendAction(ctx context.Context, sessionId, accessToken string, action shared.AgentAction) error {
+func (h *AgentSessionHandler) SendAction(ctx context.Context, sessionId, accessToken string, action agent_session_types.AgentAction) error {
 	return h.client.CreateAgentActivity(ctx, accessToken, types.CreateAgentActivityInput{
 		AgentSessionID: sessionId,
 		Content: types.AgentActivityContent{
@@ -169,7 +169,7 @@ func (h *AgentSessionHandler) SendAction(ctx context.Context, sessionId, accessT
 	})
 }
 
-func (h *AgentSessionHandler) SendElicitation(ctx context.Context, sessionId, accessToken string, elicitation shared.AgentElicitation) error {
+func (h *AgentSessionHandler) SendElicitation(ctx context.Context, sessionId, accessToken string, elicitation agent_session_types.AgentElicitation) error {
 	return h.client.CreateAgentActivity(ctx, accessToken, types.CreateAgentActivityInput{
 		AgentSessionID: sessionId,
 		Content: types.AgentActivityContent{

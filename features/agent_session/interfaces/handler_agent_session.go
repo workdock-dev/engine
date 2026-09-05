@@ -17,20 +17,21 @@ package interfaces
 import (
 	"context"
 
+	"github.com/workdock-dev/engine/features/agent_session/types"
 	"github.com/workdock-dev/engine/shared"
 )
 
 type PromptContext struct {
 	Prompt  string
 	Context *string // Optional context to provide
-	Issue   shared.Issue
+	Issue   types.Issue
 }
 
 // HandlerAgentSession is the interfaces required to be implemented
 // by work platforms that provides agent assignment to tickets
 type HandlerAgentSession interface {
 	// Ingest transform the work platform agent session payload into the domain session
-	Ingest(event shared.DomainEvent) (*shared.Session, *shared.SessionEvent, error)
+	Ingest(event shared.DomainEvent) (*types.Session, *types.SessionEvent, error)
 
 	// GetLabels returns the list of labels assigned to the ticket
 	GetLabels(ctx context.Context, issueId, accessToken string) ([]string, error)
@@ -39,7 +40,7 @@ type HandlerAgentSession interface {
 	GetCredentials(ctx context.Context, orgId string) (string, error)
 
 	// GetPromptContext returns the data required to build the user prompt
-	GetPromptContext(sessionEvent *shared.SessionEvent) (*PromptContext, error)
+	GetPromptContext(sessionEvent *types.SessionEvent) (*PromptContext, error)
 
 	// SendThought sends the thinking state to the provider
 	SendThought(ctx context.Context, sessionId, accessToken, text string) error
@@ -48,10 +49,10 @@ type HandlerAgentSession interface {
 	SendResponse(ctx context.Context, sessionId, accessToken, text string) error
 
 	// SendACtion sends an action required to be executed by the user
-	SendAction(ctx context.Context, sessionId, accessToken string, action shared.AgentAction) error
+	SendAction(ctx context.Context, sessionId, accessToken string, action types.AgentAction) error
 
 	// SendElicitation sends a collection of questions to be answer by the user
-	SendElicitation(ctx context.Context, sessionId, accessToken string, elicitation shared.AgentElicitation) error
+	SendElicitation(ctx context.Context, sessionId, accessToken string, elicitation types.AgentElicitation) error
 
 	// SendGitConnectionRequest indicates the user to grant access to the git hosting provider
 	SendGitConnectionRequest(ctx context.Context, sessionId, accessToken, gitProvider, gitInstallURL string) error

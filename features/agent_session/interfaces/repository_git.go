@@ -17,11 +17,11 @@ package interfaces
 import (
 	"context"
 
-	"github.com/workdock-dev/engine/shared"
+	"github.com/workdock-dev/engine/features/agent_session/types"
 )
 
 type RepositoryGit interface {
-	GetGitHubConnection(ctx context.Context, repoFullName string) (*shared.GitHubConnection, error)
-	UpsertGitHubConnection(ctx context.Context, connection *shared.GitHubConnection) error
+	GetGitHubConnection(ctx context.Context, repoFullName string) (*types.GitConnection, error)
+	UpsertGitHubConnection(ctx context.Context, connection *types.GitConnection) error
 	ResetGitHubConnection(ctx context.Context, installationId string, repos []string) error
 }

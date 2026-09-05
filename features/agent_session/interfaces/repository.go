@@ -17,17 +17,17 @@ package interfaces
 import (
 	"context"
 
-	"github.com/workdock-dev/engine/shared"
+	"github.com/workdock-dev/engine/features/agent_session/types"
 )
 
 type Repository interface {
-	GetAgentSession(ctx context.Context, identifier string) (*shared.Session, error)
-	GetAgentSessionsByIssueId(ctx context.Context, issueId string) ([]*shared.Session, error)
-	GetAgentSessionEvent(ctx context.Context, identifier string) (*shared.SessionEvent, error)
-	GetAgentSessionEventByGitRef(ctx context.Context, identifier string, repoFullName string) (*shared.SessionEvent, error)
-	CreateSessionEvent(ctx context.Context, event *shared.SessionEvent) error
-	ResumeSessionEvent(ctx context.Context, event *shared.SessionEvent) error
-	UpsertAgentSession(ctx context.Context, session *shared.Session) error
-	UpdateSessionEventResult(ctx context.Context, event *shared.SessionEvent) error
+	GetAgentSession(ctx context.Context, identifier string) (*types.Session, error)
+	GetAgentSessionsByIssueId(ctx context.Context, issueId string) ([]*types.Session, error)
+	GetAgentSessionEvent(ctx context.Context, identifier string) (*types.SessionEvent, error)
+	GetAgentSessionEventByGitRef(ctx context.Context, identifier string, repoFullName string) (*types.SessionEvent, error)
+	CreateSessionEvent(ctx context.Context, event *types.SessionEvent) error
+	ResumeSessionEvent(ctx context.Context, event *types.SessionEvent) error
+	UpsertAgentSession(ctx context.Context, session *types.Session) error
+	UpdateSessionEventResult(ctx context.Context, event *types.SessionEvent) error
 	CancelSession(ctx context.Context, queuedBy, reason string) (int, error)
 }

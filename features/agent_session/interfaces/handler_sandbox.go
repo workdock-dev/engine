@@ -17,7 +17,7 @@ package interfaces
 import (
 	"context"
 
-	"github.com/workdock-dev/engine/shared"
+	"github.com/workdock-dev/engine/features/agent_session/types"
 )
 
 type SandboxShutdown = func(ctx context.Context) string
@@ -30,8 +30,8 @@ type SandboxSecret struct {
 
 type SandboxConfig struct {
 	AutoStopInterval    int
-	Session             *shared.Session
-	SessionEvent        *shared.SessionEvent
+	Session             *types.Session
+	SessionEvent        *types.SessionEvent
 	Secrets             []SandboxSecret
 	FileUploads         map[string][]byte
 	CommandsWhenCreated []string

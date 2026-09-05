@@ -22,6 +22,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/workdock-dev/engine/features/agent_session/interfaces"
+	"github.com/workdock-dev/engine/features/agent_session/types"
 	"github.com/workdock-dev/engine/shared"
 )
 
@@ -109,8 +110,8 @@ func (p *postgres) GetOrganization(ctx context.Context, identifier string) (*sha
 	return &row, nil
 }
 
-func (p *postgres) GetAgentSession(ctx context.Context, identifier string) (*shared.Session, error) {
-	var row shared.Session
+func (p *postgres) GetAgentSession(ctx context.Context, identifier string) (*types.Session, error) {
+	var row types.Session
 
 	err := p.client.
 		QueryRow(ctx, GetAgentSessionSql, identifier).
@@ -136,7 +137,7 @@ func (p *postgres) GetAgentSession(ctx context.Context, identifier string) (*sha
 	return &row, nil
 }
 
-func (p *postgres) GetAgentSessionsByIssueId(ctx context.Context, issueId string) ([]*shared.Session, error) {
+func (p *postgres) GetAgentSessionsByIssueId(ctx context.Context, issueId string) ([]*types.Session, error) {
 	rows, err := p.client.Query(ctx, GetAgentSessionsByIssueIdSql, issueId)
 
 	if err != nil {
@@ -146,10 +147,10 @@ func (p *postgres) GetAgentSessionsByIssueId(ctx context.Context, issueId string
 
 	defer rows.Close()
 
-	var sessions []*shared.Session
+	var sessions []*types.Session
 
 	for rows.Next() {
-		var row shared.Session
+		var row types.Session
 
 		if err := rows.Scan(
 			&row.OrganizationIdentifier,
@@ -174,8 +175,8 @@ func (p *postgres) GetAgentSessionsByIssueId(ctx context.Context, issueId string
 	return sessions, nil
 }
 
-func (p *postgres) GetAgentSessionEvent(ctx context.Context, identifier string) (*shared.SessionEvent, error) {
-	var row shared.SessionEvent
+func (p *postgres) GetAgentSessionEvent(ctx context.Context, identifier string) (*types.SessionEvent, error) {
+	var row types.SessionEvent
 
 	err := p.client.
 		QueryRow(ctx, GetAgentSessionEventSql, identifier).
@@ -202,8 +203,8 @@ func (p *postgres) GetAgentSessionEvent(ctx context.Context, identifier string) 
 	return &row, nil
 }
 
-func (p *postgres) GetAgentSessionEventByGitRef(ctx context.Context, ref string, repoFullName string) (*shared.SessionEvent, error) {
-	var row shared.SessionEvent
+func (p *postgres) GetAgentSessionEventByGitRef(ctx context.Context, ref string, repoFullName string) (*types.SessionEvent, error) {
+	var row types.SessionEvent
 
 	err := p.client.
 		QueryRow(ctx, GetAgentSessionEventByGitRefSql, ref, repoFullName).
@@ -230,8 +231,8 @@ func (p *postgres) GetAgentSessionEventByGitRef(ctx context.Context, ref string,
 	return &row, nil
 }
 
-func (p *postgres) GetGitHubConnection(ctx context.Context, repoFullName string) (*shared.GitHubConnection, error) {
-	var row shared.GitHubConnection
+func (p *postgres) GetGitHubConnection(ctx context.Context, repoFullName string) (*types.GitConnection, error) {
+	var row types.GitConnection
 
 	err := p.client.
 		QueryRow(ctx, GetGitHubConnectionSql, repoFullName).
@@ -255,7 +256,7 @@ func (p *postgres) GetGitHubConnection(ctx context.Context, repoFullName string)
 	return &row, nil
 }
 
-func (p *postgres) CreateSessionEvent(ctx context.Context, event *shared.SessionEvent) error {
+func (p *postgres) CreateSessionEvent(ctx context.Context, event *types.SessionEvent) error {
 	tx, err := p.client.Begin(ctx)
 
 	if err != nil {
@@ -306,7 +307,7 @@ func (p *postgres) CreateSessionEvent(ctx context.Context, event *shared.Session
 	return nil
 }
 
-func (p *postgres) ResumeSessionEvent(ctx context.Context, event *shared.SessionEvent) error {
+func (p *postgres) ResumeSessionEvent(ctx context.Context, event *types.SessionEvent) error {
 	_, err := p.client.Exec(
 		ctx,
 		ResumeJobSql,
@@ -321,7 +322,7 @@ func (p *postgres) ResumeSessionEvent(ctx context.Context, event *shared.Session
 	return nil
 }
 
-func (p *postgres) UpsertAgentSession(ctx context.Context, session *shared.Session) error {
+func (p *postgres) UpsertAgentSession(ctx context.Context, session *types.Session) error {
 	_, err := p.client.Exec(
 		ctx,
 		UpsertAgentSessionSql,
@@ -341,7 +342,7 @@ func (p *postgres) UpsertAgentSession(ctx context.Context, session *shared.Sessi
 	return nil
 }
 
-func (p *postgres) UpdateSessionEventResult(ctx context.Context, event *shared.SessionEvent) error {
+func (p *postgres) UpdateSessionEventResult(ctx context.Context, event *types.SessionEvent) error {
 	_, err := p.client.Exec(
 		ctx,
 		UpdateSessionEventResultSql,
@@ -359,7 +360,7 @@ func (p *postgres) UpdateSessionEventResult(ctx context.Context, event *shared.S
 
 }
 
-func (p *postgres) UpsertGitHubConnection(ctx context.Context, githubConnection *shared.GitHubConnection) error {
+func (p *postgres) UpsertGitHubConnection(ctx context.Context, githubConnection *types.GitConnection) error {
 	err := p.client.
 		QueryRow(
 			ctx,
