@@ -13,7 +13,7 @@
 -- limitations under the License.
 
 delete from
-    public.github_connections
+    public.git_connections
 where
     installation_id = $1
     and repo_full_name = any($2);

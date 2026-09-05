@@ -12,7 +12,7 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
-INSERT INTO github_connections (
+INSERT INTO git_connections (
     session_event_identifier,
     repo_full_name,
     connected,

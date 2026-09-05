@@ -42,7 +42,7 @@ var (
 	//go:embed sql/get_agent_session_event_by_git_ref.sql
 	GetAgentSessionEventByGitRefSql string
 
-	//go:embed sql/get_github_connection.sql
+	//go:embed sql/get_git_connection.sql
 	GetGitHubConnectionSql string
 
 	//go:embed sql/insert_session_event.sql
@@ -60,10 +60,10 @@ var (
 	//go:embed sql/update_session_event_result.sql
 	UpdateSessionEventResultSql string
 
-	//go:embed sql/upsert_github_connection.sql
+	//go:embed sql/upsert_git_connection.sql
 	UpsertGitHubConnectionSql string
 
-	//go:embed sql/reset_github_connection.sql
+	//go:embed sql/reset_git_connection.sql
 	ResetGitHubConnectionSql string
 
 	//go:embed sql/cancel.sql

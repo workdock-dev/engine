@@ -18,6 +18,6 @@ select
     connected,
     installation_id
 from
-    public.github_connections
+    public.git_connections
 where repo_full_name = $1;
 
