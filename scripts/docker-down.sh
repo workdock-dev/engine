@@ -18,13 +18,20 @@ set -Eeuo pipefail
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root_dir"
 
-if [[ ! -f .env ]]; then
-  printf 'No .env file found. Creating a temporary one for docker compose down.\n'
-  cp .env.example .env
+if [[ -f docker/.watch.pid ]]; then
+  kill "$(cat docker/.watch.pid)" 2>/dev/null || true
+  rm -f docker/.watch.pid docker/.watch.log
 fi
 
-docker compose down -v --rmi local
+if [[ ! -f docker/generated.env ]]; then
+  printf 'No docker/generated.env file found. Creating a temporary one for docker compose down.\n'
+  printf 'POSTGRES_PASSWORD=workdock\n' > docker/generated.env
+  printf 'SIGNOZ_JWT_SECRET=workdock\n' >> docker/generated.env
+fi
 
-rm -f docker/workdock/config.yaml docker/workdock/tern.conf .env
+docker compose --env-file docker/generated.env down -v --rmi local
+
+rm -f docker/generated.env docker/workdock/tern.conf
 
 printf '\nAll containers, volumes, and generated files have been removed.\n'
+printf 'config.yaml and github-app.pem were kept since they are user-provided.\n'

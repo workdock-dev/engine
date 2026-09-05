@@ -12,6 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Copy to config.yaml at the repository root and replace the placeholders.
+# The single-node Compose deployment mounts this file read-only into the
+# engine and recreates the container automatically when it changes.
+# Also place the GitHub App private key at ./github-app.pem.
+
 # *---------------------------------------------------------------------------*
 # * APPLICATION CONFIGURATION                                                 *
 # *---------------------------------------------------------------------------*
@@ -39,12 +44,12 @@ mcps:
 # *---------------------------------------------------------------------------*
 
 linear:
-  server_url: "your-sever-url"
+  server_url: "http://localhost:8080"
   api_url: "https://api.linear.app/graphql"
   token_url: "https://api.linear.app/oauth/token"
-  webhook_secret: "your-webhook-secret"
-  client_id: "your-client-id"
-  client_secret: "your-client-secret"
+  webhook_secret: "replace-with-linear-webhook-secret"
+  client_id: "replace-with-linear-client-id"
+  client_secret: "replace-with-linear-client-secret"
   ips:
     - "35.231.147.226"
     - "35.243.134.228"
@@ -55,11 +60,11 @@ linear:
 
 daytona:
   api_url: "https://app.daytona.io/api"
-  api_key: "your-api-key"
+  api_key: "replace-with-daytona-api-key"
   target: "us"
   secrets:
     - name: OPENROUTER_API_KEY
-      value: your-secret-api-key
+      value: replace-with-openrouter-api-key
       hosts: ["*.openrouter.ai"]
 
 opencode:
@@ -77,21 +82,29 @@ opencode:
 
 github:
   bot_login_id: "workdock[bot]"
-  client_id: "your-client-id"
-  private_key_path: "./github-app.pem"
-  webhook_secret: "your-webhook-secret"
+  client_id: "replace-with-github-app-client-id"
+  private_key_path: "/app/config/github-app.pem"
+  webhook_secret: "replace-with-github-webhook-secret"
   app_install_url: "https://github.com/apps/your-app-name/installations/new"
 
 # *---------------------------------------------------------------------------*
 # * INFRASTRUCTURE CONFIGURATION                                              *
 # *---------------------------------------------------------------------------*
 
-infisical:
-  client_id: "your-client-id"
-  client_secret: "your-client-secret"
-  project_id: "your-project-id"
-  environment: "dev"
-  site_url: "https://app.infisical.com"
+# Exactly one secrets provider must be configured. infisical and
+# in_memory_secrets are mutually exclusive with each other and with
+# file_secrets. If none is set, a non-persistent in-memory store is used and
+# a warning is logged.
+
+file_secrets:
+  root_dir: "/app/data/secrets"
+
+# infisical:
+#   client_id: "your-client-id"
+#   client_secret: "your-client-secret"
+#   project_id: "your-project-id"
+#   environment: "dev"
+#   site_url: "http://infisical:8080"
 
 # in_memory_secrets:
 #   secrets:
@@ -99,13 +112,11 @@ infisical:
 #       baz: secret-value
 
 postgres:
-  database_url: "postgresql://postgres:postgres@127.0.0.1:5432/workdock"
+  database_url: "postgresql://workdock:workdock@postgres:5432/workdock"
 
 # otlp:
-#   endpoint: "ingest.us2.signoz.cloud:443"
-#   headers:
-#     signoz-access-token: your-secret-token
+#   endpoint: "signoz-otel-collector:4318"
+#   insecure: true
 #   slog:
 #     level: debug
 #     source: true
-

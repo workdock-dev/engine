@@ -1,5 +1,7 @@
 config.yaml
 service_account.json
 *.pem
-.env
-docker/workdock/config.yaml
+docker/generated.env
+docker/.watch.pid
+docker/.watch.log
+docker/workdock/tern.conf
