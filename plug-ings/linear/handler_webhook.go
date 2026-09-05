@@ -175,12 +175,12 @@ func (t *WEventVerifier) verifyWebhookSignature(headerSignature string, body []b
 }
 
 type WEventConsumer struct {
-	eventBus shared.ForEventBus
+	eventBus *shared.EventBus
 }
 
 // NewWEventConsumer creates a webhook consumer for processing verified
 // Linear webhook events.
-func NewWEventConsumer(eventBus shared.ForEventBus) webhook.WEventConsumer {
+func NewWEventConsumer(eventBus *shared.EventBus) webhook.WEventConsumer {
 	return &WEventConsumer{
 		eventBus: eventBus,
 	}

@@ -36,7 +36,6 @@ import (
 	"github.com/workdock-dev/engine/features/organization"
 	organization_infrastructure "github.com/workdock-dev/engine/features/organization/infrastructure"
 	"github.com/workdock-dev/engine/features/webhook"
-	"github.com/workdock-dev/engine/infrastructure/event_bus"
 	"github.com/workdock-dev/engine/infrastructure/in_memory_secrets"
 	"github.com/workdock-dev/engine/infrastructure/infisical_client"
 	"github.com/workdock-dev/engine/infrastructure/otlp_client"
@@ -185,7 +184,7 @@ func main() {
 	// * Setup infrastructure                                                    *
 	// *-------------------------------------------------------------------------*
 
-	eventBus := event_bus.NewInMemoryEventBus()
+	eventBus := shared.NewEventBus()
 
 	linearClient, err := linear_infra.NewClient(cfg.Linear, secretManager)
 	exit(err)

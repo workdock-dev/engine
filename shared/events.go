@@ -14,6 +14,17 @@
 
 package shared
 
+import "context"
+
+// DomainEvent is the base interface every domain event must implement. The
+// event type is used by the event bus to route events to their subscribers.
+type DomainEvent interface {
+	EventType() string
+}
+
+// EventHandler processes a published domain event.
+type EventHandler func(ctx context.Context, event DomainEvent) error
+
 const (
 	EventType_IssueChange             = "issue.changed"
 	EventType_AgentSessionPrompt      = "agent_session.prompt"

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package event_bus
+package shared
 
 import (
 	"context"
@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
-	"github.com/workdock-dev/engine/shared"
 )
 
 type event struct {
@@ -32,7 +31,7 @@ func (e event) EventType() string { return e.eventType }
 
 type EventBusSuite struct {
 	suite.Suite
-	bus *InMemoryEventBus
+	bus *EventBus
 }
 
 func TestEventBusSuite(t *testing.T) {
@@ -40,18 +39,18 @@ func TestEventBusSuite(t *testing.T) {
 }
 
 func (s *EventBusSuite) SetupTest() {
-	s.bus = NewInMemoryEventBus()
+	s.bus = NewEventBus()
 }
 
-func (s *EventBusSuite) TestNewInMemoryEventBus_InitializesEmpty() {
-	bus := NewInMemoryEventBus()
+func (s *EventBusSuite) TestNewEventBus_InitializesEmpty() {
+	bus := NewEventBus()
 	s.NotNil(bus)
 	s.Empty(bus.handlers)
 }
 
 func (s *EventBusSuite) TestSubscribe_RegistersHandler() {
 	called := false
-	s.bus.Subscribe("test.event", func(ctx context.Context, e shared.DomainEvent) error {
+	s.bus.Subscribe("test.event", func(ctx context.Context, e DomainEvent) error {
 		called = true
 		return nil
 	})
@@ -66,15 +65,15 @@ func (s *EventBusSuite) TestSubscribe_RegistersHandler() {
 func (s *EventBusSuite) TestSubscribe_MultipleHandlersSameType() {
 	var order []int
 
-	s.bus.Subscribe("test.event", func(ctx context.Context, e shared.DomainEvent) error {
+	s.bus.Subscribe("test.event", func(ctx context.Context, e DomainEvent) error {
 		order = append(order, 1)
 		return nil
 	})
-	s.bus.Subscribe("test.event", func(ctx context.Context, e shared.DomainEvent) error {
+	s.bus.Subscribe("test.event", func(ctx context.Context, e DomainEvent) error {
 		order = append(order, 2)
 		return nil
 	})
-	s.bus.Subscribe("test.event", func(ctx context.Context, e shared.DomainEvent) error {
+	s.bus.Subscribe("test.event", func(ctx context.Context, e DomainEvent) error {
 		order = append(order, 3)
 		return nil
 	})
@@ -87,10 +86,10 @@ func (s *EventBusSuite) TestSubscribe_MultipleHandlersSameType() {
 }
 
 func (s *EventBusSuite) TestPublish_InvokesSubscribedHandler() {
-	var received shared.DomainEvent
+	var received DomainEvent
 	e := event{eventType: "msg"}
 
-	s.bus.Subscribe("msg", func(ctx context.Context, evt shared.DomainEvent) error {
+	s.bus.Subscribe("msg", func(ctx context.Context, evt DomainEvent) error {
 		received = evt
 		return nil
 	})
@@ -109,10 +108,10 @@ func (s *EventBusSuite) TestPublish_HandlerErrorDoesNotStopOthers() {
 	var secondCalled bool
 	handlerErr := errors.New("handler failed")
 
-	s.bus.Subscribe("test.event", func(ctx context.Context, e shared.DomainEvent) error {
+	s.bus.Subscribe("test.event", func(ctx context.Context, e DomainEvent) error {
 		return handlerErr
 	})
-	s.bus.Subscribe("test.event", func(ctx context.Context, e shared.DomainEvent) error {
+	s.bus.Subscribe("test.event", func(ctx context.Context, e DomainEvent) error {
 		secondCalled = true
 		return nil
 	})
@@ -127,11 +126,11 @@ func (s *EventBusSuite) TestPublish_OnlyMatchingEventTypes() {
 	calledA := false
 	calledB := false
 
-	s.bus.Subscribe("type.a", func(ctx context.Context, e shared.DomainEvent) error {
+	s.bus.Subscribe("type.a", func(ctx context.Context, e DomainEvent) error {
 		calledA = true
 		return nil
 	})
-	s.bus.Subscribe("type.b", func(ctx context.Context, e shared.DomainEvent) error {
+	s.bus.Subscribe("type.b", func(ctx context.Context, e DomainEvent) error {
 		calledB = true
 		return nil
 	})
@@ -146,13 +145,13 @@ func (s *EventBusSuite) TestPublish_MultipleHandlersOrdering() {
 	var order []string
 	var mu sync.Mutex
 
-	s.bus.Subscribe("e", func(ctx context.Context, e shared.DomainEvent) error {
+	s.bus.Subscribe("e", func(ctx context.Context, e DomainEvent) error {
 		mu.Lock()
 		order = append(order, "first")
 		mu.Unlock()
 		return nil
 	})
-	s.bus.Subscribe("e", func(ctx context.Context, e shared.DomainEvent) error {
+	s.bus.Subscribe("e", func(ctx context.Context, e DomainEvent) error {
 		mu.Lock()
 		order = append(order, "second")
 		mu.Unlock()

@@ -12,35 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package event_bus
+package shared
 
 import (
 	"context"
 	"log/slog"
 	"sync"
-
-	"github.com/workdock-dev/engine/shared"
 )
 
-// InMemoryEventBus is the application-layer implementation of ports.ForEventBus.
-// It delivers events synchronously to every handler subscribed to the event's
-// type, in subscription order.
+// EventBus delivers events synchronously to every handler subscribed to the
+// event's type, in subscription order.
 //
 // A failing handler does not stop the delivery of the event to the remaining
 // handlers: the error is logged and delivery continues.
-type InMemoryEventBus struct {
+type EventBus struct {
 	mu       sync.RWMutex
-	handlers map[string][]shared.EventHandler
+	handlers map[string][]EventHandler
 }
 
-func NewInMemoryEventBus() *InMemoryEventBus {
-	return &InMemoryEventBus{
-		handlers: make(map[string][]shared.EventHandler),
+func NewEventBus() *EventBus {
+	return &EventBus{
+		handlers: make(map[string][]EventHandler),
 	}
 }
 
 // Subscribe registers a handler for the given event type.
-func (b *InMemoryEventBus) Subscribe(eventType string, handler shared.EventHandler) {
+func (b *EventBus) Subscribe(eventType string, handler EventHandler) {
 	slog.Debug("[event-bus] subscribed to event", "event_type", eventType)
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -49,10 +46,10 @@ func (b *InMemoryEventBus) Subscribe(eventType string, handler shared.EventHandl
 }
 
 // Publish synchronously invokes every handler subscribed to the event's type.
-func (b *InMemoryEventBus) Publish(ctx context.Context, event shared.DomainEvent) error {
+func (b *EventBus) Publish(ctx context.Context, event DomainEvent) error {
 	slog.Debug("[event-bus] event published", "event_type", event.EventType())
 	b.mu.RLock()
-	handlers := make([]shared.EventHandler, len(b.handlers[event.EventType()]))
+	handlers := make([]EventHandler, len(b.handlers[event.EventType()]))
 	copy(handlers, b.handlers[event.EventType()])
 	b.mu.RUnlock()
 

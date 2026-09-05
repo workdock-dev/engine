@@ -23,12 +23,12 @@ import (
 )
 
 type controller struct {
-	eventBus   shared.ForEventBus
+	eventBus   *shared.EventBus
 	repository interfaces.Repository
 }
 
 func New(
-	eventBus shared.ForEventBus,
+	eventBus *shared.EventBus,
 	repository interfaces.Repository,
 ) {
 	c := &controller{
