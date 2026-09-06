@@ -162,23 +162,33 @@ WorkDock is evolving from a solid foundation for individual developers into a co
 
 ## Docker Compose
 
-The included single-node Compose deployment builds WorkDock, runs database migrations before starting the engine, and starts PostgreSQL, Infisical, Redis, SigNoz, ClickHouse, ZooKeeper, and the SigNoz OpenTelemetry Collector. PostgreSQL is shared by WorkDock and Infisical through separate `workdock` and `infisical` databases.
+The included single-node Compose deployment builds WorkDock, runs database migrations before starting the engine, and starts PostgreSQL, SigNoz, ClickHouse, ClickHouse Keeper, and the SigNoz OpenTelemetry Collector. Runtime secrets (OAuth tokens, GitHub installation tokens) are stored by the engine's file-backed secrets provider in a dedicated named volume, so they persist across restarts without any external secrets service.
 
-1. Start the bootstrap script:
+1. Create your configuration:
+
+   ```bash
+   cp config.example.yaml config.yaml
+   ```
+
+   Replace the `replace-with-*` placeholders with your Linear, GitHub App, Daytona, and OpenCode values, and place the GitHub App private key at `github-app.pem` in the repository root. The engine configuration directory is mounted read-only; it is never baked into the image. The stack can be started before every placeholder is filled — affected integrations simply fail until their values are replaced, and the engine container is recreated automatically whenever `config.yaml` changes.
+
+2. Start everything with a single run:
 
    ```bash
    ./scripts/docker-up.sh
    ```
 
-   The script generates missing local deployment secrets, starts Infisical and SigNoz, and waits for both services. It writes the mounted `docker/workdock/config.yaml` and Tern configuration only after all required values are present in `.env`.
+   The script creates `config.yaml` from the example if it is missing, generates machine-managed secrets (PostgreSQL password, SigNoz secret) once into `docker/generated.env`, renders the Tern migration configuration, and brings the full stack up in one go. No second run or manual in-between configuration is required.
 
-2. On the first run, the script creates `.env`, generates local deployment secrets, and stops after starting the infrastructure. Add your Linear, GitHub App, Daytona, and OpenCode values to `.env`, and place the GitHub App private key at `docker/workdock/github-app.pem`. Open Infisical at `http://localhost:8081`, create the initial administrator, project, and Universal Auth client. Add that client's ID and secret plus the project ID to `.env` as `WORKDOCK_INFISICAL_CLIENT_ID`, `WORKDOCK_INFISICAL_CLIENT_SECRET`, and `WORKDOCK_INFISICAL_PROJECT_ID`, then rerun the script:
+WorkDock is available at `http://localhost:8080`; SigNoz is available at `http://localhost:8082`. WorkDock exports OTLP telemetry to the internal `signoz-otel-collector:4318` endpoint.
 
-   ```bash
-   ./scripts/docker-up.sh
-   ```
+To take the deployment down, including volumes and generated files:
 
-   The engine configuration directory is mounted read-only at `/app/config`; it is never baked into the image. PostgreSQL, Redis, ClickHouse, ZooKeeper, and SigNoz state use named volumes. SigNoz is available at `http://localhost:8082`; WorkDock exports OTLP telemetry to the internal `signoz-otel-collector:4318` endpoint.
+```bash
+./scripts/docker-down.sh
+```
+
+This keeps `config.yaml` and `github-app.pem` since they are user-provided.
 
 ## License
 

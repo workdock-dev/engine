@@ -11,6 +11,6 @@ RUN apt-get update \
 FROM postgres:16-bookworm
 COPY --from=pg-cron-build /usr/lib/postgresql/16/lib/pg_cron.so /usr/lib/postgresql/16/lib/pg_cron.so
 COPY --from=pg-cron-build /usr/share/postgresql/16/extension/pg_cron* /usr/share/postgresql/16/extension/
-COPY docker/postgres/init/ /docker-entrypoint-initdb.d/
 # pg_cron must load before the engine migration creates its extension.
+# The pg_cron extension itself is created by docker/postgres/init-pg.sh.
 CMD ["postgres", "-c", "shared_preload_libraries=pg_cron", "-c", "cron.database_name=workdock"]

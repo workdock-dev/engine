@@ -46,34 +46,6 @@ services:
     entrypoint: ["bash", "/usr/local/bin/init-pg.sh"]
     restart: "no"
 
-  redis:
-    <<: *restart
-    image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
-    volumes:
-      - redis-data:/data
-
-  infisical:
-    <<: *restart
-    image: ${INFISICAL_IMAGE:-infisical/infisical:latest}
-    depends_on:
-      postgres-init: { condition: service_completed_successfully }
-      redis: { condition: service_started }
-    environment:
-      NODE_ENV: production
-      ENCRYPTION_KEY: ${INFISICAL_ENCRYPTION_KEY:?set INFISICAL_ENCRYPTION_KEY in .env}
-      AUTH_SECRET: ${INFISICAL_AUTH_SECRET:?set INFISICAL_AUTH_SECRET in .env}
-      DB_CONNECTION_URI: postgresql://workdock:${POSTGRES_PASSWORD:-workdock}@postgres:5432/infisical
-      REDIS_URL: redis://redis:6379
-      SITE_URL: ${INFISICAL_SITE_URL:-http://localhost:8081}
-      OTEL_TELEMETRY_COLLECTION_ENABLED: "false"
-    ports: ["8081:8080"]
-    healthcheck:
-      test: ["CMD-SHELL", "wget --spider --quiet http://localhost:8080/api/status"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-
   migrate:
     build: { context: ., dockerfile: Dockerfile }
     entrypoint: []
@@ -84,16 +56,29 @@ services:
       - ./docker/workdock:/app/config:ro
     restart: "no"
 
+  volume-init:
+    image: busybox:1.37
+    command: ["chown", "-R", "65532:65532", "/app/data"]
+    volumes:
+      - secrets-data:/app/data
+    restart: "no"
+
   workdock:
     <<: *restart
     build: { context: ., dockerfile: Dockerfile }
     depends_on:
       migrate: { condition: service_completed_successfully }
-      infisical: { condition: service_healthy }
+      volume-init: { condition: service_completed_successfully }
       signoz-otel-collector: { condition: service_healthy }
     volumes:
-      - ./docker/workdock:/app/config:ro
+      - ./config.yaml:/app/config/config.yaml:ro
+      - ./github-app.pem:/app/config/github-app.pem:ro
+      - secrets-data:/app/data
     ports: ["8080:8080"]
+    develop:
+      watch:
+        - action: restart
+          path: ./config.yaml
 
   signoz-keeper:
     <<: *restart
@@ -152,7 +137,7 @@ services:
       SIGNOZ_TELEMETRYSTORE_PROVIDER: clickhouse
       SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_DSN: tcp://clickhouse:9000
       SIGNOZ_SQLSTORE_SQLITE_PATH: /var/lib/signoz/signoz.db
-      SIGNOZ_TOKENIZER_JWT_SECRET: ${SIGNOZ_JWT_SECRET:?set SIGNOZ_JWT_SECRET in .env}
+      SIGNOZ_TOKENIZER_JWT_SECRET: ${SIGNOZ_JWT_SECRET:-workdock}
     volumes:
       - signoz-sqlite-data:/var/lib/signoz
     ports: ["8082:8080"]
@@ -183,7 +168,7 @@ services:
 
 volumes:
   postgres-data:
-  redis-data:
+  secrets-data:
   signoz-keeper-data:
   signoz-clickhouse-data:
   signoz-sqlite-data:

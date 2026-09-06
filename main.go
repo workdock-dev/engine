@@ -36,6 +36,7 @@ import (
 	"github.com/workdock-dev/engine/features/organization"
 	organization_infrastructure "github.com/workdock-dev/engine/features/organization/infrastructure"
 	"github.com/workdock-dev/engine/features/webhook"
+	"github.com/workdock-dev/engine/infrastructure/file_secrets"
 	"github.com/workdock-dev/engine/infrastructure/in_memory_secrets"
 	"github.com/workdock-dev/engine/infrastructure/infisical_client"
 	"github.com/workdock-dev/engine/infrastructure/otlp_client"
@@ -82,6 +83,7 @@ type Config struct {
 	// infrastructure configuration
 	Postgres        PostgresConfig                           `yaml:"postgres"`
 	Infisical       *infisical_client.InfisicalServiceConfig `yaml:"infisical"`
+	FileSecrets     *file_secrets.Config                     `yaml:"file_secrets"`
 	InMemorySecrets *in_memory_secrets.Config                `yaml:"in_memory_secrets"`
 	Otlp            *otlp_client.Config                      `yaml:"otlp"`
 }
@@ -172,13 +174,26 @@ func main() {
 
 	var secretManager shared.SecretManager
 
-	if cfg.Infisical != nil {
+	switch {
+	case cfg.Infisical != nil && cfg.FileSecrets != nil:
+		slog.Error("secret manager misconfigured: infisical and file_secrets are mutually exclusive, configure exactly one")
+		os.Exit(1)
+	case cfg.InMemorySecrets != nil && (cfg.Infisical != nil || cfg.FileSecrets != nil):
+		slog.Error("secret manager misconfigured: in_memory_secrets cannot be combined with infisical or file_secrets, configure exactly one")
+		os.Exit(1)
+	case cfg.Infisical != nil:
 		infisicalClient, err := infisical_client.New(ctx, *cfg.Infisical)
 		exit(err)
 		secretManager = infisicalClient
-	} else if cfg.InMemorySecrets != nil {
+	case cfg.FileSecrets != nil:
+		fileStore, err := file_secrets.New(cfg.FileSecrets.RootDir)
+		exit(err)
+		secretManager = fileStore
+	case cfg.InMemorySecrets != nil:
 		secretManager = in_memory_secrets.NewWithSeeds(cfg.InMemorySecrets.Secrets)
-		slog.Info("using in-memory secrets provider")
+	default:
+		secretManager = in_memory_secrets.New()
+		slog.Warn("[service] no secrets provider configured, falling back to in-memory store, data will be lost on restart")
 	}
 
 	// *-------------------------------------------------------------------------*
@@ -298,6 +313,7 @@ func main() {
 
 func exit(err error) {
 	if err != nil {
+		slog.Error("startup failed", "err", err)
 		os.Exit(1)
 	}
 }

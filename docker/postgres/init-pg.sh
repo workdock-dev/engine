@@ -22,10 +22,6 @@ until pg_isready -h postgres -U workdock -d workdock; do
   sleep 1
 done
 
-echo "Ensuring infisical database exists..."
-psql -h postgres -U workdock -d workdock -tc "SELECT 1 FROM pg_database WHERE datname = 'infisical'" | grep -q 1 || \
-  psql -h postgres -U workdock -d workdock -c "CREATE DATABASE infisical OWNER workdock"
-
 echo "Ensuring pg_cron extension in workdock database..."
 psql -h postgres -U workdock -d workdock -c "CREATE EXTENSION IF NOT EXISTS pg_cron"
 
