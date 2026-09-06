@@ -185,18 +185,15 @@ func main() {
 		infisicalClient, err := infisical_client.New(ctx, *cfg.Infisical)
 		exit(err)
 		secretManager = infisicalClient
-		slog.Info("using infisical secrets provider")
 	case cfg.FileSecrets != nil:
 		fileStore, err := file_secrets.New(cfg.FileSecrets.RootDir)
 		exit(err)
 		secretManager = fileStore
-		slog.Info("using file-backed secrets provider", "rootDir", cfg.FileSecrets.RootDir)
 	case cfg.InMemorySecrets != nil:
 		secretManager = in_memory_secrets.NewWithSeeds(cfg.InMemorySecrets.Secrets)
-		slog.Info("using in-memory secrets provider")
 	default:
 		secretManager = in_memory_secrets.New()
-		slog.Warn("no secrets provider configured, falling back to in-memory store, data will be lost on restart")
+		slog.Warn("[service] no secrets provider configured, falling back to in-memory store, data will be lost on restart")
 	}
 
 	// *-------------------------------------------------------------------------*
