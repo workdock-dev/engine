@@ -1421,7 +1421,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_Success() {
 // ---------------------------------------------------------------------------
 
 func (s *ControllerSuite) TestSandbox_NoMcpNoGitAccess() {
-	stdout, stderr, shutdown, err := s.c.sandbox(
+	harnessConfig, stdout, stderr, shutdown, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
 		nil, "prompt text", newTestSession(), testSessionEvent,
 	)
@@ -1430,6 +1430,7 @@ func (s *ControllerSuite) TestSandbox_NoMcpNoGitAccess() {
 	s.NotNil(stdout)
 	s.NotNil(stderr)
 	s.NotNil(shutdown)
+	s.NotNil(harnessConfig)
 
 	config := s.sandboxHdl.runConfig
 	s.Require().NotNil(config)
@@ -1455,7 +1456,7 @@ func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
 		Granted:    true,
 	}
 
-	_, _, _, err := s.c.sandbox(
+	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
 		gitAccess, "prompt", newTestSession(), testSessionEvent,
 	)
@@ -1472,7 +1473,7 @@ func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
 func (s *ControllerSuite) TestSandbox_GitAccessNotGranted_NotInSecrets() {
 	gitAccess := &interfaces.GitAccess{Granted: false, Secret: "git-secret"}
 
-	_, _, _, err := s.c.sandbox(
+	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
 		gitAccess, "prompt", newTestSession(), testSessionEvent,
 	)
@@ -1484,7 +1485,7 @@ func (s *ControllerSuite) TestSandbox_GitAccessNotGranted_NotInSecrets() {
 func (s *ControllerSuite) TestSandbox_NilMcpHandler() {
 	s.c.mcpHandler = nil
 
-	_, _, _, err := s.c.sandbox(
+	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
 		nil, "prompt", newTestSession(), testSessionEvent,
 	)
@@ -1494,17 +1495,18 @@ func (s *ControllerSuite) TestSandbox_NilMcpHandler() {
 }
 
 func (s *ControllerSuite) TestSandbox_GetConfigFileError() {
-	s.harnessHdl.getConfigFileFn = func(config interfaces.HarnessConfig) (string, []byte, error) {
+	s.harnessHdl.getConfigFileFn = func(config *interfaces.HarnessConfig) (string, []byte, error) {
 		return "", nil, errors.New("config file failed")
 	}
 
-	stdout, stderr, shutdown, err := s.c.sandbox(
+	harnessConfig, stdout, stderr, shutdown, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
 		nil, "prompt", newTestSession(), testSessionEvent,
 	)
 
 	s.Error(err)
 	s.ErrorContains(err, "config file failed")
+	s.Nil(harnessConfig)
 	s.Nil(stdout)
 	s.Nil(stderr)
 	s.Nil(shutdown)
@@ -1515,7 +1517,7 @@ func (s *ControllerSuite) TestSandbox_RunError() {
 		return nil, errors.New("run failed")
 	}
 
-	_, _, shutdown, err := s.c.sandbox(
+	_, _, _, shutdown, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
 		nil, "prompt", newTestSession(), testSessionEvent,
 	)
@@ -1676,6 +1678,7 @@ func (s *ControllerSuite) TestExecute_HarnessError() {
 	s.prepareExecutable()
 	s.harnessHdl.parseFn = func(
 		ctx context.Context,
+		harnessConfig *interfaces.HarnessConfig,
 		part <-chan []byte,
 		sessionEventIdentifier string,
 		sendThought func(ctx context.Context, text string) error,
@@ -1765,7 +1768,7 @@ func (s *ControllerSuite) TestHarness_ForwardsValidJsonLines() {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- s.c.harness(context.Background(), stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
+		done <- s.c.harness(context.Background(), nil, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
 	}()
 
 	stdout <- `{"type":"text"}`
@@ -1785,7 +1788,7 @@ func (s *ControllerSuite) TestHarness_SkipsInvalidJsonLines() {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- s.c.harness(context.Background(), stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
+		done <- s.c.harness(context.Background(), nil, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
 	}()
 
 	stdout <- "not json"
@@ -1803,7 +1806,7 @@ func (s *ControllerSuite) TestHarness_FlushesPartialBufferOnClose() {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- s.c.harness(context.Background(), stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
+		done <- s.c.harness(context.Background(), nil, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
 	}()
 
 	// No trailing newline: the message is buffered until the channel closes.
@@ -1823,7 +1826,7 @@ func (s *ControllerSuite) TestHarness_MixedLines_OnlyValidForwarded() {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- s.c.harness(context.Background(), stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
+		done <- s.c.harness(context.Background(), nil, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
 	}()
 
 	stdout <- "{\"id\":1}\n"
@@ -1843,7 +1846,7 @@ func (s *ControllerSuite) TestHarness_ForwardsStderrAfterCompletion() {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- s.c.harness(context.Background(), stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
+		done <- s.c.harness(context.Background(), nil, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
 	}()
 
 	stderr <- "something went wrong"
@@ -1862,6 +1865,7 @@ func (s *ControllerSuite) TestHarness_ParseError() {
 
 	s.harnessHdl.parseFn = func(
 		ctx context.Context,
+		harnessConfig *interfaces.HarnessConfig,
 		part <-chan []byte,
 		sessionEventIdentifier string,
 		sendThought func(ctx context.Context, text string) error,
@@ -1877,7 +1881,7 @@ func (s *ControllerSuite) TestHarness_ParseError() {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- s.c.harness(context.Background(), stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
+		done <- s.c.harness(context.Background(), nil, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
 	}()
 
 	stdout <- `{"type":"text"}`
@@ -1899,7 +1903,7 @@ func (s *ControllerSuite) TestHarness_LivenessUnhealthy() {
 	// Simulate a hung harness: channels stay open and emit nothing.
 	done := make(chan error, 1)
 	go func() {
-		done <- s.c.harness(context.Background(), stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
+		done <- s.c.harness(context.Background(), nil, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
 	}()
 
 	select {
@@ -1918,7 +1922,7 @@ func (s *ControllerSuite) TestHarness_LivenessDisabled() {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- s.c.harness(context.Background(), stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
+		done <- s.c.harness(context.Background(), nil, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
 	}()
 
 	close(stdout)
@@ -1939,7 +1943,7 @@ func (s *ControllerSuite) TestHarness_ContextCancellation() {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- s.c.harness(ctx, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
+		done <- s.c.harness(ctx, nil, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
 	}()
 
 	// Keep stdout open and cancel: the collector must return ctx.Err().
@@ -1963,6 +1967,7 @@ func (s *ControllerSuite) TestHarness_ParseCallbacksForwardsToAgentHandler() {
 	// The mock Parse invokes every callback it receives, then drains `part`.
 	s.harnessHdl.parseFn = func(
 		ctx context.Context,
+		harnessConfig *interfaces.HarnessConfig,
 		part <-chan []byte,
 		sessionEventIdentifier string,
 		sendThought func(ctx context.Context, text string) error,
@@ -1984,7 +1989,7 @@ func (s *ControllerSuite) TestHarness_ParseCallbacksForwardsToAgentHandler() {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- s.c.harness(context.Background(), stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
+		done <- s.c.harness(context.Background(), nil, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
 	}()
 
 	close(stdout)
@@ -2012,7 +2017,7 @@ func (s *ControllerSuite) TestHarness_UnhealthyForwardsStderrToUser() {
 	stderr <- "fatal: sandbox crashed"
 	done := make(chan error, 1)
 	go func() {
-		done <- s.c.harness(context.Background(), stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
+		done <- s.c.harness(context.Background(), nil, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
 	}()
 
 	select {
@@ -2035,7 +2040,7 @@ func (s *ControllerSuite) TestHarness_LivenessProbeStopsOnContextCancel() {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- s.c.harness(ctx, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
+		done <- s.c.harness(ctx, nil, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
 	}()
 
 	cancel()
@@ -2059,7 +2064,7 @@ func (s *ControllerSuite) TestHarness_LivenessProbeStopsWhenChannelsClose() {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- s.c.harness(context.Background(), stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
+		done <- s.c.harness(context.Background(), nil, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
 	}()
 
 	stdout <- "{\"id\":1}\n"
@@ -2083,6 +2088,7 @@ func (s *ControllerSuite) TestHarness_FlushAbortsOnContextCancel() {
 	// flush send on stdout close blocks until the context is cancelled.
 	s.harnessHdl.parseFn = func(
 		ctx context.Context,
+		harnessConfig *interfaces.HarnessConfig,
 		part <-chan []byte,
 		sessionEventIdentifier string,
 		sendThought func(ctx context.Context, text string) error,
@@ -2098,7 +2104,7 @@ func (s *ControllerSuite) TestHarness_FlushAbortsOnContextCancel() {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- s.c.harness(ctx, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
+		done <- s.c.harness(ctx, nil, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
 	}()
 
 	// Fill part's buffer with 100 complete newline-delimited messages.
@@ -2132,6 +2138,7 @@ func (s *ControllerSuite) TestHarness_PartSendAbortsOnContextCancel() {
 
 	s.harnessHdl.parseFn = func(
 		ctx context.Context,
+		harnessConfig *interfaces.HarnessConfig,
 		part <-chan []byte,
 		sessionEventIdentifier string,
 		sendThought func(ctx context.Context, text string) error,
@@ -2148,7 +2155,7 @@ func (s *ControllerSuite) TestHarness_PartSendAbortsOnContextCancel() {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
-		done <- s.c.harness(ctx, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
+		done <- s.c.harness(ctx, nil, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
 	}()
 
 	// Buffer is 100; 101 valid messages force the 101st send to block.
@@ -2173,7 +2180,7 @@ func (s *ControllerSuite) TestHarness_BufferCarriesOverToNextMessage() {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- s.c.harness(context.Background(), stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
+		done <- s.c.harness(context.Background(), nil, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
 	}()
 
 	// A single write containing two complete messages: after the first is

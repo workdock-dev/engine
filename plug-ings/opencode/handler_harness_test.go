@@ -22,8 +22,13 @@ import (
 
 	"github.com/stretchr/testify/suite"
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
+	agent_session_metrics "github.com/workdock-dev/engine/features/agent_session/metrics"
 	agent_session_types "github.com/workdock-dev/engine/features/agent_session/types"
 	"github.com/workdock-dev/engine/plug-ings/opencode/types"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 // ---------------------------------------------------------------------------
@@ -79,7 +84,10 @@ func wire(eventType string, part json.RawMessage) []byte {
 
 type HarnessSuite struct {
 	suite.Suite
-	handler HarnessHandler
+	handler       HarnessHandler
+	harnessConfig *agent_session_interfaces.HarnessConfig
+	metrics       *agent_session_metrics.HarnessMetrics
+	meterReader   *sdkmetric.ManualReader
 }
 
 func TestHarnessSuite(t *testing.T) {
@@ -87,12 +95,33 @@ func TestHarnessSuite(t *testing.T) {
 }
 
 func (s *HarnessSuite) SetupTest() {
-	s.handler = HarnessHandler{
-		config: types.Config{
-			Version: "1.2.3",
-			Model:   "openai/gpt-4o",
+	s.handler = *NewHarnessHandler(types.Config{
+		Version: "1.2.3",
+		Model:   "openai/gpt-4o",
+	}).(*HarnessHandler)
+
+	s.harnessConfig = &agent_session_interfaces.HarnessConfig{
+		Provider: &agent_session_interfaces.Provider{
+			Name:  "openai",
+			Model: "gpt-4o",
 		},
 	}
+
+	s.setupMetrics()
+}
+
+// setupMetrics installs a manual-read meter provider so tests can assert on
+// the metrics recorded by Parse and parseToolPart.
+func (s *HarnessSuite) setupMetrics() {
+	s.T().Helper()
+
+	s.meterReader = sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(s.meterReader))
+	otel.SetMeterProvider(provider)
+
+	metrics, err := agent_session_metrics.NewHarnessMetrics(METRICS_NAME, otel.Meter("opencode"))
+	s.Require().NoError(err)
+	s.metrics = metrics
 }
 
 // parse runs Parse over the given messages and returns the recorder, so tests
@@ -107,7 +136,7 @@ func (s *HarnessSuite) parse(ctx context.Context, messages ...[]byte) *parseReco
 	close(ch)
 
 	rec := &parseRecorder{}
-	err := s.handler.Parse(ctx, ch, "evt-1",
+	err := s.handler.Parse(ctx, s.harnessConfig, ch, "evt-1",
 		rec.sendThought,
 		rec.sendResponse,
 		rec.sendAction,
@@ -177,7 +206,7 @@ type configFileShape struct {
 func (s *HarnessSuite) unmarshalConfig(config agent_session_interfaces.HarnessConfig) configFileShape {
 	s.T().Helper()
 
-	path, data, err := s.handler.GetConfigFile(config)
+	path, data, err := s.handler.GetConfigFile(&config)
 	s.Require().NoError(err)
 	s.Require().Equal(CONFIG_FILE_PATH, path)
 
@@ -296,7 +325,7 @@ func (s *HarnessSuite) TestGetConfigFile_MarshalErrors() {
 		s.Run(tt.name, func() {
 			handler := HarnessHandler{config: tt.config}
 
-			path, data, err := handler.GetConfigFile(agent_session_interfaces.HarnessConfig{})
+			path, data, err := handler.GetConfigFile(&agent_session_interfaces.HarnessConfig{})
 			s.Error(err)
 			s.Empty(path)
 			s.Nil(data)
@@ -311,7 +340,7 @@ func (s *HarnessSuite) TestGetConfigFile_MarshalError_ParamPermissions() {
 		Permissions: map[string]any{"key": make(chan int)},
 	}
 
-	path, data, err := handler.GetConfigFile(config)
+	path, data, err := handler.GetConfigFile(&config)
 	s.Error(err)
 	s.Empty(path)
 	s.Nil(data)
@@ -359,7 +388,7 @@ func (s *HarnessSuite) TestParse_Reasoning_InvalidPart() {
 	close(ch)
 
 	rec := &parseRecorder{}
-	err := s.handler.Parse(context.Background(), ch, "evt-1",
+	err := s.handler.Parse(context.Background(), s.harnessConfig, ch, "evt-1",
 		rec.sendThought, rec.sendResponse, rec.sendAction, rec.sendElicitation, rec.sendServerInternalError)
 
 	s.Error(err)
@@ -378,7 +407,7 @@ func (s *HarnessSuite) TestParse_Text_InvalidPart() {
 	close(ch)
 
 	rec := &parseRecorder{}
-	err := s.handler.Parse(context.Background(), ch, "evt-1",
+	err := s.handler.Parse(context.Background(), s.harnessConfig, ch, "evt-1",
 		rec.sendThought, rec.sendResponse, rec.sendAction, rec.sendElicitation, rec.sendServerInternalError)
 
 	s.Error(err)
@@ -397,7 +426,7 @@ func (s *HarnessSuite) TestParse_StepFinish_InvalidPart() {
 	close(ch)
 
 	rec := &parseRecorder{}
-	err := s.handler.Parse(context.Background(), ch, "evt-1",
+	err := s.handler.Parse(context.Background(), s.harnessConfig, ch, "evt-1",
 		rec.sendThought, rec.sendResponse, rec.sendAction, rec.sendElicitation, rec.sendServerInternalError)
 
 	s.Error(err)
@@ -416,7 +445,7 @@ func (s *HarnessSuite) TestParse_ContextCancelled() {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := s.handler.Parse(ctx, ch, "evt-1",
+	err := s.handler.Parse(ctx, s.harnessConfig, ch, "evt-1",
 		func(ctx context.Context, text string) error { return nil },
 		func(ctx context.Context, text string) error { return nil },
 		func(ctx context.Context, action agent_session_types.AgentAction) error { return nil },
@@ -454,7 +483,7 @@ func (s *HarnessSuite) TestParse_Tool_InvalidPart() {
 	close(ch)
 
 	rec := &parseRecorder{}
-	err := s.handler.Parse(context.Background(), ch, "evt-1",
+	err := s.handler.Parse(context.Background(), s.harnessConfig, ch, "evt-1",
 		rec.sendThought, rec.sendResponse, rec.sendAction, rec.sendElicitation, rec.sendServerInternalError)
 
 	s.Error(err)
@@ -536,7 +565,7 @@ func (s *HarnessSuite) TestParseToolPart_SimpleTools() {
 			input := map[string]any{tt.inputKey: tt.inputVal}
 			part := types.ToolPart{Tool: tt.tool, State: types.ToolState{Input: input, Output: "out"}}
 
-			gotInput, gotOutput := s.handler.parseToolPart(part)
+			gotInput, gotOutput := s.handler.parseToolPart(context.Background(), part, s.metrics)
 
 			s.Equal(tt.inputVal, gotInput)
 			s.Equal("out", gotOutput)
@@ -561,7 +590,7 @@ func (s *HarnessSuite) TestParseToolPart_GlobAndGrep() {
 		s.Run(tt.tool+fmt.Sprintf("%v", tt.input), func() {
 			part := types.ToolPart{Tool: tt.tool, State: types.ToolState{Input: tt.input, Output: tt.wantOut}}
 
-			input, output := s.handler.parseToolPart(part)
+			input, output := s.handler.parseToolPart(context.Background(), part, s.metrics)
 
 			s.Equal(tt.wantIn, input)
 			s.Equal(tt.wantOut, output)
@@ -582,7 +611,7 @@ func (s *HarnessSuite) TestParseToolPart_ApplyPatch() {
 		Output: "out",
 	}}
 
-	input, output := s.handler.parseToolPart(part)
+	input, output := s.handler.parseToolPart(context.Background(), part, s.metrics)
 
 	s.Equal("/a.go, /b.go", input)
 	s.Equal("out", output)
@@ -594,7 +623,7 @@ func (s *HarnessSuite) TestParseToolPart_ApplyPatch_MissingFiles() {
 		Output: "out",
 	}}
 
-	input, output := s.handler.parseToolPart(part)
+	input, output := s.handler.parseToolPart(context.Background(), part, s.metrics)
 
 	s.Empty(input)
 	s.Equal("out", output)
@@ -613,7 +642,7 @@ func (s *HarnessSuite) TestParseToolPart_Todowrite() {
 		Output: "out",
 	}}
 
-	input, output := s.handler.parseToolPart(part)
+	input, output := s.handler.parseToolPart(context.Background(), part, s.metrics)
 
 	s.Equal("first, second", input)
 	s.Equal("out", output)
@@ -625,7 +654,7 @@ func (s *HarnessSuite) TestParseToolPart_Todowrite_MissingTodos() {
 		Output: "out",
 	}}
 
-	input, output := s.handler.parseToolPart(part)
+	input, output := s.handler.parseToolPart(context.Background(), part, s.metrics)
 
 	s.Empty(input)
 	s.Equal("out", output)
@@ -634,7 +663,7 @@ func (s *HarnessSuite) TestParseToolPart_Todowrite_MissingTodos() {
 func (s *HarnessSuite) TestParseToolPart_QuestionReturnsEmpty() {
 	part := types.ToolPart{Tool: "question", State: types.ToolState{Input: map[string]any{"questions": []any{}}}}
 
-	input, output := s.handler.parseToolPart(part)
+	input, output := s.handler.parseToolPart(context.Background(), part, s.metrics)
 
 	s.Empty(input)
 	s.Empty(output)
@@ -646,7 +675,7 @@ func (s *HarnessSuite) TestParseToolPart_UnknownToolFallback() {
 		Output: "out",
 	}}
 
-	input, output := s.handler.parseToolPart(part)
+	input, output := s.handler.parseToolPart(context.Background(), part, s.metrics)
 
 	s.Equal(fmt.Sprintf("%v", map[string]any{"key": "value", "n": 3}), input)
 	s.Equal("out", output)
@@ -759,6 +788,284 @@ func (s *HarnessSuite) TestParse_StreamOrderPreserved() {
 	)
 
 	s.Equal([]string{"a", "b", "c"}, rec.responses)
+}
+
+// ---------------------------------------------------------------------------
+// Parse — metrics
+// ---------------------------------------------------------------------------
+
+// collectMetrics drains the manual meter reader into a name-keyed lookup.
+func (s *HarnessSuite) collectMetrics(ctx context.Context) map[string]metricdata.Metrics {
+	s.T().Helper()
+
+	var rm metricdata.ResourceMetrics
+	s.Require().NoError(s.meterReader.Collect(ctx, &rm))
+
+	byName := make(map[string]metricdata.Metrics, len(rm.ScopeMetrics))
+
+	for _, scope := range rm.ScopeMetrics {
+		for _, m := range scope.Metrics {
+			byName[m.Name] = m
+		}
+	}
+
+	return byName
+}
+
+func (s *HarnessSuite) sumInt64(m metricdata.Metrics) int64 {
+	s.T().Helper()
+
+	sum, ok := m.Data.(metricdata.Sum[int64])
+	s.Require().True(ok, "metric %q is not an int64 sum", m.Name)
+
+	var total int64
+	for _, dp := range sum.DataPoints {
+		total += dp.Value
+	}
+
+	return total
+}
+
+func (s *HarnessSuite) sumInt64ByAttribute(m metricdata.Metrics, key, value string) int64 {
+	s.T().Helper()
+
+	sum, ok := m.Data.(metricdata.Sum[int64])
+	s.Require().True(ok, "metric %q is not an int64 sum", m.Name)
+
+	var total int64
+
+	for _, dp := range sum.DataPoints {
+		if v, ok := dp.Attributes.Value(attribute.Key(key)); ok && v.AsString() == value {
+			total += dp.Value
+		}
+	}
+
+	return total
+}
+
+func (s *HarnessSuite) sumInt64ByBoolAttribute(m metricdata.Metrics, key string, want bool) int64 {
+	s.T().Helper()
+
+	sum, ok := m.Data.(metricdata.Sum[int64])
+	s.Require().True(ok, "metric %q is not an int64 sum", m.Name)
+
+	var total int64
+
+	for _, dp := range sum.DataPoints {
+		if v, ok := dp.Attributes.Value(attribute.Key(key)); ok && v.AsBool() == want {
+			total += dp.Value
+		}
+	}
+
+	return total
+}
+
+func (s *HarnessSuite) sumFloat64(m metricdata.Metrics) float64 {
+	s.T().Helper()
+
+	sum, ok := m.Data.(metricdata.Sum[float64])
+	s.Require().True(ok, "metric %q is not a float64 sum", m.Name)
+
+	var total float64
+	for _, dp := range sum.DataPoints {
+		total += dp.Value
+	}
+
+	return total
+}
+
+func (s *HarnessSuite) histogramFloat64Count(m metricdata.Metrics) uint64 {
+	s.T().Helper()
+
+	hist, ok := m.Data.(metricdata.Histogram[float64])
+	s.Require().True(ok, "metric %q is not a float64 histogram", m.Name)
+
+	var count uint64
+	for _, dp := range hist.DataPoints {
+		count += dp.Count
+	}
+
+	return count
+}
+
+func (s *HarnessSuite) histogramInt64Value(m metricdata.Metrics) int64 {
+	s.T().Helper()
+
+	hist, ok := m.Data.(metricdata.Histogram[int64])
+	s.Require().True(ok, "metric %q is not an int64 histogram", m.Name)
+
+	var total int64
+	for _, dp := range hist.DataPoints {
+		total += int64(dp.Sum)
+	}
+
+	return total
+}
+
+func (s *HarnessSuite) TestParse_StepFinish_RecordsUsageMetrics() {
+	part := `{"reason":"stop","cost":0.25,"tokens":{"total":11,"input":5,"output":3,"reasoning":2,"cache":{"read":1,"write":2}}}`
+	rec := s.parse(context.Background(), wire("step_finish", json.RawMessage(part)))
+	s.Require().Equal([]string{""}, rec.responses)
+
+	ctx := context.Background()
+	metrics := s.collectMetrics(ctx)
+
+	tokenUsage, ok := metrics[METRICS_NAME + ".token.usage"]
+	s.Require().True(ok)
+	s.Equal(int64(5), s.sumInt64ByAttribute(tokenUsage, "type", "input"))
+	s.Equal(int64(3), s.sumInt64ByAttribute(tokenUsage, "type", "output"))
+	s.Equal(int64(2), s.sumInt64ByAttribute(tokenUsage, "type", "reasoning"))
+	s.Equal(int64(1), s.sumInt64ByAttribute(tokenUsage, "type", "cacheRead"))
+	s.Equal(int64(2), s.sumInt64ByAttribute(tokenUsage, "type", "cacheCreation"))
+
+	cacheCount, ok := metrics[METRICS_NAME + ".cache.count"]
+	s.Require().True(ok)
+	s.Equal(int64(2), s.sumInt64(cacheCount))
+
+	costUsage, ok := metrics[METRICS_NAME + ".cost.usage"]
+	s.Require().True(ok)
+	s.InDelta(0.25, s.sumFloat64(costUsage), 0.0001)
+
+	modelUsage, ok := metrics[METRICS_NAME + ".model.usage"]
+	s.Require().True(ok)
+	s.Equal(int64(1), s.sumInt64(modelUsage))
+
+	sessionCount, ok := metrics[METRICS_NAME + ".session.count"]
+	s.Require().True(ok)
+	s.Equal(int64(1), s.sumInt64(sessionCount))
+
+	messageCount, ok := metrics[METRICS_NAME + ".message.count"]
+	if ok {
+		s.Equal(int64(0), s.sumInt64(messageCount))
+	}
+
+	tokenTotal, ok := metrics[METRICS_NAME + ".session.token.total"]
+	s.Require().True(ok)
+	s.Equal(int64(10), s.histogramInt64Value(tokenTotal)) // 5+3+2
+
+	costTotal, ok := metrics[METRICS_NAME + ".session.cost.total"]
+	s.Require().True(ok)
+	s.Require().Equal(uint64(1), s.histogramFloat64Count(costTotal))
+
+	duration, ok := metrics[METRICS_NAME + ".session.duration"]
+	s.Require().True(ok)
+	s.Equal(uint64(1), s.histogramFloat64Count(duration))
+}
+
+func (s *HarnessSuite) TestParse_Text_IncrementsMessageCount() {
+	rec := s.parse(context.Background(),
+		wire("text", json.RawMessage(`{"text":"a"}`)),
+		wire("text", json.RawMessage(`{"text":"b"}`)),
+	)
+	s.Require().Equal([]string{"a", "b"}, rec.responses)
+
+	messageCount, ok := s.collectMetrics(context.Background())[METRICS_NAME + ".message.count"]
+	s.Require().True(ok)
+	s.Equal(int64(2), s.sumInt64(messageCount))
+}
+
+func (s *HarnessSuite) TestParse_RetryIncrementsRetryCount() {
+	rec := s.parse(context.Background(), wire("retry", json.RawMessage(`{}`)))
+	s.Require().Equal([]string{"compacting"}, rec.thoughts)
+
+	retryCount, ok := s.collectMetrics(context.Background())[METRICS_NAME + ".retry.count"]
+	s.Require().True(ok)
+	s.Equal(int64(1), s.sumInt64ByAttribute(retryCount, "gen_ai.provider.name", "openai"))
+}
+
+func (s *HarnessSuite) TestParse_NilProviderConfigDoesNotPanic() {
+	ch := make(chan []byte, 1)
+	ch <- wire("text", json.RawMessage(`{"text":"hello"}`))
+	close(ch)
+
+	rec := &parseRecorder{}
+	err := s.handler.Parse(context.Background(), &agent_session_interfaces.HarnessConfig{}, ch, "evt-1",
+		rec.sendThought, rec.sendResponse, rec.sendAction, rec.sendElicitation, rec.sendServerInternalError)
+
+	s.Require().NoError(err)
+	s.Equal([]string{"hello"}, rec.responses)
+}
+
+// ---------------------------------------------------------------------------
+// parseToolPart — tool timing metrics
+// ---------------------------------------------------------------------------
+
+func int64Ptr(v int64) *int64 { return &v }
+
+func (s *HarnessSuite) TestParseToolPart_ToolTiming() {
+	tests := []struct {
+		name            string
+		part            types.ToolPart
+		preStart        map[string]int64
+		wantStarts      map[string]int64
+		wantToolCount   int64
+		wantSuccess     string
+		wantDurationOps uint64
+	}{
+		{
+			name:       "started stores start time",
+			part:       types.ToolPart{Tool: "bash", CallID: "c1", State: types.ToolState{Status: "running", Time: &types.ToolTime{Start: 100}}},
+			wantStarts: map[string]int64{"c1": 100},
+		},
+		{
+			name:            "finished with prior start records duration",
+			part:            types.ToolPart{Tool: "bash", CallID: "c1", State: types.ToolState{Status: "done", Time: &types.ToolTime{End: int64Ptr(250)}}},
+			preStart:        map[string]int64{"c1": 100},
+			wantStarts:      map[string]int64{},
+			wantToolCount:   1,
+			wantSuccess:     "true",
+			wantDurationOps: 1,
+		},
+		{
+			name:          "finished without start records count only",
+			part:          types.ToolPart{Tool: "bash", CallID: "c2", State: types.ToolState{Status: "done", Time: &types.ToolTime{End: int64Ptr(250)}}},
+			wantStarts:    map[string]int64{},
+			wantToolCount: 1,
+			wantSuccess:   "true",
+		},
+		{
+			name:          "error status marks failure",
+			part:          types.ToolPart{Tool: "bash", CallID: "c3", State: types.ToolState{Status: "error", Error: "boom", Time: &types.ToolTime{End: int64Ptr(250)}}},
+			wantStarts:    map[string]int64{},
+			wantToolCount: 1,
+			wantSuccess:   "false",
+		},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			s.setupMetrics()
+			s.metrics.ToolStarts = make(map[string]int64)
+			for callID, start := range tt.preStart {
+				s.metrics.ToolStarts[callID] = start
+			}
+
+			input, output := s.handler.parseToolPart(context.Background(), tt.part, s.metrics)
+
+			s.Empty(input)
+			s.Empty(output)
+			s.Equal(tt.wantStarts, s.metrics.ToolStarts)
+
+			metrics := s.collectMetrics(context.Background())
+
+			if tt.wantToolCount == 0 {
+				_, ok := metrics[METRICS_NAME + ".tool.count"]
+				s.False(ok)
+				return
+			}
+
+			toolCount, ok := metrics[METRICS_NAME + ".tool.count"]
+			s.Require().True(ok)
+			s.Equal(tt.wantToolCount, s.sumInt64ByBoolAttribute(toolCount, "success", tt.wantSuccess == "true"))
+
+			duration, ok := metrics[METRICS_NAME + ".tool.duration"]
+			if !ok {
+				s.Zero(tt.wantDurationOps, "expected tool.duration to be recorded")
+				return
+			}
+			s.Equal(tt.wantDurationOps, s.histogramFloat64Count(duration))
+		})
+	}
 }
 
 // compile-time interface check

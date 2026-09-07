@@ -214,9 +214,17 @@ func (h *HarnessHandler) Parse(
 		return err
 	}
 
+	var modelName string
+	var providerName string
+
+	if harnessConfig != nil && harnessConfig.Provider != nil {
+		modelName = harnessConfig.Provider.Model
+		providerName = harnessConfig.Provider.Name
+	}
+
 	m.ModelUsage.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("gen_ai.request.model", harnessConfig.Provider.Model),
-		attribute.String("gen_ai.provider.name", harnessConfig.Provider.Name),
+		attribute.String("gen_ai.request.model", modelName),
+		attribute.String("gen_ai.provider.name", providerName),
 	))
 	m.SessionCount.Add(ctx, 1)
 
@@ -256,7 +264,7 @@ func (h *HarnessHandler) Parse(
 				switch partType {
 				case "retry":
 					m.RetryCount.Add(ctx, 1, metric.WithAttributes(
-						attribute.String("gen_ai.provider.name", harnessConfig.Provider.Name),
+						attribute.String("gen_ai.provider.name", providerName),
 					))
 					fallthrough
 				case "step_start":
@@ -340,11 +348,11 @@ func (h *HarnessHandler) Parse(
 						return err
 					}
 
-					h.tokenUsageAdd(ctx, m, harnessConfig, "input", int64(p.Tokens.Input))
-					h.tokenUsageAdd(ctx, m, harnessConfig, "output", int64(p.Tokens.Output))
-					h.tokenUsageAdd(ctx, m, harnessConfig, "reasoning", int64(p.Tokens.Reasoning))
-					h.tokenUsageAdd(ctx, m, harnessConfig, "cacheRead", int64(p.Tokens.Cache.Read))
-					h.tokenUsageAdd(ctx, m, harnessConfig, "cacheCreation", int64(p.Tokens.Cache.Write))
+					h.tokenUsageAdd(ctx, m, modelName, providerName, "input", int64(p.Tokens.Input))
+					h.tokenUsageAdd(ctx, m, modelName, providerName, "output", int64(p.Tokens.Output))
+					h.tokenUsageAdd(ctx, m, modelName, providerName, "reasoning", int64(p.Tokens.Reasoning))
+					h.tokenUsageAdd(ctx, m, modelName, providerName, "cacheRead", int64(p.Tokens.Cache.Read))
+					h.tokenUsageAdd(ctx, m, modelName, providerName, "cacheCreation", int64(p.Tokens.Cache.Write))
 
 					if p.Tokens.Cache.Read > 0 {
 						m.CacheCount.Add(
@@ -363,8 +371,8 @@ func (h *HarnessHandler) Parse(
 					}
 
 					m.CostUsage.Add(ctx, p.Cost, metric.WithAttributes(
-						attribute.String("gen_ai.request.model", harnessConfig.Provider.Model),
-						attribute.String("gen_ai.provider.name", harnessConfig.Provider.Name),
+						attribute.String("gen_ai.request.model", modelName),
+						attribute.String("gen_ai.provider.name", providerName),
 					))
 
 					m.SessionCost += p.Cost
@@ -569,10 +577,10 @@ func (h *HarnessHandler) parseQuestions(input map[string]any) []types.QuestionIn
 	return questions
 }
 
-func (h *HarnessHandler) tokenUsageAdd(ctx context.Context, metrics *agent_session_metrics.HarnessMetrics, harnessConfig *agent_session_interfaces.HarnessConfig, typ string, n int64) {
+func (h *HarnessHandler) tokenUsageAdd(ctx context.Context, metrics *agent_session_metrics.HarnessMetrics, modelName string, providerName string, typ string, n int64) {
 	metrics.TokenUsage.Add(ctx, n, metric.WithAttributes(
 		attribute.String("type", typ),
-		attribute.String("gen_ai.request.model", harnessConfig.Provider.Model),
-		attribute.String("gen_ai.provider.name", harnessConfig.Provider.Name),
+		attribute.String("gen_ai.request.model", modelName),
+		attribute.String("gen_ai.provider.name", providerName),
 	))
 }
