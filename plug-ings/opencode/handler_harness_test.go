@@ -910,7 +910,7 @@ func (s *HarnessSuite) TestParse_StepFinish_RecordsUsageMetrics() {
 	ctx := context.Background()
 	metrics := s.collectMetrics(ctx)
 
-	tokenUsage, ok := metrics[METRICS_NAME + ".token.usage"]
+	tokenUsage, ok := metrics[METRICS_NAME+".token.usage"]
 	s.Require().True(ok)
 	s.Equal(int64(5), s.sumInt64ByAttribute(tokenUsage, "type", "input"))
 	s.Equal(int64(3), s.sumInt64ByAttribute(tokenUsage, "type", "output"))
@@ -918,36 +918,36 @@ func (s *HarnessSuite) TestParse_StepFinish_RecordsUsageMetrics() {
 	s.Equal(int64(1), s.sumInt64ByAttribute(tokenUsage, "type", "cacheRead"))
 	s.Equal(int64(2), s.sumInt64ByAttribute(tokenUsage, "type", "cacheCreation"))
 
-	cacheCount, ok := metrics[METRICS_NAME + ".cache.count"]
+	cacheCount, ok := metrics[METRICS_NAME+".cache.count"]
 	s.Require().True(ok)
 	s.Equal(int64(2), s.sumInt64(cacheCount))
 
-	costUsage, ok := metrics[METRICS_NAME + ".cost.usage"]
+	costUsage, ok := metrics[METRICS_NAME+".cost.usage"]
 	s.Require().True(ok)
 	s.InDelta(0.25, s.sumFloat64(costUsage), 0.0001)
 
-	modelUsage, ok := metrics[METRICS_NAME + ".model.usage"]
+	modelUsage, ok := metrics[METRICS_NAME+".model.usage"]
 	s.Require().True(ok)
 	s.Equal(int64(1), s.sumInt64(modelUsage))
 
-	sessionCount, ok := metrics[METRICS_NAME + ".session.count"]
+	sessionCount, ok := metrics[METRICS_NAME+".session.count"]
 	s.Require().True(ok)
 	s.Equal(int64(1), s.sumInt64(sessionCount))
 
-	messageCount, ok := metrics[METRICS_NAME + ".message.count"]
+	messageCount, ok := metrics[METRICS_NAME+".message.count"]
 	if ok {
 		s.Equal(int64(0), s.sumInt64(messageCount))
 	}
 
-	tokenTotal, ok := metrics[METRICS_NAME + ".session.token.total"]
+	tokenTotal, ok := metrics[METRICS_NAME+".session.token.total"]
 	s.Require().True(ok)
 	s.Equal(int64(10), s.histogramInt64Value(tokenTotal)) // 5+3+2
 
-	costTotal, ok := metrics[METRICS_NAME + ".session.cost.total"]
+	costTotal, ok := metrics[METRICS_NAME+".session.cost.total"]
 	s.Require().True(ok)
 	s.Require().Equal(uint64(1), s.histogramFloat64Count(costTotal))
 
-	duration, ok := metrics[METRICS_NAME + ".session.duration"]
+	duration, ok := metrics[METRICS_NAME+".session.duration"]
 	s.Require().True(ok)
 	s.Equal(uint64(1), s.histogramFloat64Count(duration))
 }
@@ -959,7 +959,7 @@ func (s *HarnessSuite) TestParse_Text_IncrementsMessageCount() {
 	)
 	s.Require().Equal([]string{"a", "b"}, rec.responses)
 
-	messageCount, ok := s.collectMetrics(context.Background())[METRICS_NAME + ".message.count"]
+	messageCount, ok := s.collectMetrics(context.Background())[METRICS_NAME+".message.count"]
 	s.Require().True(ok)
 	s.Equal(int64(2), s.sumInt64(messageCount))
 }
@@ -968,7 +968,7 @@ func (s *HarnessSuite) TestParse_RetryIncrementsRetryCount() {
 	rec := s.parse(context.Background(), wire("retry", json.RawMessage(`{}`)))
 	s.Require().Equal([]string{"compacting"}, rec.thoughts)
 
-	retryCount, ok := s.collectMetrics(context.Background())[METRICS_NAME + ".retry.count"]
+	retryCount, ok := s.collectMetrics(context.Background())[METRICS_NAME+".retry.count"]
 	s.Require().True(ok)
 	s.Equal(int64(1), s.sumInt64ByAttribute(retryCount, "gen_ai.provider.name", "openai"))
 }
@@ -1049,16 +1049,16 @@ func (s *HarnessSuite) TestParseToolPart_ToolTiming() {
 			metrics := s.collectMetrics(context.Background())
 
 			if tt.wantToolCount == 0 {
-				_, ok := metrics[METRICS_NAME + ".tool.count"]
+				_, ok := metrics[METRICS_NAME+".tool.count"]
 				s.False(ok)
 				return
 			}
 
-			toolCount, ok := metrics[METRICS_NAME + ".tool.count"]
+			toolCount, ok := metrics[METRICS_NAME+".tool.count"]
 			s.Require().True(ok)
 			s.Equal(tt.wantToolCount, s.sumInt64ByBoolAttribute(toolCount, "success", tt.wantSuccess == "true"))
 
-			duration, ok := metrics[METRICS_NAME + ".tool.duration"]
+			duration, ok := metrics[METRICS_NAME+".tool.duration"]
 			if !ok {
 				s.Zero(tt.wantDurationOps, "expected tool.duration to be recorded")
 				return
