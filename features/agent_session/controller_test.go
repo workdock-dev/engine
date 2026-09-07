@@ -1094,7 +1094,7 @@ func (s *ControllerSuite) TestGetPromptContextError() {
 		return nil, errors.New("prompt context failed")
 	}
 
-	_, err := s.c.getPrompt(context.Background(), s.agentHdl, newTestSession(), testSessionEvent)
+	_, err := s.c.getPrompt(s.agentHdl, newTestSession(), testSessionEvent)
 
 	s.Error(err)
 	s.ErrorContains(err, "prompt context failed")
@@ -1173,12 +1173,12 @@ func (s *ControllerSuite) TestCreatePrompt_WithContext() {
 }
 
 func (s *ControllerSuite) TestGetPrompt_AssemblesPrompt() {
-	session := &types.Session{RepoFullName: repoName("workdock/repo")}
+	session := &types.Session{RepoFullName: new("workdock/repo")}
 	s.agentHdl.getPromptContextFn = func(sessionEvent *types.SessionEvent) (*interfaces.PromptContext, error) {
 		return testPromptContext, nil
 	}
 
-	prompt, err := s.c.getPrompt(context.Background(), s.agentHdl, session, testSessionEvent)
+	prompt, err := s.c.getPrompt(s.agentHdl, session, testSessionEvent)
 
 	s.Require().NoError(err)
 	s.Contains(prompt, "do the work")
