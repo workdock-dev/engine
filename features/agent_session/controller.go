@@ -558,7 +558,8 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	// * Configure, start sandbox and run harness                                *
 	// *-------------------------------------------------------------------------*
 	slog.Debug("[agent-session] sandbox start")
-	stdout, stderr, shutdown, err := telemetry.Span3(ctx, c.tracer, "execute.sandbox.start", func(ctx context.Context) (
+	harnessConfig, stdout, stderr, shutdown, err := telemetry.Span4(ctx, c.tracer, "execute.sandbox.start", func(ctx context.Context) (
+		*interfaces.HarnessConfig,
 		<-chan string,
 		<-chan string,
 		func(ctx context.Context) string,
@@ -618,6 +619,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	if err := telemetry.SpanErr(ctx, c.tracer, "execute.sandbox.harness", func(ctx context.Context) error {
 		return c.harness(
 			ctx,
+			harnessConfig,
 			stdout,
 			stderr,
 			agentHandler,
@@ -812,6 +814,7 @@ func (c *controller) sandbox(
 	session *types.Session,
 	sessionEvent *types.SessionEvent,
 ) (
+	*interfaces.HarnessConfig,
 	<-chan string,
 	<-chan string,
 	func(ctx context.Context) string,
@@ -821,7 +824,7 @@ func (c *controller) sandbox(
 	stderr := make(chan string, 100)
 	secrets := make([]interfaces.SandboxSecret, 0)
 	fileUploads := make(map[string][]byte)
-	harnessConfig := interfaces.HarnessConfig{}
+	harnessConfig := &interfaces.HarnessConfig{}
 
 	// TODO: dynamicly inject harness configuration
 
@@ -851,7 +854,7 @@ func (c *controller) sandbox(
 
 	// Get harness configuration and prepare it for upload
 	if file, data, err := harnessHandler.GetConfigFile(harnessConfig); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	} else {
 		fileUploads[file] = data
 	}
@@ -881,11 +884,12 @@ func (c *controller) sandbox(
 		stderr,
 	)
 
-	return stdout, stderr, shutdown, err
+	return harnessConfig, stdout, stderr, shutdown, err
 }
 
 func (c *controller) harness(
 	ctx context.Context,
+	harnessConfig *interfaces.HarnessConfig,
 	stdout <-chan string,
 	stderr <-chan string,
 	agentHandler interfaces.HandlerAgentSession,
@@ -904,7 +908,7 @@ func (c *controller) harness(
 			return
 		}
 
-		_, messageSpan = c.tracer.Start(ctx, "opencode.output.message")
+		_, messageSpan = c.tracer.Start(ctx, "harness.output.message")
 	}
 
 	endMessage := func() {
@@ -980,6 +984,7 @@ func (c *controller) harness(
 	wg.Go(func() error {
 		return harnessHandler.Parse(
 			ctx,
+			harnessConfig,
 			part,
 			sessionEvent.Identifier,
 

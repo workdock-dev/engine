@@ -21,13 +21,20 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
+	agent_session_metrics "github.com/workdock-dev/engine/features/agent_session/metrics"
 	agent_session_types "github.com/workdock-dev/engine/features/agent_session/types"
 	"github.com/workdock-dev/engine/plug-ings/opencode/types"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
+	METRICS_NAME     = "opencode"
 	BIN_PATH         = "/home/${USER}/.opencode/bin"
 	WORKSPACE_PATH   = "/home/${USER}/workspace"
 	CONFIG_FILE_PATH = "/home/${USER}/.config/opencode/opencode.json"
@@ -41,11 +48,13 @@ var (
 
 type HarnessHandler struct {
 	config types.Config
+	tracer trace.Tracer
 }
 
 func NewHarnessHandler(config types.Config) agent_session_interfaces.HandlerHarness {
 	return &HarnessHandler{
 		config: config,
+		tracer: otel.Tracer("workdock.opencode.gen_ai"),
 	}
 }
 
@@ -63,7 +72,7 @@ func (h *HarnessHandler) GetPromptFile(prompt string) (string, []byte) {
 	return PROMPT_FILE_PATH, []byte(prompt)
 }
 
-func (h *HarnessHandler) GetConfigFile(config agent_session_interfaces.HarnessConfig) (string, []byte, error) {
+func (h *HarnessHandler) GetConfigFile(config *agent_session_interfaces.HarnessConfig) (string, []byte, error) {
 	permissions := []byte("{\"*\":\"allow\"}")
 	mcps := []byte("{}")
 	provider := []byte("{}")
@@ -179,6 +188,7 @@ func (h *HarnessHandler) RunCommand() string {
 }
 func (h *HarnessHandler) Parse(
 	ctx context.Context,
+	harnessConfig *agent_session_interfaces.HarnessConfig,
 	part <-chan []byte,
 	sessionEventIdentifier string,
 
@@ -197,6 +207,32 @@ func (h *HarnessHandler) Parse(
 	// SendServerInternalError sends a generic server internal error
 	sendServerInternalError func(ctx context.Context) error,
 ) error {
+	startedAt := time.Now()
+	m, err := agent_session_metrics.NewHarnessMetrics(METRICS_NAME, otel.Meter("opencode"))
+
+	if err != nil {
+		return err
+	}
+
+	m.ModelUsage.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("gen_ai.request.model", harnessConfig.Provider.Model),
+		attribute.String("gen_ai.provider.name", harnessConfig.Provider.Name),
+	))
+	m.SessionCount.Add(ctx, 1)
+
+	ctx, span := h.tracer.Start(ctx, "operation.chat")
+	defer func() {
+		duration := time.Since(startedAt)
+		m.SessionDuration.Record(ctx, float64(duration.Milliseconds()))
+		m.SessionTokenTotal.Record(ctx,
+			m.SessionInputTokens+
+				m.SessionOutputTokens+
+				m.SessionReasoningTokens,
+		)
+		m.SessionCostTotal.Record(ctx, m.SessionCost)
+		span.End()
+	}()
+
 	for {
 		select {
 		case message, ok := <-part:
@@ -219,6 +255,9 @@ func (h *HarnessHandler) Parse(
 
 				switch partType {
 				case "retry":
+					m.RetryCount.Add(ctx, 1, metric.WithAttributes(
+						attribute.String("gen_ai.provider.name", harnessConfig.Provider.Name),
+					))
 					fallthrough
 				case "step_start":
 					fallthrough
@@ -253,6 +292,7 @@ func (h *HarnessHandler) Parse(
 						return err
 					}
 
+					m.MessageCount.Add(ctx, 1)
 					sendResponse(ctx, p.Text)
 				case "tool":
 					var p types.ToolPart
@@ -283,7 +323,7 @@ func (h *HarnessHandler) Parse(
 							})
 						}
 					} else {
-						input, output := h.parseToolPart(p)
+						input, output := h.parseToolPart(ctx, p, m)
 						sendAction(ctx, agent_session_types.AgentAction{
 							Name:   p.Tool,
 							Input:  input,
@@ -299,6 +339,40 @@ func (h *HarnessHandler) Parse(
 						slog.Error("[harness][opencode] unmarshal step-finish", "event_identifier", sessionEventIdentifier, "error", err)
 						return err
 					}
+
+					h.tokenUsageAdd(ctx, m, harnessConfig, "input", int64(p.Tokens.Input))
+					h.tokenUsageAdd(ctx, m, harnessConfig, "output", int64(p.Tokens.Output))
+					h.tokenUsageAdd(ctx, m, harnessConfig, "reasoning", int64(p.Tokens.Reasoning))
+					h.tokenUsageAdd(ctx, m, harnessConfig, "cacheRead", int64(p.Tokens.Cache.Read))
+					h.tokenUsageAdd(ctx, m, harnessConfig, "cacheCreation", int64(p.Tokens.Cache.Write))
+
+					if p.Tokens.Cache.Read > 0 {
+						m.CacheCount.Add(
+							ctx,
+							1,
+							metric.WithAttributes(
+								attribute.String("type", "cacheRead"),
+							),
+						)
+					}
+
+					if p.Tokens.Cache.Write > 0 {
+						m.CacheCount.Add(ctx, 1, metric.WithAttributes(
+							attribute.String("type", "cacheCreation"),
+						))
+					}
+
+					m.CostUsage.Add(ctx, p.Cost, metric.WithAttributes(
+						attribute.String("gen_ai.request.model", harnessConfig.Provider.Model),
+						attribute.String("gen_ai.provider.name", harnessConfig.Provider.Name),
+					))
+
+					m.SessionCost += p.Cost
+					m.SessionInputTokens += int64(p.Tokens.Input)
+					m.SessionOutputTokens += int64(p.Tokens.Output)
+					m.SessionReasoningTokens += int64(p.Tokens.Reasoning)
+					m.SessionCacheReadTokens += int64(p.Tokens.Cache.Read)
+					m.SessionCacheCreationTokens += int64(p.Tokens.Cache.Write)
 
 					slog.Debug("[harness][opencode] finished",
 						"event_identifier", sessionEventIdentifier,
@@ -329,7 +403,32 @@ func (h *HarnessHandler) Parse(
 	}
 }
 
-func (h *HarnessHandler) parseToolPart(p types.ToolPart) (string, string) {
+func (h *HarnessHandler) parseToolPart(ctx context.Context, p types.ToolPart, m *agent_session_metrics.HarnessMetrics) (string, string) {
+	if t := p.State.Time; t != nil {
+		if t.End != nil && *t.End > 0 {
+			start := t.Start
+
+			if start == 0 {
+				start = m.ToolStarts[p.CallID]
+			}
+
+			delete(m.ToolStarts, p.CallID)
+
+			if start > 0 {
+				m.ToolDuration.Record(ctx, float64(*t.End-start), metric.WithAttributes(
+					attribute.String("tool", p.Tool),
+				))
+			}
+
+			m.ToolCount.Add(ctx, 1, metric.WithAttributes(
+				attribute.String("tool", p.Tool),
+				attribute.Bool("success", p.State.Status != "error" && p.State.Error == ""),
+			))
+		} else if t.Start > 0 {
+			m.ToolStarts[p.CallID] = t.Start
+		}
+	}
+
 	var input string
 	var output string
 
@@ -468,4 +567,12 @@ func (h *HarnessHandler) parseQuestions(input map[string]any) []types.QuestionIn
 	}
 
 	return questions
+}
+
+func (h *HarnessHandler) tokenUsageAdd(ctx context.Context, metrics *agent_session_metrics.HarnessMetrics, harnessConfig *agent_session_interfaces.HarnessConfig, typ string, n int64) {
+	metrics.TokenUsage.Add(ctx, n, metric.WithAttributes(
+		attribute.String("type", typ),
+		attribute.String("gen_ai.request.model", harnessConfig.Provider.Model),
+		attribute.String("gen_ai.provider.name", harnessConfig.Provider.Name),
+	))
 }
