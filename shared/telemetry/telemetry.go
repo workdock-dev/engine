@@ -41,26 +41,26 @@ func Span[T any](
 	return result, err
 }
 
-func Span1[T any](
+func Span1[R1 any](
 	ctx context.Context,
 	tracer trace.Tracer,
 	name string,
-	fn func(context.Context) T,
+	fn func(context.Context) R1,
 	opts ...trace.SpanStartOption,
-) T {
+) R1 {
 	ctx, span := tracer.Start(ctx, name, opts...)
 	defer span.End()
 	r := fn(ctx)
 	return r
 }
 
-func Span2[T any, K any](
+func Span2[R1 any, R2 any](
 	ctx context.Context,
 	tracer trace.Tracer,
 	name string,
-	fn func(context.Context) (T, K, error),
+	fn func(context.Context) (R1, R2, error),
 	opts ...trace.SpanStartOption,
-) (T, K, error) {
+) (R1, R2, error) {
 	ctx, span := tracer.Start(ctx, name, opts...)
 	defer span.End()
 
@@ -72,6 +72,46 @@ func Span2[T any, K any](
 	}
 
 	return result, result2, err
+}
+
+func Span3[R1 any, R2 any, R3 any](
+	ctx context.Context,
+	tracer trace.Tracer,
+	name string,
+	fn func(context.Context) (R1, R2, R3, error),
+	opts ...trace.SpanStartOption,
+) (R1, R2, R3, error) {
+	ctx, span := tracer.Start(ctx, name, opts...)
+	defer span.End()
+
+	result, result2, result3, err := fn(ctx)
+
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+
+	return result, result2, result3, err
+}
+
+func Span4[R1 any, R2 any, R3 any, R4 any](
+	ctx context.Context,
+	tracer trace.Tracer,
+	name string,
+	fn func(context.Context) (R1, R2, R3, R4, error),
+	opts ...trace.SpanStartOption,
+) (R1, R2, R3, R4, error) {
+	ctx, span := tracer.Start(ctx, name, opts...)
+	defer span.End()
+
+	result, result2, result3, result4, err := fn(ctx)
+
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+
+	return result, result2, result3, result4, err
 }
 
 func SpanErr(

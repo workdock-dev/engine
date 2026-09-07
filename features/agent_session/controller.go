@@ -150,144 +150,182 @@ func (c *controller) init() error {
 // onAgentSessionPrompt Configured domain event for agent session prompt
 func (c *controller) onAgentSessionPrompt() {
 	c.eventBus.Subscribe(shared.EventType_AgentSessionPrompt, func(ctx context.Context, event shared.DomainEvent) error {
-		e, ok := event.(shared.AgentSessionPromptEvent)
+		return telemetry.SpanErr(ctx, c.tracer, "on_prompt", func(ctx context.Context) error {
+			e, ok := event.(shared.AgentSessionPromptEvent)
 
-		if !ok {
-			return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_AgentSessionPrompt, event.EventType())
-		}
+			if !ok {
+				return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_AgentSessionPrompt, event.EventType())
+			}
 
-		provider, ok := c.agentHandlerRegistry[e.Provider]
+			provider, ok := c.agentHandlerRegistry[e.Provider]
 
-		if !ok {
-			return fmt.Errorf("[agent-session] agent session handler not found in registry: %s", e.Provider)
-		}
+			if !ok {
+				return fmt.Errorf("[agent-session] agent session handler not found in registry: %s", e.Provider)
+			}
 
-		session, sessionEvent, err := provider.Ingest(event)
-
-		if err != nil {
-			return err
-		}
-
-		if org, err := c.organization.GetOrganization(ctx, session.OrganizationIdentifier); err != nil {
-			return err
-		} else if org == nil {
-			// TODO: Inform the user they need to initialize their account
-			// Received an agent session event from an unknown organization
-			return fmt.Errorf("[agent-session] failed to start session, organization %s not found. did you authenticated?", session.OrganizationIdentifier)
-		}
-
-		if sess, err := c.session.GetAgentSession(ctx, session.Identifier); err != nil {
-			return err
-		} else if sess == nil {
-			// Session doesn't exist, create it
-			if err := c.session.UpsertAgentSession(ctx, session); err != nil {
+			session, sessionEvent, err := telemetry.Span2(ctx, c.tracer, "on_prompt.ingest", func(ctx context.Context) (*types.Session, *types.SessionEvent, error) {
+				return provider.Ingest(event)
+			})
+			if err != nil {
 				return err
 			}
-		} else {
-			// Verify if the agent session event is a duplicate
-			sEvent, err := c.session.GetAgentSessionEvent(ctx, sessionEvent.Identifier)
+
+			if err := telemetry.SpanErr(ctx, c.tracer, "on_prompt.get_organization", func(ctx context.Context) error {
+				if org, err := c.organization.GetOrganization(ctx, session.OrganizationIdentifier); err != nil {
+					return err
+				} else if org == nil {
+					// TODO: Inform the user they need to initialize their account
+					// Received an agent session event from an unknown organization
+					return fmt.Errorf("[agent-session] failed to start session, organization %s not found. did you authenticated?", session.OrganizationIdentifier)
+				}
+
+				return nil
+			}); err != nil {
+				return err
+			}
+
+			if sess, err := telemetry.Span(ctx, c.tracer, "on_prompt.get_session", func(ctx context.Context) (*types.Session, error) {
+				return c.session.GetAgentSession(ctx, session.Identifier)
+			}); err != nil {
+				return err
+			} else if sess == nil {
+				// Session doesn't exist, create it
+				if err := telemetry.SpanErr(ctx, c.tracer, "on_prompt.upsert_session", func(ctx context.Context) error {
+					return c.session.UpsertAgentSession(ctx, session)
+				}); err != nil {
+					return err
+				}
+			} else {
+				// Verify if the agent session event is a duplicate
+				sEvent, err := telemetry.Span(ctx, c.tracer, "on_prompt.get_session_event", func(ctx context.Context) (*types.SessionEvent, error) {
+					return c.session.GetAgentSessionEvent(ctx, sessionEvent.Identifier)
+				})
+
+				if err != nil {
+					return err
+				}
+
+				if sEvent != nil {
+					slog.Debug("[agent-session] received duplicated event", "event_identifier", sessionEvent.Identifier)
+					return nil
+				}
+
+				session = sess
+			}
+
+			// Update the session based on the ticket's labels
+			credentials, err := telemetry.Span(ctx, c.tracer, "on_prompt.get_credentials", func(ctx context.Context) (string, error) {
+				return provider.GetCredentials(ctx, session.OrganizationIdentifier)
+			})
 
 			if err != nil {
 				return err
 			}
 
-			if sEvent != nil {
-				slog.Debug("[agent-session] received duplicated event", "event_identifier", sessionEvent.Identifier)
-				return nil
-			}
+			labels, err := telemetry.Span(ctx, c.tracer, "on_prompt.get_labels", func(ctx context.Context) ([]string, error) {
+				return provider.GetLabels(ctx, session.IssueId, credentials)
+			})
 
-			session = sess
-		}
-
-		// Update the session based on the ticket's labels
-		credentials, err := provider.GetCredentials(ctx, session.OrganizationIdentifier)
-
-		if err != nil {
-			return err
-		}
-
-		labels, err := provider.GetLabels(ctx, session.IssueId, credentials)
-
-		if err != nil {
-			return err
-		}
-
-		repo := ""
-
-		for _, label := range labels {
-			if after, ok := strings.CutPrefix(label, "repo="); ok {
-				repo = after
-				break
-			}
-		}
-
-		if (session.RepoFullName != nil && *session.RepoFullName != repo) || (session.RepoFullName == nil && repo != "") {
-			slog.Debug("[agent-session] update session repo", "event_identifier", sessionEvent.Identifier)
-			session.RepoFullName = &repo
-			if err := c.session.UpsertAgentSession(ctx, session); err != nil {
+			if err != nil {
 				return err
 			}
-		}
 
-		slog.Debug("[agent-session] created session event for prompt", "event_identifier", sessionEvent.Identifier)
-		sessionEvent.Reason = types.AgentSessionEventReason_Prompt
-		if err := c.session.CreateSessionEvent(ctx, sessionEvent); err != nil {
-			return err
-		}
+			repo := ""
 
-		return nil
+			for _, label := range labels {
+				if after, ok := strings.CutPrefix(label, "repo="); ok {
+					repo = after
+					break
+				}
+			}
+
+			if (session.RepoFullName != nil && *session.RepoFullName != repo) || (session.RepoFullName == nil && repo != "") {
+				slog.Debug("[agent-session] update session repo", "event_identifier", sessionEvent.Identifier)
+				session.RepoFullName = &repo
+
+				if err := telemetry.SpanErr(ctx, c.tracer, "on_prompt.upsert_session", func(ctx context.Context) error {
+					return c.session.UpsertAgentSession(ctx, session)
+				}); err != nil {
+					return err
+				}
+			}
+
+			slog.Debug("[agent-session] created session event for prompt", "event_identifier", sessionEvent.Identifier)
+			sessionEvent.Reason = types.AgentSessionEventReason_Prompt
+
+			if err := telemetry.SpanErr(ctx, c.tracer, "on_prompt.create_session_event", func(ctx context.Context) error {
+				return c.session.CreateSessionEvent(ctx, sessionEvent)
+			}); err != nil {
+				return err
+			}
+
+			return nil
+		})
 	})
 }
 
 // onAgentSessionResume Configured domain event for agent session resume
 func (c *controller) onAgentSessionResume() {
 	c.eventBus.Subscribe(shared.EventType_AgentSessionResume, func(ctx context.Context, event shared.DomainEvent) error {
-		e, ok := event.(shared.AgentSessionResumeEvent)
+		return telemetry.SpanErr(ctx, c.tracer, "on_resume", func(ctx context.Context) error {
+			e, ok := event.(shared.AgentSessionResumeEvent)
 
-		if !ok {
-			return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_AgentSessionResume, event.EventType())
-		}
+			if !ok {
+				return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_AgentSessionResume, event.EventType())
+			}
 
-		sessionEvent, err := c.session.GetAgentSessionEvent(ctx, e.SessionEventIdentifier)
+			sessionEvent, err := telemetry.Span(ctx, c.tracer, "on_resume.get_session_event", func(ctx context.Context) (*types.SessionEvent, error) {
+				return c.session.GetAgentSessionEvent(ctx, e.SessionEventIdentifier)
+			})
 
-		if err != nil {
-			return err
-		}
+			if err != nil {
+				return err
+			}
 
-		if sessionEvent == nil {
-			return fmt.Errorf("[agent-session] session event not found %s", e.SessionEventIdentifier)
-		}
+			if sessionEvent == nil {
+				return fmt.Errorf("[agent-session] session event not found %s", e.SessionEventIdentifier)
+			}
 
-		return c.session.ResumeSessionEvent(ctx, sessionEvent)
+			return telemetry.SpanErr(ctx, c.tracer, "on_resume.resume_session_event", func(ctx context.Context) error {
+				return c.session.ResumeSessionEvent(ctx, sessionEvent)
+			})
+		})
 	})
 }
 
 // onAgentSessionStop Configured domain event for agent session stop
 func (c *controller) onAgentSessionStop() {
 	c.eventBus.Subscribe(shared.EventType_AgentSessionStop, func(ctx context.Context, event shared.DomainEvent) error {
-		e, ok := event.(shared.AgentSessionStopEvent)
+		return telemetry.SpanErr(ctx, c.tracer, "on_stop", func(ctx context.Context) error {
+			e, ok := event.(shared.AgentSessionStopEvent)
 
-		if !ok {
-			return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_AgentSessionStop, event.EventType())
-		}
+			if !ok {
+				return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_AgentSessionStop, event.EventType())
+			}
 
-		provider, ok := c.agentHandlerRegistry[e.Provider]
+			provider, ok := c.agentHandlerRegistry[e.Provider]
 
-		if !ok {
-			return fmt.Errorf("[agent-session] agent session handler not found in registry: %s", e.Provider)
-		}
+			if !ok {
+				return fmt.Errorf("[agent-session] agent session handler not found in registry: %s", e.Provider)
+			}
 
-		credentials, err := provider.GetCredentials(ctx, e.OrganizationIdentifier)
+			credentials, err := telemetry.Span(ctx, c.tracer, "on_stop.get_credentials", func(ctx context.Context) (string, error) {
+				return provider.GetCredentials(ctx, e.OrganizationIdentifier)
+			})
 
-		if err != nil {
+			if err != nil {
+				return err
+			}
+
+			slog.Debug("[agent-session] stopped")
+			provider.SendResponse(ctx, e.SessionIdentifier, credentials, "Request stopped")
+
+			_, err = telemetry.Span(ctx, c.tracer, "on_stop.cancel", func(ctx context.Context) (int, error) {
+				return c.session.CancelSession(ctx, e.SessionIdentifier, "cancelled by user")
+			})
+
 			return err
-		}
-
-		slog.Debug("[agent-session] stopped")
-		provider.SendResponse(ctx, e.SessionIdentifier, credentials, "Request stopped")
-		_, err = c.session.CancelSession(ctx, e.SessionIdentifier, "cancelled by user")
-
-		return err
+		})
 	})
 }
 
@@ -309,116 +347,139 @@ func (c *controller) onIssueChange() {
 // onPullRequestCommented Configured domain event for pr review comment
 func (c *controller) onPullRequestCommented() {
 	c.eventBus.Subscribe(shared.EventType_PullRequestCommented, func(ctx context.Context, event shared.DomainEvent) error {
-		e, ok := event.(shared.PullRequestCommentedEvent)
+		return telemetry.SpanErr(ctx, c.tracer, "on_pull_request_comment", func(ctx context.Context) error {
+			e, ok := event.(shared.PullRequestCommentedEvent)
 
-		if !ok {
-			return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_PullRequestCommented, event.EventType())
-		}
+			if !ok {
+				return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_PullRequestCommented, event.EventType())
+			}
 
-		sessionEvent, err := c.session.GetAgentSessionEventByGitRef(ctx, e.GitRef, e.RepoFullName)
+			sessionEvent, err := telemetry.Span(ctx, c.tracer, "on_pull_request_comment.get_session_event", func(ctx context.Context) (*types.SessionEvent, error) {
+				return c.session.GetAgentSessionEventByGitRef(ctx, e.GitRef, e.RepoFullName)
+			})
 
-		if err != nil {
-			return err
-		}
+			if err != nil {
+				return err
+			}
 
-		if sessionEvent == nil {
-			return fmt.Errorf("[agent-session] session event not found: %s@%s", e.GitRef, e.RepoFullName)
-		}
+			if sessionEvent == nil {
+				return fmt.Errorf("[agent-session] session event not found: %s@%s", e.GitRef, e.RepoFullName)
+			}
 
-		session, err := c.session.GetAgentSession(ctx, sessionEvent.SessionIdentifier)
+			session, err := telemetry.Span(ctx, c.tracer, "on_pull_request_comment.get_session", func(ctx context.Context) (*types.Session, error) {
+				return c.session.GetAgentSession(ctx, sessionEvent.SessionIdentifier)
+			})
 
-		if err != nil {
-			return err
-		}
+			if err != nil {
+				return err
+			}
 
-		if session == nil {
-			return fmt.Errorf("[agent-session] session not found: %s", sessionEvent.SessionIdentifier)
-		}
+			if session == nil {
+				return fmt.Errorf("[agent-session] session not found: %s", sessionEvent.SessionIdentifier)
+			}
 
-		slog.Debug("[agent-session] created session event for pull request comment review")
-		if err := c.session.CreateSessionEvent(ctx, &types.SessionEvent{
-			SessionIdentifier: session.Identifier,
-			Identifier:        uuid.NewV7().String(),
-			Payload:           sessionEvent.Payload,
-			Seed:              &sessionEvent.Identifier,
-			GitRef:            &e.GitRef,
-			Reason:            types.AgentSessionEventReason_PRComment,
-		}); err != nil {
-			return err
-		}
+			slog.Debug("[agent-session] created session event for pull request comment review")
+			if err := telemetry.SpanErr(ctx, c.tracer, "on_pull_request_comment.create_session_event", func(ctx context.Context) error {
+				return c.session.CreateSessionEvent(ctx, &types.SessionEvent{
+					SessionIdentifier: session.Identifier,
+					Identifier:        uuid.NewV7().String(),
+					Payload:           sessionEvent.Payload,
+					Seed:              &sessionEvent.Identifier,
+					GitRef:            &e.GitRef,
+					Reason:            types.AgentSessionEventReason_PRComment,
+				})
+			}); err != nil {
+				return err
+			}
 
-		return nil
+			return nil
+		})
 	})
 }
 
 // onGitResetConnection Configured domain event for removing git access
 func (c *controller) onGitResetConnection() {
 	c.eventBus.Subscribe(shared.EventType_GitResetConnection, func(ctx context.Context, event shared.DomainEvent) error {
-		payload, ok := event.(shared.GitResetConnectionEvent)
+		return telemetry.SpanErr(ctx, c.tracer, "git_reset_connection", func(ctx context.Context) error {
+			payload, ok := event.(shared.GitResetConnectionEvent)
 
-		if !ok {
-			return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_GitResetConnection, event.EventType())
-		}
-
-		if payload.Delete {
-			slog.Debug("[agent-session] deleted git access secret")
-			// TODO: Remove this hardcoded value
-			if err := c.secretManager.Delete(ctx, "/github/installations", payload.InstallationId); err != nil {
-				return err
+			if !ok {
+				return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_GitResetConnection, event.EventType())
 			}
-		}
 
-		slog.Debug("[agent-session] deleted git connection")
-		return c.git.ResetConnection(ctx, payload.InstallationId, payload.Repos)
+			if payload.Delete {
+				slog.Debug("[agent-session] deleted git access secret")
+				// TODO: Remove this hardcoded value
+				if err := telemetry.SpanErr(ctx, c.tracer, "git_reset_connection.delete_secret", func(ctx context.Context) error {
+					return c.secretManager.Delete(ctx, "/github/installations", payload.InstallationId)
+				}); err != nil {
+					return err
+				}
+			}
+
+			slog.Debug("[agent-session] deleted git connection")
+			return telemetry.SpanErr(ctx, c.tracer, "git_reset_connection.delete_connection", func(ctx context.Context) error {
+				return c.git.ResetConnection(ctx, payload.InstallationId, payload.Repos)
+			})
+		})
 	})
 }
 
 // onGitCompleteConnection Configured domain event to complete the git access connection
 func (c *controller) onGitCompleteConnection() {
 	c.eventBus.Subscribe(shared.EventType_GitCompleteConnection, func(ctx context.Context, event shared.DomainEvent) error {
-		payload, ok := event.(shared.GitCompleteConnectionEvent)
+		return telemetry.SpanErr(ctx, c.tracer, "git_complete_connection", func(ctx context.Context) error {
+			payload, ok := event.(shared.GitCompleteConnectionEvent)
 
-		if !ok {
-			return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_GitCompleteConnection, event.EventType())
-		}
-
-		// this case happens when a repo is being connected to an existent connection
-		if payload.Token != nil {
-			if err := c.secretManager.Set(ctx, "/github/installations", payload.InstallationId, string(payload.Token)); err != nil {
-				slog.Error("[agent-session] failed to store installation access token", "installation_id", payload.InstallationId, "err", err)
-				return err
-			}
-		}
-
-		for _, repo := range payload.Repos {
-			connection := &types.GitConnection{
-				RepoFullName:   repo,
-				Connected:      true,
-				InstallationId: &payload.InstallationId,
+			if !ok {
+				return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_GitCompleteConnection, event.EventType())
 			}
 
-			slog.Debug("[agent-session] git connection completed", "repo", repo)
-			if err := c.git.UpsertConnection(ctx, connection); err != nil {
-				return err
+			// this case happens when a repo is being connected to an existent connection
+			if payload.Token != nil {
+				if err := telemetry.SpanErr(ctx, c.tracer, "git_complete_connection.create_secret", func(ctx context.Context) error {
+					// TODO: Remove hardcoded value
+					return c.secretManager.Set(ctx, "/github/installations", payload.InstallationId, string(payload.Token))
+				}); err != nil {
+					slog.Error("[agent-session] failed to store installation access token", "installation_id", payload.InstallationId, "err", err)
+					return err
+				}
 			}
 
-			// When set, it means this session event was paused until the user
-			// granted git access. Now we need to continue it
-			if connection.SessionEventIdentifier != nil {
-				c.eventBus.Publish(ctx, shared.AgentSessionResumeEvent{
-					SessionEventIdentifier: *connection.SessionEventIdentifier,
-				})
-			}
-		}
+			for _, repo := range payload.Repos {
+				connection := &types.GitConnection{
+					RepoFullName:   repo,
+					Connected:      true,
+					InstallationId: &payload.InstallationId,
+				}
 
-		return nil
+				slog.Debug("[agent-session] git connection completed", "repo", repo)
+				if err := telemetry.SpanErr(ctx, c.tracer, "git_complete_connection.upsert_connection", func(ctx context.Context) error {
+					return c.git.UpsertConnection(ctx, connection)
+				}); err != nil {
+					return err
+				}
+
+				// When set, it means this session event was paused until the user
+				// granted git access. Now we need to continue it
+				if connection.SessionEventIdentifier != nil {
+					telemetry.SpanDo(ctx, c.tracer, "git_complete_connection.publish_session_resume", func(ctx context.Context) {
+						c.eventBus.Publish(ctx, shared.AgentSessionResumeEvent{
+							SessionEventIdentifier: *connection.SessionEventIdentifier,
+						})
+					})
+				}
+			}
+
+			return nil
+		})
 	})
 }
 
 // execute provisions and coordinates all the components to successfully run the
 // agent session's request based on a scheduled job
 func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.EventJobStatus, error) {
-	sessionEvent, err := telemetry.Span(ctx, c.tracer, "session.get_event", func(ctx context.Context) (*types.SessionEvent, error) {
+	sessionEvent, err := telemetry.Span(ctx, c.tracer, "execute.get_session_event", func(ctx context.Context) (*types.SessionEvent, error) {
 		return c.session.GetAgentSessionEvent(ctx, job.SessionEventIdentifier)
 	})
 
@@ -426,7 +487,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 		return types.EventJobStatus_Failed, err
 	}
 
-	session, err := telemetry.Span(ctx, c.tracer, "session.get", func(ctx context.Context) (*types.Session, error) {
+	session, err := telemetry.Span(ctx, c.tracer, "execute.get_session", func(ctx context.Context) (*types.Session, error) {
 		return c.session.GetAgentSession(ctx, sessionEvent.SessionIdentifier)
 	})
 
@@ -448,7 +509,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	// * Get providers credentials                                               *
 	// *-------------------------------------------------------------------------*
 	slog.Debug("[agent-session] get agent handler credentials")
-	agentHandlerCredential, err := telemetry.Span(ctx, c.tracer, "session.get_agent_handler_credentials", func(ctx context.Context) (string, error) {
+	agentHandlerCredential, err := telemetry.Span(ctx, c.tracer, "execute.get_credentials", func(ctx context.Context) (string, error) {
 		return agentHandler.GetCredentials(ctx, session.OrganizationIdentifier)
 	})
 
@@ -465,7 +526,9 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	// * Create prompt                                                           *
 	// *-------------------------------------------------------------------------*
 	slog.Debug("[agent-session] get prompt")
-	prompt, err := c.getPrompt(ctx, agentHandler, session, sessionEvent)
+	prompt, err := telemetry.Span(ctx, c.tracer, "execute.get_prompt", func(ctx context.Context) (string, error) {
+		return c.getPrompt(agentHandler, session, sessionEvent)
+	})
 
 	if err != nil {
 		agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
@@ -476,7 +539,9 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	// * Verify git access                                                       *
 	// *-------------------------------------------------------------------------*
 	slog.Debug("[agent-session] verify git access")
-	gitAccess, err := c.verifyGitAccess(ctx, agentHandler, agentHandlerCredential, gitHandler, session, sessionEvent)
+	gitAccess, err := telemetry.Span(ctx, c.tracer, "execute.get_git_access", func(ctx context.Context) (*interfaces.GitAccess, error) {
+		return c.verifyGitAccess(ctx, agentHandler, agentHandlerCredential, gitHandler, session, sessionEvent)
+	})
 
 	if err != nil {
 		agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
@@ -493,42 +558,51 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	// * Configure, start sandbox and run harness                                *
 	// *-------------------------------------------------------------------------*
 	slog.Debug("[agent-session] sandbox start")
-	stdout, stderr, shutdown, err := c.sandbox(
-		ctx,
-		gitHandler,
-		harnessHandler,
-		sandboxHandler,
-		gitAccess,
-		prompt,
-		session,
-		sessionEvent,
-	)
+	stdout, stderr, shutdown, err := telemetry.Span3(ctx, c.tracer, "execute.sandbox.start", func(ctx context.Context) (
+		<-chan string,
+		<-chan string,
+		func(ctx context.Context) string,
+		error,
+	) {
+		return c.sandbox(
+			ctx,
+			gitHandler,
+			harnessHandler,
+			sandboxHandler,
+			gitAccess,
+			prompt,
+			session,
+			sessionEvent,
+		)
+	})
 
 	defer func() {
 		if shutdown != nil {
-			slog.Debug("[agent-session] sandbox shutdown")
-			result := shutdown(context.Background())
+			telemetry.SpanDo(ctx, c.tracer, "execute.sandbox.shutdown", func(ctx context.Context) {
+				slog.Debug("[agent-session] sandbox shutdown")
+				result := shutdown(context.Background())
 
-			// *-------------------------------------------------------------------------*
-			// * Parse exit command
-			// *-------------------------------------------------------------------------*
-			pr := gitHandler.ParseLatestChangesResult(result)
+				// *-------------------------------------------------------------------------*
+				// * Parse exit command
+				// *-------------------------------------------------------------------------*
+				pr := gitHandler.ParseLatestChangesResult(result)
 
-			if pr != nil {
-				slog.Debug("[agent-session] update session result")
-				sessionEvent.Result = &types.SessionEventResult{
-					PullRequest: pr,
+				if pr != nil {
+					slog.Debug("[agent-session] update session result")
+					sessionEvent.Result = &types.SessionEventResult{
+						PullRequest: pr,
+					}
+					sessionEvent.GitRef = &pr.HeadRefName
+					c.session.UpdateSessionEventResult(ctx, sessionEvent)
 				}
-				sessionEvent.GitRef = &pr.HeadRefName
-				c.session.UpdateSessionEventResult(ctx, sessionEvent)
-			}
 
-			// DO NOT REMOVE!
-			// Some times the harness bug out and doesn't send the response, causing the
-			// UI/UX Chat to stay in a thinking state; thus, with this, we guranteed to
-			// send the finish signal
-			slog.Debug("[agent-session] send response event")
-			agentHandler.SendResponse(ctx, session.Identifier, agentHandlerCredential, "")
+				// DO NOT REMOVE!
+				// Some times the harness bug out and doesn't send the response, causing the
+				// UI/UX Chat to stay in a thinking state; thus, with this, we guranteed to
+				// send the finish signal
+				slog.Debug("[agent-session] send response event")
+				agentHandler.SendResponse(ctx, session.Identifier, agentHandlerCredential, "")
+			})
 		}
 	}()
 
@@ -541,16 +615,18 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	// * Process harness output, blocks until work is completed or an error      *
 	// *-------------------------------------------------------------------------*
 	slog.Debug("[agent-session] harness running")
-	if err := c.harness(
-		ctx,
-		stdout,
-		stderr,
-		agentHandler,
-		agentHandlerCredential,
-		harnessHandler,
-		session,
-		sessionEvent,
-	); err != nil {
+	if err := telemetry.SpanErr(ctx, c.tracer, "execute.sandbox.harness", func(ctx context.Context) error {
+		return c.harness(
+			ctx,
+			stdout,
+			stderr,
+			agentHandler,
+			agentHandlerCredential,
+			harnessHandler,
+			session,
+			sessionEvent,
+		)
+	}); err != nil {
 		return types.EventJobStatus_Failed, err
 	}
 
@@ -595,22 +671,17 @@ func (c *controller) getHandlers(session *types.Session) (
 }
 
 func (c *controller) getPrompt(
-	ctx context.Context,
 	agentHandler interfaces.HandlerAgentSession,
 	session *types.Session,
 	sessionEvent *types.SessionEvent,
 ) (string, error) {
-	promptContext, err := telemetry.Span(ctx, c.tracer, "session.get_prompt_context", func(ctx context.Context) (*interfaces.PromptContext, error) {
-		return agentHandler.GetPromptContext(sessionEvent)
-	})
+	promptContext, err := agentHandler.GetPromptContext(sessionEvent)
 
 	if err != nil {
 		return "", err
 	}
 
-	return telemetry.Span1(ctx, c.tracer, "session.create_prompt", func(ctx context.Context) string {
-		return c.createPrompt(session, sessionEvent, promptContext)
-	}), nil
+	return c.createPrompt(session, sessionEvent, promptContext), nil
 }
 
 func (c *controller) createPrompt(
@@ -664,9 +735,7 @@ func (c *controller) verifyGitAccess(
 		return nil, nil
 	}
 
-	connection, err := telemetry.Span(ctx, c.tracer, "session.get_git_connection", func(ctx context.Context) (*types.GitConnection, error) {
-		return c.git.GetConnection(ctx, *session.RepoFullName)
-	})
+	connection, err := c.git.GetConnection(ctx, *session.RepoFullName)
 
 	if err != nil {
 		return nil, err
@@ -676,16 +745,14 @@ func (c *controller) verifyGitAccess(
 	// This applies to both public and private repositories — write operations
 	// (push branches, create PRs) require an authenticated Git.
 	if connection == nil || !connection.Connected || connection.InstallationId == nil {
-		if err := telemetry.SpanErr(ctx, c.tracer, "session.upsert_git_connection", func(ctx context.Context) error {
-			return c.git.UpsertConnection(
-				ctx, &types.GitConnection{
-					SessionEventIdentifier: &sessionEvent.Identifier,
-					RepoFullName:           *session.RepoFullName,
-					Connected:              false,
-					InstallationId:         nil,
-				},
-			)
-		}); err != nil {
+		if err := c.git.UpsertConnection(
+			ctx, &types.GitConnection{
+				SessionEventIdentifier: &sessionEvent.Identifier,
+				RepoFullName:           *session.RepoFullName,
+				Connected:              false,
+				InstallationId:         nil,
+			},
+		); err != nil {
 			return nil, err
 		}
 
