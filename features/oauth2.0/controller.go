@@ -33,9 +33,9 @@ const (
 )
 
 type Token struct {
-	AccessToken  string    `yaml:"access_token"`
-	RefreshToken string    `yaml:"refresh_token"`
-	ExpiresAt    time.Time `yaml:"expires_at"`
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token"`
+	ExpiresAt    time.Time `json:"expires_at"`
 }
 
 type CallbackResult struct {
