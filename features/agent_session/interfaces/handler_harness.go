@@ -53,7 +53,7 @@ type HandlerHarness interface {
 
 	// GetConfigFile pass in custom configuration
 	// return file path+data
-	GetConfigFile(config HarnessConfig) (string, []byte, error)
+	GetConfigFile(config *HarnessConfig) (string, []byte, error)
 
 	// RunCommand returns the harness command for execution
 	RunCommand() string
@@ -63,6 +63,7 @@ type HandlerHarness interface {
 	// invokes the corresponding callback to update the agent handler.
 	Parse(
 		ctx context.Context,
+		harnessConfig *HarnessConfig,
 		part <-chan []byte,
 		sessionEventIdentifier string,
 

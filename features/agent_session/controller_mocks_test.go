@@ -223,10 +223,11 @@ type mockHarnessHandler struct {
 	getConfigCommandsFn func() []string
 	getCommandsFn       func() []string
 	getPromptFileFn     func(prompt string) (string, []byte)
-	getConfigFileFn     func(config interfaces.HarnessConfig) (string, []byte, error)
+	getConfigFileFn     func(config *interfaces.HarnessConfig) (string, []byte, error)
 	runCommandFn        func() string
 	parseFn             func(
 		ctx context.Context,
+		harnessConfig *interfaces.HarnessConfig,
 		part <-chan []byte,
 		sessionEventIdentifier string,
 		sendThought func(ctx context.Context, text string) error,
@@ -265,7 +266,7 @@ func (m *mockHarnessHandler) GetPromptFile(prompt string) (string, []byte) {
 	return m.promptFile, m.promptData
 }
 
-func (m *mockHarnessHandler) GetConfigFile(config interfaces.HarnessConfig) (string, []byte, error) {
+func (m *mockHarnessHandler) GetConfigFile(config *interfaces.HarnessConfig) (string, []byte, error) {
 	if m.getConfigFileFn != nil {
 		return m.getConfigFileFn(config)
 	}
@@ -281,6 +282,7 @@ func (m *mockHarnessHandler) RunCommand() string {
 
 func (m *mockHarnessHandler) Parse(
 	ctx context.Context,
+	harnessConfig *interfaces.HarnessConfig,
 	part <-chan []byte,
 	sessionEventIdentifier string,
 	sendThought func(ctx context.Context, text string) error,
@@ -290,7 +292,7 @@ func (m *mockHarnessHandler) Parse(
 	sendServerInternalError func(ctx context.Context) error,
 ) error {
 	if m.parseFn != nil {
-		return m.parseFn(ctx, part, sessionEventIdentifier, sendThought, sendResponse, sendAction, sendElicitation, sendServerInternalError)
+		return m.parseFn(ctx, harnessConfig, part, sessionEventIdentifier, sendThought, sendResponse, sendAction, sendElicitation, sendServerInternalError)
 	}
 
 	for p := range part {
