@@ -45,14 +45,6 @@ type mockAgentHandler struct {
 	internalErrors int
 }
 
-func (m *mockAgentHandler) SendInitialThought(ctx context.Context, sessionId, organizationId string) error {
-	m.thoughts = append(m.thoughts, "")
-	if m.sendThoughtFn != nil {
-		return m.sendThoughtFn(ctx, sessionId, "", "")
-	}
-	return nil
-}
-
 type gitRequest struct {
 	sessionId     string
 	accessToken   string

@@ -26,4 +26,10 @@ type Client interface {
 	GetWorkspaceInfo(ctx context.Context, accessToken string) (*types.WorkspaceInfo, error)
 	RefreshToken(ctx context.Context, refreshToken string) (*types.Token, error)
 	CreateAgentActivity(ctx context.Context, accessToken string, input types.CreateAgentActivityInput) error
+
+	// SendInitialThought immediately acknowledges a newly created agent
+	// session with a thought activity, resolving the access token for the
+	// given organization first. It lets the webhook ingestion path respond
+	// to the created event before any other processing happens.
+	SendInitialThought(ctx context.Context, sessionId, organizationId string) error
 }

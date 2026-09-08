@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/workdock-dev/engine/features/webhook"
+	"github.com/workdock-dev/engine/plug-ings/linear/interfaces"
 	"github.com/workdock-dev/engine/plug-ings/linear/types"
 	"github.com/workdock-dev/engine/shared"
 )
@@ -175,26 +176,19 @@ func (t *WEventVerifier) verifyWebhookSignature(headerSignature string, body []b
 }
 
 type WEventConsumer struct {
-	eventBus           *shared.EventBus
-	agentSessionRouter AgentSessionRouter
-}
-
-// AgentSessionRouter routes agent session acknowledgement calls to the
-// handler registered for a provider. It matches the agent session handler
-// registry kept by the agent session feature.
-type AgentSessionRouter interface {
-	SendInitialThought(ctx context.Context, sessionId, organizationId string) error
+	eventBus *shared.EventBus
+	client   interfaces.Client
 }
 
 // NewWEventConsumer creates a webhook consumer for processing verified
-// Linear webhook events. The agent session handler is used to acknowledge
-// newly created agent sessions directly in the ingestion path so the
-// provider's first-response guarantee holds regardless of job queue
-// saturation. A nil handler skips the early acknowledgement.
-func NewWEventConsumer(eventBus *shared.EventBus, agentSessionRouter AgentSessionRouter) webhook.WEventConsumer {
+// Linear webhook events. The client is used to acknowledge newly created
+// agent sessions directly in the ingestion path so the provider's
+// first-response guarantee holds regardless of job queue saturation. A nil
+// client skips the early acknowledgement.
+func NewWEventConsumer(eventBus *shared.EventBus, client interfaces.Client) webhook.WEventConsumer {
 	return &WEventConsumer{
-		eventBus:           eventBus,
-		agentSessionRouter: agentSessionRouter,
+		eventBus: eventBus,
+		client:   client,
 	}
 }
 
@@ -278,8 +272,8 @@ func (c *WEventConsumer) acknowledgeNewAgentSession(payload *types.AgentSessionE
 		return
 	}
 
-	if c.agentSessionRouter == nil {
-		slog.Warn("[webhook][linear] no agent session handler configured, skipping initial thought")
+	if c.client == nil {
+		slog.Warn("[webhook][linear] no linear client configured, skipping initial thought")
 		return
 	}
 
@@ -287,7 +281,7 @@ func (c *WEventConsumer) acknowledgeNewAgentSession(payload *types.AgentSessionE
 
 	// Best-effort acknowledgement: the webhook is already verified and the
 	// prompt event will still be processed even when this fails.
-	if err := c.agentSessionRouter.SendInitialThought(context.Background(), payload.AgentSession.ID, payload.OrganizationID); err != nil {
+	if err := c.client.SendInitialThought(context.Background(), payload.AgentSession.ID, payload.OrganizationID); err != nil {
 		slog.Error("[webhook][linear] failed to send initial thought", "session_id", payload.AgentSession.ID, "err", err)
 	}
 }

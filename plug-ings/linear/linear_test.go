@@ -52,6 +52,21 @@ type mockClient struct {
 	activityTokens []string
 }
 
+func (m *mockClient) SendInitialThought(ctx context.Context, sessionId, organizationId string) error {
+	m.activities = append(m.activities, types.CreateAgentActivityInput{
+		AgentSessionID: sessionId,
+		Content:        types.AgentActivityContent{Type: types.AgentActivityContentType_Thought, Body: ""},
+	})
+	m.activityTokens = append(m.activityTokens, "org-access-token")
+	if m.activityFn != nil {
+		return m.activityFn(ctx, "org-access-token", types.CreateAgentActivityInput{
+			AgentSessionID: sessionId,
+			Content:        types.AgentActivityContent{Type: types.AgentActivityContentType_Thought, Body: ""},
+		})
+	}
+	return nil
+}
+
 func (m *mockClient) GetIssueLabels(ctx context.Context, issueId, accessToken string) ([]string, error) {
 	if m.labelsFn != nil {
 		return m.labelsFn(ctx, issueId, accessToken)
@@ -128,26 +143,6 @@ type eventRecorder struct {
 	stop        []shared.AgentSessionStopEvent
 }
 
-// mockInitialThoughtRouter records SendInitialThought calls in the order they
-// happen relative to published events.
-type mockInitialThoughtRouter struct {
-	thoughts []initialThought
-	err      error
-}
-
-type initialThought struct {
-	sessionId      string
-	organizationId string
-}
-
-func (m *mockInitialThoughtRouter) SendInitialThought(ctx context.Context, sessionId, organizationId string) error {
-	m.thoughts = append(m.thoughts, initialThought{
-		sessionId:      sessionId,
-		organizationId: organizationId,
-	})
-	return m.err
-}
-
 func newRecordingEventBus(rec *eventRecorder) *shared.EventBus {
 	bus := shared.NewEventBus()
 	handle := func(ctx context.Context, event shared.DomainEvent) error {
@@ -192,9 +187,9 @@ func signHmac(body []byte, secret string) string {
 
 type WebhookSuite struct {
 	suite.Suite
-	recorder  *eventRecorder
-	bus       *shared.EventBus
-	mockRoute *mockInitialThoughtRouter
+	recorder *eventRecorder
+	bus      *shared.EventBus
+	client   *mockClient
 }
 
 func TestWebhookSuite(t *testing.T) {
@@ -204,11 +199,11 @@ func TestWebhookSuite(t *testing.T) {
 func (s *WebhookSuite) SetupTest() {
 	s.recorder = &eventRecorder{}
 	s.bus = newRecordingEventBus(s.recorder)
-	s.mockRoute = &mockInitialThoughtRouter{}
+	s.client = &mockClient{}
 }
 
 func (s *WebhookSuite) newConsumer() *WEventConsumer {
-	return NewWEventConsumer(s.bus, s.mockRoute).(*WEventConsumer)
+	return NewWEventConsumer(s.bus, s.client).(*WEventConsumer)
 }
 
 func (s *WebhookSuite) TestTransform() {
@@ -599,9 +594,11 @@ func (s *WebhookSuite) TestConsume_AgentSession_Created_SendsInitialThoughtBefor
 
 	// The acknowledgement must reach Linear before the prompt event is
 	// processed (which performs all the DB work and job insertion).
-	s.Require().Len(s.mockRoute.thoughts, 1)
-	s.Equal("sess-1", s.mockRoute.thoughts[0].sessionId)
-	s.Equal("org-1", s.mockRoute.thoughts[0].organizationId)
+	s.Require().Len(s.client.activities, 1)
+	s.Equal(types.CreateAgentActivityInput{
+		AgentSessionID: "sess-1",
+		Content:        types.AgentActivityContent{Type: types.AgentActivityContentType_Thought, Body: ""},
+	}, s.client.activities[0])
 }
 
 func (s *WebhookSuite) TestConsume_AgentSession_Prompted_DoesNotSendInitialThought() {
@@ -620,7 +617,7 @@ func (s *WebhookSuite) TestConsume_AgentSession_Prompted_DoesNotSendInitialThoug
 
 	s.Require().NoError(err)
 	s.Require().Len(s.recorder.prompt, 1)
-	s.Empty(s.mockRoute.thoughts)
+	s.Empty(s.client.activities)
 }
 
 func (s *WebhookSuite) TestConsume_AgentSession_StopSignal_DoesNotSendInitialThought() {
@@ -640,11 +637,13 @@ func (s *WebhookSuite) TestConsume_AgentSession_StopSignal_DoesNotSendInitialTho
 	s.Require().NoError(err)
 	s.Empty(s.recorder.prompt)
 	s.Require().Len(s.recorder.stop, 1)
-	s.Empty(s.mockRoute.thoughts)
+	s.Empty(s.client.activities)
 }
 
 func (s *WebhookSuite) TestConsume_AgentSession_Created_ThoughtFailureDoesNotBlockIngestion() {
-	s.mockRoute.err = fmt.Errorf("linear api down")
+	s.client.activityFn = func(ctx context.Context, accessToken string, input types.CreateAgentActivityInput) error {
+		return fmt.Errorf("linear api down")
+	}
 	payload := fmt.Sprintf(`{
 		"action": "%s",
 		"organizationId": "org-1",
@@ -659,7 +658,7 @@ func (s *WebhookSuite) TestConsume_AgentSession_Created_ThoughtFailureDoesNotBlo
 
 	s.Require().NoError(err)
 	s.Require().Len(s.recorder.prompt, 1, "prompt event must still be published when the acknowledgement fails")
-	s.Require().Len(s.mockRoute.thoughts, 1)
+	s.Require().Len(s.client.activities, 1)
 }
 
 func (s *WebhookSuite) TestConsume_AgentSession_Created_MissingSessionData() {
@@ -676,10 +675,10 @@ func (s *WebhookSuite) TestConsume_AgentSession_Created_MissingSessionData() {
 
 	s.Require().NoError(err)
 	s.Require().Len(s.recorder.prompt, 1)
-	s.Empty(s.mockRoute.thoughts)
+	s.Empty(s.client.activities)
 }
 
-func (s *WebhookSuite) TestConsume_AgentSession_Created_NilRouterStillIngests() {
+func (s *WebhookSuite) TestConsume_AgentSession_Created_NilClientStillIngests() {
 	consumer := NewWEventConsumer(s.bus, nil).(*WEventConsumer)
 	payload := fmt.Sprintf(`{
 		"action": "%s",
@@ -818,29 +817,6 @@ func (s *AgentSessionSuite) TestGetCredentials() {
 
 	s.Require().NoError(err)
 	s.Equal("org-access-token", token)
-}
-
-func (s *AgentSessionSuite) TestSendInitialThought() {
-	err := s.handler.SendInitialThought(context.Background(), "sess-1", "org-1")
-
-	s.Require().NoError(err)
-	s.Require().Len(s.client.activities, 1)
-	s.Equal(types.CreateAgentActivityInput{
-		AgentSessionID: "sess-1",
-		Content:        types.AgentActivityContent{Type: types.AgentActivityContentType_Thought, Body: ""},
-	}, s.client.activities[0])
-	s.Equal("org-access-token", s.client.activityTokens[0], "credentials must be resolved from the organization")
-}
-
-func (s *AgentSessionSuite) TestSendInitialThought_CredentialError() {
-	s.secrets.getFn = func(ctx context.Context, secretPath, secretName string) (string, error) {
-		return "", fmt.Errorf("boom")
-	}
-
-	err := s.handler.SendInitialThought(context.Background(), "sess-1", "org-1")
-
-	s.Error(err)
-	s.Empty(s.client.activities)
 }
 
 func (s *AgentSessionSuite) TestGetCredentials_SecretError() {
@@ -1121,7 +1097,6 @@ var (
 	_ shared.SecretManager                         = (*mockSecretManager)(nil)
 	_ shared.DomainEvent                           = mismatchedDomainEvent{}
 	_ agent_session_interfaces.HandlerAgentSession = (*AgentSessionHandler)(nil)
-	_ AgentSessionRouter                           = (*mockInitialThoughtRouter)(nil)
 	_ oauth20.OauthHandler                         = (*oauth20Handler)(nil)
 	_ webhook.WEventConsumer                       = (*WEventConsumer)(nil)
 )
