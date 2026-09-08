@@ -366,7 +366,8 @@ func (c *controller) onIssueChange() {
 			for _, session := range sessions {
 				if err := telemetry.SpanErr(ctx, c.tracer, "on_issue_change.archive_sandbox", func(ctx context.Context) error {
 					return sandboxHandler.Archive(ctx, &interfaces.SandboxConfig{
-						Session: session,
+						Session:      session,
+						SessionEvent: &types.SessionEvent{SessionIdentifier: session.Identifier},
 					})
 				}); err != nil {
 					slog.Error("[agent-session] failed to archive sandbox for session",
@@ -374,9 +375,6 @@ func (c *controller) onIssueChange() {
 						"session_identifier", session.Identifier,
 						"issue_id", e.IssueId,
 					)
-
-					// Continue archiving the remaining sandboxes even if one fails
-					continue
 				}
 			}
 

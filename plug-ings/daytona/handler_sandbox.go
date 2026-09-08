@@ -329,13 +329,7 @@ func (h *SandboxHandler) Archive(ctx context.Context, config *agent_session_inte
 
 		return sandbox.Archive(ctx)
 	}); err != nil {
-		var eventIdentifier string
-
-		if config.SessionEvent != nil {
-			eventIdentifier = config.SessionEvent.Identifier
-		}
-
-		slog.Error("failed to archive daytona sandbox", "err", err, "event_identifier", eventIdentifier)
+		slog.Error("failed to archive daytona sandbox", "err", err, "event_identifier", config.SessionEvent.Identifier)
 		return err
 	}
 
