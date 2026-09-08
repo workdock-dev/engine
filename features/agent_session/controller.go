@@ -336,13 +336,13 @@ func (c *controller) onAgentSessionStop() {
 // published on the event bus.
 func (c *controller) onIssueChange() {
 	c.eventBus.Subscribe(shared.EventType_IssueChange, func(ctx context.Context, event shared.DomainEvent) error {
-		e, ok := event.(shared.IssueChangedEvent)
-
-		if !ok {
-			return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_IssueChange, event.EventType())
-		}
-
 		return telemetry.SpanErr(ctx, c.tracer, "on_issue_change", func(ctx context.Context) error {
+			e, ok := event.(shared.IssueChangedEvent)
+
+			if !ok {
+				return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_IssueChange, event.EventType())
+			}
+
 			sessions, err := telemetry.Span(ctx, c.tracer, "on_issue_change.get_sessions", func(ctx context.Context) ([]*types.Session, error) {
 				return c.session.GetAgentSessionsByIssueId(ctx, e.IssueId)
 			})
