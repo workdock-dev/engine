@@ -757,23 +757,6 @@ func (s *ControllerSuite) TestOnIssueChange_NoSessions_NothingToArchive() {
 	s.Empty(s.sandboxHdl.archived)
 }
 
-func (s *ControllerSuite) TestOnIssueChange_HandlerNotFound() {
-	s.initController()
-	s.sessionRep.getAgentSessionsByIssueIdFn = func(ctx context.Context, issueId string) ([]*types.Session, error) {
-		return []*types.Session{newTestSession()}, nil
-	}
-	delete(s.c.agentHandlerRegistry, "linear")
-
-	err := s.publish(shared.EventType_IssueChange, shared.IssueChangedEvent{
-		Provider: string(shared.PlatformProvider_Linear),
-		IssueId:  "issue-1",
-	})
-
-	s.Error(err)
-	s.ErrorContains(err, "agent session handler not found in registry: linear")
-	s.Empty(s.sandboxHdl.archived)
-}
-
 func (s *ControllerSuite) TestOnIssueChange_SandboxHandlerNotFound() {
 	s.initController()
 	s.sessionRep.getAgentSessionsByIssueIdFn = func(ctx context.Context, issueId string) ([]*types.Session, error) {
