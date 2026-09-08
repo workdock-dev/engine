@@ -79,6 +79,10 @@ func (m *mockClient) SendInitialThought(ctx context.Context, sessionId, organiza
 	return nil
 }
 
+func (m *mockClient) GetCredentials(ctx context.Context, organizationId string) (string, error) {
+	return "org-access-token", nil
+}
+
 func (m *mockClient) GetIssueLabels(ctx context.Context, issueId, accessToken string) ([]string, error) {
 	if m.labelsFn != nil {
 		return m.labelsFn(ctx, issueId, accessToken)
@@ -531,6 +535,17 @@ func (s *WebhookSuite) TestConsume_Issue_Success() {
 		"updatedFrom": {"stateName": "Todo"}
 	}`, time.Now().UnixMilli())
 
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		s.Equal("org-access-token", accessToken)
+		s.Equal("issue-1", issueId)
+		return &types.IssueStateResult{
+			ID:        issueId,
+			TeamID:    "team-1",
+			StateName: "Done",
+			StateType: types.IssueStateType_Completed,
+		}, nil
+	}
+
 	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
 		WEventType: WEventType_Issue,
 		Payload:    []byte(payload),
@@ -541,12 +556,96 @@ func (s *WebhookSuite) TestConsume_Issue_Success() {
 
 	event := s.recorder.issueChange[0]
 	s.Equal(string(shared.PlatformProvider_Linear), event.Provider)
-	issuePayload, ok := event.Payload.(types.IssueStatusChangePayload)
-	s.Require().True(ok)
-	s.Equal("update", issuePayload.Action)
-	s.Equal("org-1", issuePayload.OrganizationID)
-	s.Equal("issue-1", issuePayload.Data.ID)
-	s.Equal("Todo", issuePayload.UpdatedFrom.StateName)
+	s.Equal("issue-1", event.IssueId)
+}
+
+func (s *WebhookSuite) TestConsume_Issue_NotCompletedState_NoEvent() {
+	payload := fmt.Sprintf(`{
+		"action": "update",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d,
+		"data": {"id": "issue-1"},
+		"updatedFrom": {"stateName": "Done"}
+	}`, time.Now().UnixMilli())
+
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		return &types.IssueStateResult{
+			ID:        issueId,
+			TeamID:    "team-1",
+			StateName: "Todo",
+			StateType: types.IssueStateType_Unstarted,
+		}, nil
+	}
+
+	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_Issue,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err)
+	s.Empty(s.recorder.issueChange, "non-done issues must not emit the issue change event")
+}
+
+func (s *WebhookSuite) TestConsume_Issue_CreationAction_NoEvent() {
+	payload := fmt.Sprintf(`{
+		"action": "create",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d,
+		"data": {"id": "issue-1"}
+	}`, time.Now().UnixMilli())
+
+	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_Issue,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err)
+	s.Empty(s.recorder.issueChange, "creation events must not emit the issue change event")
+	s.Empty(s.client.issueCalls, "creation events must not query the issue state")
+}
+
+func (s *WebhookSuite) TestConsume_Issue_CredentialsError_NoEvent() {
+	payload := fmt.Sprintf(`{
+		"action": "update",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d,
+		"data": {"id": "issue-1"}
+	}`, time.Now().UnixMilli())
+
+	s.secrets = &mockSecretManager{
+		getFn: func(ctx context.Context, secretPath, secretName string) (string, error) {
+			return "", fmt.Errorf("boom")
+		},
+	}
+
+	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_Issue,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err, "issue verification failures must not fail webhook ingestion")
+	s.Empty(s.recorder.issueChange)
+}
+
+func (s *WebhookSuite) TestConsume_Issue_GetIssueError_NoEvent() {
+	payload := fmt.Sprintf(`{
+		"action": "update",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d,
+		"data": {"id": "issue-1"}
+	}`, time.Now().UnixMilli())
+
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		return nil, fmt.Errorf("linear api down")
+	}
+
+	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_Issue,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err, "issue verification failures must not fail webhook ingestion")
+	s.Empty(s.recorder.issueChange)
 }
 
 func (s *WebhookSuite) TestConsume_AgentSession_InvalidJson() {

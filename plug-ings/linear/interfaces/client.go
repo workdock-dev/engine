@@ -35,4 +35,8 @@ type Client interface {
 	// given organization first. It lets the webhook ingestion path respond
 	// to the created event before any other processing happens.
 	SendInitialThought(ctx context.Context, sessionId, organizationId string) error
+
+	// GetCredentials resolves the Linear API access token for the given
+	// organization, refreshing and persisting it when expired.
+	GetCredentials(ctx context.Context, organizationId string) (string, error)
 }

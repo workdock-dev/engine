@@ -258,18 +258,6 @@ type IssueStatusChangePayload struct {
 	} `json:"updatedFrom"`
 }
 
-// IssueId returns the identifier of the issue that changed, implementing the
-// shared.IssueChangePayload contract.
-func (p IssueStatusChangePayload) IssueId() string {
-	return p.Data.ID
-}
-
-// IsUpdate reports whether the webhook event is an update to an existing
-// issue, implementing the shared.IssueChangePayload contract.
-func (p IssueStatusChangePayload) IsUpdate() bool {
-	return p.Action == "update"
-}
-
 // IssueStateResult holds the state information for a Linear issue returned
 // by the GetIssue query.
 type IssueStateResult struct {

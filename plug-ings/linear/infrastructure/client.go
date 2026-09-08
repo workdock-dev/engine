@@ -246,7 +246,7 @@ func (s *Client) CreateAgentActivity(ctx context.Context, accessToken string, in
 // webhook passes verification so the provider's first-response window stays
 // intact.
 func (s *Client) SendInitialThought(ctx context.Context, sessionId, organizationId string) error {
-	credentials, err := s.tokenHandler.GetLinearAccessToken(ctx, organizationId)
+	credentials, err := s.GetCredentials(ctx, organizationId)
 
 	if err != nil {
 		return err
@@ -259,6 +259,12 @@ func (s *Client) SendInitialThought(ctx context.Context, sessionId, organization
 			Body: "",
 		},
 	})
+}
+
+// GetCredentials resolves the Linear API access token for the given
+// organization, renewing and persisting expired tokens before returning.
+func (s *Client) GetCredentials(ctx context.Context, organizationId string) (string, error) {
+	return s.tokenHandler.GetLinearAccessToken(ctx, organizationId)
 }
 
 // GetIssue retrieves the state information of a Linear issue.
