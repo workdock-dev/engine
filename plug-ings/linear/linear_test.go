@@ -191,7 +191,7 @@ func (m *mockSecretManager) Delete(ctx context.Context, secretPath, secretName s
 // eventRecorder subscribes to the Linear-relevant events on a real EventBus.
 // Publish is synchronous, so recorded events are available immediately.
 type eventRecorder struct {
-	issueChange []shared.IssueChangedEvent
+	archiveEvents []shared.AgentSessionArchiveEvent
 	prompt      []shared.AgentSessionPromptEvent
 	stop        []shared.AgentSessionStopEvent
 }
@@ -200,8 +200,8 @@ func newRecordingEventBus(rec *eventRecorder) *shared.EventBus {
 	bus := shared.NewEventBus()
 	handle := func(ctx context.Context, event shared.DomainEvent) error {
 		switch e := event.(type) {
-		case shared.IssueChangedEvent:
-			rec.issueChange = append(rec.issueChange, e)
+		case shared.AgentSessionArchiveEvent:
+			rec.archiveEvents = append(rec.archiveEvents, e)
 		case shared.AgentSessionPromptEvent:
 			rec.prompt = append(rec.prompt, e)
 		case shared.AgentSessionStopEvent:
@@ -209,7 +209,7 @@ func newRecordingEventBus(rec *eventRecorder) *shared.EventBus {
 		}
 		return nil
 	}
-	bus.Subscribe(shared.EventType_IssueChange, handle)
+	bus.Subscribe(shared.EventType_AgentSessionArchive, handle)
 	bus.Subscribe(shared.EventType_AgentSessionPrompt, handle)
 	bus.Subscribe(shared.EventType_AgentSessionStop, handle)
 	return bus
@@ -506,7 +506,7 @@ func (s *WebhookSuite) TestConsume_UnhandledEventType() {
 	})
 
 	s.ErrorIs(err, webhook.ErrWBadRequest)
-	s.Empty(s.recorder.issueChange)
+	s.Empty(s.recorder.archiveEvents)
 	s.Empty(s.recorder.prompt)
 }
 
@@ -517,7 +517,7 @@ func (s *WebhookSuite) TestConsume_Issue_InvalidJson() {
 	})
 
 	s.ErrorIs(err, webhook.ErrWBadRequest)
-	s.Empty(s.recorder.issueChange)
+	s.Empty(s.recorder.archiveEvents)
 }
 
 func (s *WebhookSuite) TestConsume_Issue_StaleTimestamp() {
@@ -527,7 +527,7 @@ func (s *WebhookSuite) TestConsume_Issue_StaleTimestamp() {
 	})
 
 	s.ErrorIs(err, webhook.ErrWUnAuthorized)
-	s.Empty(s.recorder.issueChange)
+	s.Empty(s.recorder.archiveEvents)
 }
 
 func (s *WebhookSuite) TestConsume_Issue_Success() {
@@ -556,9 +556,9 @@ func (s *WebhookSuite) TestConsume_Issue_Success() {
 	})
 
 	s.Require().NoError(err)
-	s.Require().Len(s.recorder.issueChange, 1)
+	s.Require().Len(s.recorder.archiveEvents, 1)
 
-	event := s.recorder.issueChange[0]
+	event := s.recorder.archiveEvents[0]
 	s.Equal(string(shared.PlatformProvider_Linear), event.Provider)
 	s.Equal("issue-1", event.IssueId)
 }
@@ -587,7 +587,7 @@ func (s *WebhookSuite) TestConsume_Issue_NotCompletedState_NoEvent() {
 	})
 
 	s.Require().NoError(err)
-	s.Empty(s.recorder.issueChange, "non-done issues must not emit the issue change event")
+	s.Empty(s.recorder.archiveEvents, "non-done issues must not emit the agent session archive event")
 }
 
 func (s *WebhookSuite) TestConsume_Issue_CreationAction_NoEvent() {
@@ -604,7 +604,7 @@ func (s *WebhookSuite) TestConsume_Issue_CreationAction_NoEvent() {
 	})
 
 	s.Require().NoError(err)
-	s.Empty(s.recorder.issueChange, "creation events must not emit the issue change event")
+	s.Empty(s.recorder.archiveEvents, "creation events must not emit the agent session archive event")
 	s.Empty(s.client.issueCalls, "creation events must not query the issue state")
 }
 
@@ -626,7 +626,7 @@ func (s *WebhookSuite) TestConsume_Issue_CredentialsError_NoEvent() {
 	})
 
 	s.Require().NoError(err, "issue verification failures must not fail webhook ingestion")
-	s.Empty(s.recorder.issueChange)
+	s.Empty(s.recorder.archiveEvents)
 }
 
 func (s *WebhookSuite) TestConsume_Issue_GetIssueError_NoEvent() {
@@ -647,7 +647,7 @@ func (s *WebhookSuite) TestConsume_Issue_GetIssueError_NoEvent() {
 	})
 
 	s.Require().NoError(err, "issue verification failures must not fail webhook ingestion")
-	s.Empty(s.recorder.issueChange)
+	s.Empty(s.recorder.archiveEvents)
 }
 
 func (s *WebhookSuite) TestConsume_AgentSession_InvalidJson() {
@@ -884,7 +884,7 @@ func (s *AgentSessionSuite) TestIngest_WrongEventType() {
 
 type mismatchedDomainEvent struct{}
 
-func (m mismatchedDomainEvent) EventType() string { return "issue.changed" }
+func (m mismatchedDomainEvent) EventType() string { return "agent_session.prompt" }
 
 func (s *AgentSessionSuite) TestIngest_WrongPayload() {
 	_, _, err := s.handler.Ingest(shared.AgentSessionPromptEvent{Payload: "not-a-struct"})

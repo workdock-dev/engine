@@ -254,7 +254,7 @@ func (c *WEventConsumer) Consume(_ context.Context, event *webhook.VerifiedWEven
 
 // consumeIssueEvent verifies whether an issue update event moved the issue
 // into a done workflow state and, only when it did, publishes the
-// IssueChangedEvent to archive the issue's sandboxes.
+// AgentSessionArchiveEvent to archive the issue's sandboxes.
 //
 // The webhook payload only carries the state's display name, not its type, so
 // the current issue state is re-checked against Linear. Verification errors
@@ -281,7 +281,7 @@ func (c *WEventConsumer) consumeIssueEvent(payload types.IssueStatusChangePayloa
 		return nil
 	}
 
-	c.eventBus.Publish(context.Background(), shared.IssueChangedEvent{
+	c.eventBus.Publish(context.Background(), shared.AgentSessionArchiveEvent{
 		Provider: string(shared.PlatformProvider_Linear),
 		IssueId:  payload.Data.ID,
 	})
