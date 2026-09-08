@@ -904,6 +904,7 @@ func (s *WebhookSuite) TestHandleCheckSuite() {
 		{name: "passing conclusion", payload: `{"action":"completed","sender":{"login":"alice"},"check_suite":{"conclusion":"success"}}`},
 		{name: "nil installation", payload: `{"action":"completed","sender":{"login":"alice"},"check_suite":{"conclusion":"failure"}}`},
 		{name: "no pull requests", payload: `{"action":"completed","sender":{"login":"alice"},"installation":{"id":5},"check_suite":{"conclusion":"failure"}}`},
+		{name: "nil repository", payload: `{"action":"completed","sender":{"login":"alice"},"installation":{"id":5},"check_suite":{"conclusion":"failure","pull_requests":[{"head":{"ref":"r1"},"url":"https://github.com/pull/1"}]}}`},
 	}
 
 	for _, tt := range tests {
@@ -927,9 +928,9 @@ func (s *WebhookSuite) TestHandleCheckSuite_Success() {
 			"action": "completed",
 			"sender": {"login": "alice"},
 			"installation": {"id": 5},
+			"repository": {"full_name": "owner/repo"},
 			"check_suite": {
 				"conclusion": "failure",
-				"repository": {"full_name": "owner/repo"},
 				"pull_requests": [
 					{"head": {"ref": "suite-1", "repo": {"full_name": "owner/repo"}}, "url": "https://github.com/pull/10"},
 					{"head": {"ref": "suite-2", "repo": {"full_name": "owner/repo"}}, "url": "https://github.com/pull/11"}
