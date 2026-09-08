@@ -233,9 +233,9 @@ func (s *Client) CreateAgentActivity(ctx context.Context, accessToken string, in
 // GetIssue retrieves the state information of a Linear issue.
 //
 //   - Queries Linear for the issue's state metadata including the state name
-//     and type.
-//   - Returns an IssueStateResult containing the issue ID, state name and state
-//     type.
+//     and type, plus the issue's team identifier.
+//   - Returns an IssueStateResult containing the issue ID, team ID, state name
+//     and state type.
 //
 // An error is returned if the specified issue cannot be found or the request
 // fails.
@@ -243,6 +243,9 @@ func (s *Client) GetIssue(ctx context.Context, accessToken string, issueId strin
 	query := `query GetIssue($id: String!) {
   issue(id: $id) {
     id
+    team {
+      id
+    }
     state {
       name
       type
@@ -262,7 +265,10 @@ func (s *Client) GetIssue(ctx context.Context, accessToken string, issueId strin
 
 	var result struct {
 		Issue *struct {
-			ID    string `json:"id"`
+			ID   string `json:"id"`
+			Team *struct {
+				ID string `json:"id"`
+			} `json:"team"`
 			State *struct {
 				Name string `json:"name"`
 				Type string `json:"type"`
@@ -282,12 +288,113 @@ func (s *Client) GetIssue(ctx context.Context, accessToken string, issueId strin
 		ID: result.Issue.ID,
 	}
 
+	if result.Issue.Team != nil {
+		issueResult.TeamID = result.Issue.Team.ID
+	}
+
 	if result.Issue.State != nil {
 		issueResult.StateName = result.Issue.State.Name
 		issueResult.StateType = result.Issue.State.Type
 	}
 
 	return issueResult, nil
+}
+
+// GetTeamWorkflowStates retrieves the workflow states of a Linear team.
+//
+//   - Queries Linear for the team's workflow states metadata.
+//   - Returns every workflow state defined for the team, including its
+//     identifier, name, type and position.
+//
+// An error is returned if the specified team cannot be found or the request
+// fails.
+func (s *Client) GetTeamWorkflowStates(ctx context.Context, accessToken, teamId string) ([]types.WorkflowState, error) {
+	query := `query GetTeamWorkflowStates($id: String!) {
+  team(id: $id) {
+    states {
+      nodes {
+        id
+        name
+        type
+        position
+      }
+    }
+  }
+}`
+
+	vars := map[string]any{
+		"id": teamId,
+	}
+
+	body, err := s.doRequest(ctx, query, vars, accessToken)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Team *struct {
+			States struct {
+				Nodes []types.WorkflowState `json:"nodes"`
+			} `json:"states"`
+		} `json:"team"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("[linear-client] failed to unmarshal response: %w", err)
+	}
+
+	if result.Team == nil {
+		return nil, fmt.Errorf("[linear-client] team not found: %s", teamId)
+	}
+
+	return result.Team.States.Nodes, nil
+}
+
+// UpdateIssueState transitions a Linear issue to the given workflow state.
+//
+//   - Runs Linear's issueUpdate mutation with the target state identifier.
+//   - Persists the issue's new workflow state on the Linear timeline.
+//
+// The operation succeeds only if Linear accepts and persists the state
+// change.
+func (s *Client) UpdateIssueState(ctx context.Context, accessToken, issueId, stateId string) error {
+	query := `mutation UpdateIssueState($input: IssueUpdateInput!, $id: String!) {
+  issueUpdate(input: $input, id: $id) {
+    success
+    lastSyncId
+  }
+}`
+
+	vars := map[string]any{
+		"id": issueId,
+		"input": map[string]any{
+			"stateId": stateId,
+		},
+	}
+
+	body, err := s.doRequest(ctx, query, vars, accessToken)
+
+	if err != nil {
+		return err
+	}
+
+	var result struct {
+		Payload types.IssueUpdateOutput `json:"issueUpdate"`
+	}
+
+	if err := json.Unmarshal(body, &result); err != nil {
+		slog.Error("[linear-client] failed to unmarshall update issue state result", "err", err)
+		return err
+	}
+
+	slog.Debug("[linear-client] issue state updated", "success", result.Payload.Success)
+
+	if !result.Payload.Success {
+		return errors.New("[linear-client] update issue state returned unsuccess")
+	}
+
+	return nil
 }
 
 // GetIssueLabels retrieves the labels currently assigned to a Linear issue.

@@ -36,13 +36,18 @@ type mockAgentHandler struct {
 	sendElicitationFn     func(ctx context.Context, sessionId, accessToken string, elicitation types.AgentElicitation) error
 	sendGitConnectionRqFn func(ctx context.Context, sessionId, accessToken, gitProvider, gitInstallURL string) error
 	sendInternalErrFn     func(ctx context.Context, sessionId, accessToken string) error
+	getIssueStateFn       func(ctx context.Context, issueId, accessToken string) (*interfaces.IssueState, error)
+	transitionStartedFn   func(ctx context.Context, issueId, accessToken string) error
+	transitionInReviewFn  func(ctx context.Context, issueId, accessToken string) error
 
-	thoughts       []string
-	responses      []string
-	gitRequests    []gitRequest
-	actions        []types.AgentAction
-	elicitations   []types.AgentElicitation
-	internalErrors int
+	thoughts             []string
+	responses            []string
+	gitRequests          []gitRequest
+	actions              []types.AgentAction
+	elicitations         []types.AgentElicitation
+	internalErrors       int
+	transitionStarted    []string
+	transitionedInReview []string
 }
 
 type gitRequest struct {
@@ -132,6 +137,29 @@ func (m *mockAgentHandler) SendServerInternalError(ctx context.Context, sessionI
 	m.internalErrors++
 	if m.sendInternalErrFn != nil {
 		return m.sendInternalErrFn(ctx, sessionId, accessToken)
+	}
+	return nil
+}
+
+func (m *mockAgentHandler) GetIssueState(ctx context.Context, issueId, accessToken string) (*interfaces.IssueState, error) {
+	if m.getIssueStateFn != nil {
+		return m.getIssueStateFn(ctx, issueId, accessToken)
+	}
+	return &interfaces.IssueState{Name: "Todo", Type: "unstarted"}, nil
+}
+
+func (m *mockAgentHandler) TransitionIssueToStarted(ctx context.Context, issueId, accessToken string) error {
+	m.transitionStarted = append(m.transitionStarted, issueId)
+	if m.transitionStartedFn != nil {
+		return m.transitionStartedFn(ctx, issueId, accessToken)
+	}
+	return nil
+}
+
+func (m *mockAgentHandler) TransitionIssueToInReview(ctx context.Context, issueId, accessToken string) error {
+	m.transitionedInReview = append(m.transitionedInReview, issueId)
+	if m.transitionInReviewFn != nil {
+		return m.transitionInReviewFn(ctx, issueId, accessToken)
 	}
 	return nil
 }

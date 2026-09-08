@@ -51,6 +51,20 @@ const (
 	SignalType_Stop = "stop"
 )
 
+// Linear issue workflow state types.
+const (
+	IssueStateType_Triage    = "triage"
+	IssueStateType_Backlog   = "backlog"
+	IssueStateType_Unstarted = "unstarted"
+	IssueStateType_Started   = "started"
+	IssueStateType_Completed = "completed"
+	IssueStateType_Canceled  = "canceled"
+)
+
+// IssueStateName_InReview is the workflow state name used by Linear teams for
+// completed work awaiting review.
+const IssueStateName_InReview = "In Review"
+
 type WorkspaceInfo struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -174,6 +188,11 @@ type CreateAgentActivityOutput struct {
 	} `json:"agentActivity"`
 }
 
+type IssueUpdateOutput struct {
+	Success    bool `json:"success"`
+	LastSyncID int  `json:"lastSyncId"`
+}
+
 type IssueLabel struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -235,6 +254,16 @@ type IssueStatusChangePayload struct {
 // by the GetIssue query.
 type IssueStateResult struct {
 	ID        string `json:"id"`
+	TeamID    string `json:"teamId"`
 	StateName string `json:"stateName"`
 	StateType string `json:"stateType"`
+}
+
+// WorkflowState represents a Linear team workflow state returned by the
+// workflow-states query.
+type WorkflowState struct {
+	ID       string  `json:"id"`
+	Name     string  `json:"name"`
+	Type     string  `json:"type"`
+	Position float64 `json:"position"`
 }

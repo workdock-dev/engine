@@ -523,6 +523,16 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	agentHandler.SendThought(ctx, session.Identifier, agentHandlerCredential, "")
 
 	// *-------------------------------------------------------------------------*
+	// * Transition the ticket to the started status                             *
+	// *-------------------------------------------------------------------------*
+	slog.Debug("[agent-session] transition issue to started status")
+	if err := telemetry.SpanErr(ctx, c.tracer, "execute.transition_issue_to_started", func(ctx context.Context) error {
+		return agentHandler.TransitionIssueToStarted(ctx, session.IssueId, agentHandlerCredential)
+	}); err != nil {
+		slog.Warn("[agent-session] failed to transition issue to started status", "issue_id", session.IssueId, "err", err)
+	}
+
+	// *-------------------------------------------------------------------------*
 	// * Create prompt                                                           *
 	// *-------------------------------------------------------------------------*
 	slog.Debug("[agent-session] get prompt")
@@ -603,6 +613,16 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 				// send the finish signal
 				slog.Debug("[agent-session] send response event")
 				agentHandler.SendResponse(ctx, session.Identifier, agentHandlerCredential, "")
+
+				// *-------------------------------------------------------------------------*
+				// * Transition the ticket to In Review                                      *
+				// *-------------------------------------------------------------------------*
+				slog.Debug("[agent-session] transition issue to in review status")
+				if err := telemetry.SpanErr(ctx, c.tracer, "execute.transition_issue_to_in_review", func(ctx context.Context) error {
+					return agentHandler.TransitionIssueToInReview(ctx, session.IssueId, agentHandlerCredential)
+				}); err != nil {
+					slog.Warn("[agent-session] failed to transition issue to in review status", "issue_id", session.IssueId, "err", err)
+				}
 			})
 		}
 	}()

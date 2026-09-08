@@ -69,6 +69,18 @@ func (m *mockClient) GetIssueLabels(ctx context.Context, issueId, accessToken st
 	return nil, nil
 }
 
+func (m *mockClient) GetIssue(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+	return nil, nil
+}
+
+func (m *mockClient) GetTeamWorkflowStates(ctx context.Context, accessToken, teamId string) ([]types.WorkflowState, error) {
+	return nil, nil
+}
+
+func (m *mockClient) UpdateIssueState(ctx context.Context, accessToken, issueId, stateId string) error {
+	return nil
+}
+
 func (m *mockClient) ExchangeCode(ctx context.Context, code string) (*types.TokenExchanged, error) {
 	return nil, nil
 }

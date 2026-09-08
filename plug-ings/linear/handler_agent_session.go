@@ -209,3 +209,106 @@ func (h *AgentSessionHandler) SendServerInternalError(ctx context.Context, sessi
 		},
 	})
 }
+
+// GetIssueState returns the workflow state metadata of a Linear issue.
+func (h *AgentSessionHandler) GetIssueState(ctx context.Context, issueId, accessToken string) (*agent_session_interfaces.IssueState, error) {
+	issue, err := h.client.GetIssue(ctx, accessToken, issueId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &agent_session_interfaces.IssueState{
+		Name: issue.StateName,
+		Type: issue.StateType,
+	}, nil
+}
+
+// TransitionIssueToStarted moves the issue to the team's first started
+// workflow state (lowest position) when the agent session begins executing,
+// unless the issue is already in a started, completed, or canceled state type,
+// following Linear's agent best practices.
+func (h *AgentSessionHandler) TransitionIssueToStarted(ctx context.Context, issueId, accessToken string) error {
+	issue, err := h.client.GetIssue(ctx, accessToken, issueId)
+
+	if err != nil {
+		return err
+	}
+
+	switch issue.StateType {
+	case types.IssueStateType_Started, types.IssueStateType_Completed, types.IssueStateType_Canceled:
+		slog.Debug(
+			"[agent-session][linear] issue already in state, skipping transition to started",
+			"issue_id", issueId,
+			"state_type", issue.StateType,
+		)
+		return nil
+	}
+
+	states, err := h.client.GetTeamWorkflowStates(ctx, accessToken, issue.TeamID)
+
+	if err != nil {
+		return err
+	}
+
+	var startedState *types.WorkflowState
+
+	for i := range states {
+		if states[i].Type != types.IssueStateType_Started {
+			continue
+		}
+
+		if startedState == nil || states[i].Position < startedState.Position {
+			startedState = &states[i]
+		}
+	}
+
+	if startedState == nil {
+		return fmt.Errorf("[agent-session][linear] no started workflow state found for team %s", issue.TeamID)
+	}
+
+	slog.Debug(
+		"[agent-session][linear] transitioning issue to started state",
+		"issue_id", issueId,
+		"state_name", startedState.Name,
+	)
+
+	return h.client.UpdateIssueState(ctx, accessToken, issueId, startedState.ID)
+}
+
+// TransitionIssueToInReview moves the issue to the team's "In Review"
+// workflow state, used for completed work awaiting review.
+func (h *AgentSessionHandler) TransitionIssueToInReview(ctx context.Context, issueId, accessToken string) error {
+	issue, err := h.client.GetIssue(ctx, accessToken, issueId)
+
+	if err != nil {
+		return err
+	}
+
+	if issue.StateType == types.IssueStateType_Canceled {
+		slog.Debug(
+			"[agent-session][linear] issue is canceled, skipping transition to in review",
+			"issue_id", issueId,
+		)
+		return nil
+	}
+
+	states, err := h.client.GetTeamWorkflowStates(ctx, accessToken, issue.TeamID)
+
+	if err != nil {
+		return err
+	}
+
+	for _, state := range states {
+		if state.Name == types.IssueStateName_InReview {
+			slog.Debug(
+				"[agent-session][linear] transitioning issue to in review state",
+				"issue_id", issueId,
+				"state_name", state.Name,
+			)
+			return h.client.UpdateIssueState(ctx, accessToken, issueId, state.ID)
+		}
+	}
+
+	return fmt.Errorf("[agent-session][linear] no %q workflow state found for team %s", types.IssueStateName_InReview, issue.TeamID)
+}
