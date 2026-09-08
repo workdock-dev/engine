@@ -107,6 +107,21 @@ func (h *AgentSessionHandler) GetCredentials(ctx context.Context, orgId string) 
 	return h.tokenHandler.GetLinearAccessToken(ctx, orgId)
 }
 
+// SendInitialThought immediately acknowledges a newly created agent session by
+// emitting a thought activity before any other processing happens. It resolves
+// the Linear access token itself so the acknowledgement does not depend on
+// slower ingestion steps (DB lookups, credential refresh round trips, job
+// queueing), keeping the provider's first-response window intact.
+func (h *AgentSessionHandler) SendInitialThought(ctx context.Context, sessionId, organizationId string) error {
+	credentials, err := h.tokenHandler.GetLinearAccessToken(ctx, organizationId)
+
+	if err != nil {
+		return err
+	}
+
+	return h.SendThought(ctx, sessionId, credentials, "")
+}
+
 func (h *AgentSessionHandler) GetPromptContext(sessionEvent *agent_session_types.SessionEvent) (*agent_session_interfaces.PromptContext, error) {
 	var linearEvent types.AgentSessionEventData
 

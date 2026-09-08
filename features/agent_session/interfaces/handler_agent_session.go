@@ -33,6 +33,12 @@ type HandlerAgentSession interface {
 	// Ingest transform the work platform agent session payload into the domain session
 	Ingest(event shared.DomainEvent) (*types.Session, *types.SessionEvent, error)
 
+	// SendInitialThought immediately acknowledges a newly created agent session
+	// with a thought activity on the work platform. It resolves the credentials
+	// itself from the organization identifier so it can be called before any
+	// other processing, satisfying the provider's first-response guarantee.
+	SendInitialThought(ctx context.Context, sessionId, organizationId string) error
+
 	// GetLabels returns the list of labels assigned to the ticket
 	GetLabels(ctx context.Context, issueId, accessToken string) ([]string, error)
 
