@@ -358,7 +358,7 @@ func (c *controller) onPullRequestCommented() {
 			// TODO: Verify if installation is configured, valuable, security?
 
 			sessionEvent, err := telemetry.Span(ctx, c.tracer, "on_pull_request_comment.get_session_event", func(ctx context.Context) (*types.SessionEvent, error) {
-				return c.session.GetAgentSessionEventByGitRef(ctx, e.GitRef, e.RepoFullName)
+				return c.session.GetAgentSessionEventByGitRef(ctx, e.GitRef)
 			})
 
 			if err != nil {
@@ -366,7 +366,7 @@ func (c *controller) onPullRequestCommented() {
 			}
 
 			if sessionEvent == nil {
-				return fmt.Errorf("[agent-session] session event not found: %s@%s", e.GitRef, e.RepoFullName)
+				return fmt.Errorf("[agent-session] session event not found: %s", e.GitRef)
 			}
 
 			session, err := telemetry.Span(ctx, c.tracer, "on_pull_request_comment.get_session", func(ctx context.Context) (*types.Session, error) {
@@ -379,6 +379,14 @@ func (c *controller) onPullRequestCommented() {
 
 			if session == nil {
 				return fmt.Errorf("[agent-session] session not found: %s", sessionEvent.SessionIdentifier)
+			}
+
+			if session.RepoFullName == nil {
+				return fmt.Errorf("[agent-session] repo not set")
+			}
+
+			if *session.RepoFullName != e.RepoFullName {
+				return fmt.Errorf("[agent-session] session's repo doesn't match pull request repo")
 			}
 
 			slog.Debug("[agent-session] created session event for pull request comment review")
@@ -413,7 +421,7 @@ func (c *controller) onPullRequestChecksFailed() {
 			// TODO: Verify if installation is configured, valuable, security?
 
 			sessionEvent, err := telemetry.Span(ctx, c.tracer, "on_pull_request_checks_failed.get_session_event", func(ctx context.Context) (*types.SessionEvent, error) {
-				return c.session.GetAgentSessionEventByGitRef(ctx, e.GitRef, e.RepoFullName)
+				return c.session.GetAgentSessionEventByGitRef(ctx, e.GitRef)
 			})
 
 			if err != nil {
@@ -421,7 +429,7 @@ func (c *controller) onPullRequestChecksFailed() {
 			}
 
 			if sessionEvent == nil {
-				return fmt.Errorf("[agent-session] session event not found: %s@%s", e.GitRef, e.RepoFullName)
+				return fmt.Errorf("[agent-session] session event not found: %s", e.GitRef)
 			}
 
 			session, err := telemetry.Span(ctx, c.tracer, "on_pull_request_checks_failed.get_session", func(ctx context.Context) (*types.Session, error) {
@@ -434,6 +442,14 @@ func (c *controller) onPullRequestChecksFailed() {
 
 			if session == nil {
 				return fmt.Errorf("[agent-session] session not found: %s", sessionEvent.SessionIdentifier)
+			}
+
+			if session.RepoFullName == nil {
+				return fmt.Errorf("[agent-session] repo not set")
+			}
+
+			if *session.RepoFullName != e.RepoFullName {
+				return fmt.Errorf("[agent-session] session's repo doesn't match pull request repo")
 			}
 
 			slog.Debug("[agent-session] created session event for pull request checks failed")

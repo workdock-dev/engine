@@ -22,10 +22,7 @@ SELECT
     se.reason
 FROM
     public.sessions_events se
-JOIN
-    public.sessions s ON s.identifier = se.session_identifier
 WHERE
     se.git_ref = $1
-    AND s.repo_full_name = $2
 ORDER BY se.updated_at DESC, se.id DESC
 LIMIT 1;

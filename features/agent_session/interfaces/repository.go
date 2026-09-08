@@ -24,7 +24,7 @@ type Repository interface {
 	GetAgentSession(ctx context.Context, identifier string) (*types.Session, error)
 	GetAgentSessionsByIssueId(ctx context.Context, issueId string) ([]*types.Session, error)
 	GetAgentSessionEvent(ctx context.Context, identifier string) (*types.SessionEvent, error)
-	GetAgentSessionEventByGitRef(ctx context.Context, identifier string, repoFullName string) (*types.SessionEvent, error)
+	GetAgentSessionEventByGitRef(ctx context.Context, identifier string) (*types.SessionEvent, error)
 	CreateSessionEvent(ctx context.Context, event *types.SessionEvent) error
 	ResumeSessionEvent(ctx context.Context, event *types.SessionEvent) error
 	UpsertAgentSession(ctx context.Context, session *types.Session) error

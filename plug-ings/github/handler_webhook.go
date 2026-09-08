@@ -402,7 +402,7 @@ func (c *WEventConsumer) handleCheckSuite(event *types.WebhookEvent) error {
 		c.eventBus.Publish(context.Background(), shared.PullRequestChecksFailedEvent{
 			Provider:       shared.PlatformProvider_GitHub,
 			GitRef:         pr.Head.Ref,
-			RepoFullName:   pr.Head.Repo.FullName,
+			RepoFullName:   event.CheckSuite.Repository.FullName,
 			InstallationId: installationId,
 			ChecksFailed:   []string{pr.URL},
 		})
