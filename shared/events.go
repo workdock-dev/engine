@@ -48,6 +48,19 @@ func (e IssueChangedEvent) EventType() string {
 	return EventType_IssueChange
 }
 
+// IssueChangePayload is the contract a work platform must satisfy when
+// publishing an [IssueChangedEvent] on the event bus. It carries the ticket
+// that changed and whether the change is an issue update (e.g. a workflow
+// state transition) as opposed to a creation event.
+type IssueChangePayload interface {
+	// IssueId returns the identifier of the issue that changed.
+	IssueId() string
+
+	// IsUpdate reports whether the event is an update to an existing issue,
+	// the only kind of change that may carry a state transition.
+	IsUpdate() bool
+}
+
 // *--------------------------------------------------------------------------*
 
 type AgentSessionPromptEvent struct {

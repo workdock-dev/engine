@@ -74,6 +74,15 @@ type mismatchedEvent struct {
 
 func (m mismatchedEvent) EventType() string { return m.eventType }
 
+// stubIssueChangePayload is a minimal shared.IssueChangePayload used to drive
+// the onIssueChange handler without depending on a concrete provider payload.
+type stubIssueChangePayload struct {
+	update bool
+}
+
+func (p stubIssueChangePayload) IssueId() string { return "issue-1" }
+func (p stubIssueChangePayload) IsUpdate() bool  { return p.update }
+
 // failingMeterProvider fails every instrument registration, making
 // NewTaskScheduler's metrics initialization fail. Every creation method must
 // fail: otel's global provider replays previously registered instruments
@@ -745,11 +754,196 @@ func (s *ControllerSuite) TestOnIssueChange_MismatchedEventType() {
 	s.ErrorContains(err, "expected event type issue.changed")
 }
 
-func (s *ControllerSuite) TestOnIssueChange_Success() {
+func (s *ControllerSuite) TestOnIssueChange_MismatchedPayload() {
 	s.initController()
-	err := s.publish(shared.EventType_IssueChange, shared.IssueChangedEvent{})
 
-	s.NoError(err)
+	err := s.publish(shared.EventType_IssueChange, shared.IssueChangedEvent{Payload: "not-a-payload"})
+
+	s.Error(err)
+	s.ErrorContains(err, "failed to cast issue change payload")
+}
+
+func (s *ControllerSuite) TestOnIssueChange_CreationEvent_SkipsArchive() {
+	s.initController()
+
+	err := s.publish(shared.EventType_IssueChange, shared.IssueChangedEvent{
+		Provider: string(shared.PlatformProvider_Linear),
+		Payload:  stubIssueChangePayload{update: false},
+	})
+
+	s.Require().NoError(err)
+	s.Empty(s.sessionRep.issueLookups, "creation events must not look up sessions")
+	s.Empty(s.sandboxHdl.archived)
+}
+
+func (s *ControllerSuite) TestOnIssueChange_NoSessions_NothingToArchive() {
+	s.initController()
+
+	err := s.publish(shared.EventType_IssueChange, shared.IssueChangedEvent{
+		Provider: string(shared.PlatformProvider_Linear),
+		Payload:  stubIssueChangePayload{update: true},
+	})
+
+	s.Require().NoError(err)
+	s.Empty(s.sandboxHdl.archived)
+}
+
+func (s *ControllerSuite) TestOnIssueChange_HandlerNotFound() {
+	s.initController()
+	s.sessionRep.getAgentSessionsByIssueIdFn = func(ctx context.Context, issueId string) ([]*types.Session, error) {
+		return []*types.Session{newTestSession()}, nil
+	}
+	delete(s.c.agentHandlerRegistry, "linear")
+
+	err := s.publish(shared.EventType_IssueChange, shared.IssueChangedEvent{
+		Provider: string(shared.PlatformProvider_Linear),
+		Payload:  stubIssueChangePayload{update: true},
+	})
+
+	s.Error(err)
+	s.ErrorContains(err, "agent session handler not found in registry: linear")
+	s.Empty(s.sandboxHdl.archived)
+}
+
+func (s *ControllerSuite) TestOnIssueChange_SandboxHandlerNotFound() {
+	s.initController()
+	s.sessionRep.getAgentSessionsByIssueIdFn = func(ctx context.Context, issueId string) ([]*types.Session, error) {
+		return []*types.Session{newTestSession()}, nil
+	}
+	delete(s.c.sandboxHandlerRegistry, "daytona")
+
+	err := s.publish(shared.EventType_IssueChange, shared.IssueChangedEvent{
+		Provider: string(shared.PlatformProvider_Linear),
+		Payload:  stubIssueChangePayload{update: true},
+	})
+
+	s.Error(err)
+	s.ErrorContains(err, "provider daytona not configured for sandbox handler")
+}
+
+func (s *ControllerSuite) TestOnIssueChange_CredentialsError() {
+	s.initController()
+	s.sessionRep.getAgentSessionsByIssueIdFn = func(ctx context.Context, issueId string) ([]*types.Session, error) {
+		return []*types.Session{newTestSession()}, nil
+	}
+	s.agentHdl.getCredentialsFn = func(ctx context.Context, orgId string) (string, error) {
+		return "", errors.New("credentials failed")
+	}
+
+	err := s.publish(shared.EventType_IssueChange, shared.IssueChangedEvent{
+		Provider: string(shared.PlatformProvider_Linear),
+		Payload:  stubIssueChangePayload{update: true},
+	})
+
+	s.Error(err)
+	s.ErrorContains(err, "credentials failed")
+	s.Empty(s.sandboxHdl.archived)
+}
+
+func (s *ControllerSuite) TestOnIssueChange_IssueStateError() {
+	s.initController()
+	s.sessionRep.getAgentSessionsByIssueIdFn = func(ctx context.Context, issueId string) ([]*types.Session, error) {
+		return []*types.Session{newTestSession()}, nil
+	}
+	s.agentHdl.getIssueStateFn = func(ctx context.Context, issueId, accessToken string) (*interfaces.IssueState, error) {
+		return nil, errors.New("issue state failed")
+	}
+
+	err := s.publish(shared.EventType_IssueChange, shared.IssueChangedEvent{
+		Provider: string(shared.PlatformProvider_Linear),
+		Payload:  stubIssueChangePayload{update: true},
+	})
+
+	s.Error(err)
+	s.ErrorContains(err, "issue state failed")
+	s.Empty(s.sandboxHdl.archived)
+}
+
+func (s *ControllerSuite) TestOnIssueChange_NotDoneState_SkipsArchive() {
+	s.initController()
+	s.sessionRep.getAgentSessionsByIssueIdFn = func(ctx context.Context, issueId string) ([]*types.Session, error) {
+		return []*types.Session{newTestSession()}, nil
+	}
+	s.agentHdl.getIssueStateFn = func(ctx context.Context, issueId, accessToken string) (*interfaces.IssueState, error) {
+		return &interfaces.IssueState{Name: "Todo", Type: "unstarted"}, nil
+	}
+
+	err := s.publish(shared.EventType_IssueChange, shared.IssueChangedEvent{
+		Provider: string(shared.PlatformProvider_Linear),
+		Payload:  stubIssueChangePayload{update: true},
+	})
+
+	s.Require().NoError(err)
+	s.Empty(s.sandboxHdl.archived, "non-done issue state must not archive sandboxes")
+}
+
+func (s *ControllerSuite) TestOnIssueChange_DoneState_ArchivesAllSessionSandboxes() {
+	s.initController()
+	sessions := []*types.Session{newTestSession()}
+	second := newTestSession()
+	second.Identifier = "sess-2"
+	sessions = append(sessions, second)
+	s.sessionRep.getAgentSessionsByIssueIdFn = func(ctx context.Context, issueId string) ([]*types.Session, error) {
+		s.Equal("issue-1", issueId)
+		return sessions, nil
+	}
+	s.agentHdl.getIssueStateFn = func(ctx context.Context, issueId, accessToken string) (*interfaces.IssueState, error) {
+		s.Equal("issue-1", issueId)
+		s.Equal("token", accessToken)
+		return &interfaces.IssueState{Name: "Done", Type: interfaces.IssueStateType_Completed}, nil
+	}
+
+	err := s.publish(shared.EventType_IssueChange, shared.IssueChangedEvent{
+		Provider: string(shared.PlatformProvider_Linear),
+		Payload:  stubIssueChangePayload{update: true},
+	})
+
+	s.Require().NoError(err)
+	s.Require().Len(s.sandboxHdl.archived, 2)
+	s.Equal("sess-1", s.sandboxHdl.archived[0].Session.Identifier)
+	s.Equal("sess-2", s.sandboxHdl.archived[1].Session.Identifier)
+}
+
+func (s *ControllerSuite) TestOnIssueChange_ArchiveError_ContinuesWithOtherSessions() {
+	s.initController()
+	second := newTestSession()
+	second.Identifier = "sess-2"
+	s.sessionRep.getAgentSessionsByIssueIdFn = func(ctx context.Context, issueId string) ([]*types.Session, error) {
+		return []*types.Session{newTestSession(), second}, nil
+	}
+	s.agentHdl.getIssueStateFn = func(ctx context.Context, issueId, accessToken string) (*interfaces.IssueState, error) {
+		return &interfaces.IssueState{Name: "Done", Type: interfaces.IssueStateType_Completed}, nil
+	}
+	s.sandboxHdl.archiveFn = func(ctx context.Context, config *interfaces.SandboxConfig) error {
+		if config.Session.Identifier == "sess-1" {
+			return errors.New("archive failed")
+		}
+		return nil
+	}
+
+	err := s.publish(shared.EventType_IssueChange, shared.IssueChangedEvent{
+		Provider: string(shared.PlatformProvider_Linear),
+		Payload:  stubIssueChangePayload{update: true},
+	})
+
+	s.Require().NoError(err, "one session failing to archive must not fail the event")
+	s.Require().Len(s.sandboxHdl.archived, 2, "the remaining session must still be archived")
+}
+
+func (s *ControllerSuite) TestOnIssueChange_SessionsLookupError() {
+	s.initController()
+	s.sessionRep.getAgentSessionsByIssueIdFn = func(ctx context.Context, issueId string) ([]*types.Session, error) {
+		return nil, errors.New("sessions lookup failed")
+	}
+
+	err := s.publish(shared.EventType_IssueChange, shared.IssueChangedEvent{
+		Provider: string(shared.PlatformProvider_Linear),
+		Payload:  stubIssueChangePayload{update: true},
+	})
+
+	s.Error(err)
+	s.ErrorContains(err, "sessions lookup failed")
+	s.Empty(s.sandboxHdl.archived)
 }
 
 // ---------------------------------------------------------------------------

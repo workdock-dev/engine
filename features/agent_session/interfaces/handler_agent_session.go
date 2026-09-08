@@ -33,6 +33,10 @@ type IssueState struct {
 	Type string
 }
 
+// IssueStateType_Completed is the workflow state type representing a done
+// ticket on the work platform.
+const IssueStateType_Completed = "completed"
+
 // HandlerAgentSession is the interfaces required to be implemented
 // by work platforms that provides agent assignment to tickets
 type HandlerAgentSession interface {
