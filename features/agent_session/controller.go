@@ -357,12 +357,6 @@ func (c *controller) onIssueChange() {
 				return nil
 			}
 
-			agentHandler, ok := c.agentHandlerRegistry[e.Provider]
-
-			if !ok {
-				return fmt.Errorf("[agent-session] agent session handler not found in registry: %s", e.Provider)
-			}
-
 			sandboxHandler, ok := c.sandboxHandlerRegistry[string(shared.PlatformProvider_Daytona)]
 
 			if !ok {

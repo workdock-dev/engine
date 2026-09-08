@@ -43,14 +43,15 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockClient struct {
-	labelsFn    func(ctx context.Context, issueId, accessToken string) ([]string, error)
-	exchangeFn  func(ctx context.Context, code string) (*types.TokenExchanged, error)
-	workspaceFn func(ctx context.Context, accessToken string) (*types.WorkspaceInfo, error)
-	refreshFn   func(ctx context.Context, refreshToken string) (*types.Token, error)
-	activityFn  func(ctx context.Context, accessToken string, input types.CreateAgentActivityInput) error
-	issueFn     func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error)
-	workflowFn  func(ctx context.Context, accessToken, teamId string) ([]types.WorkflowState, error)
-	updateFn    func(ctx context.Context, accessToken, issueId, stateId string) error
+	labelsFn      func(ctx context.Context, issueId, accessToken string) ([]string, error)
+	exchangeFn    func(ctx context.Context, code string) (*types.TokenExchanged, error)
+	workspaceFn   func(ctx context.Context, accessToken string) (*types.WorkspaceInfo, error)
+	refreshFn     func(ctx context.Context, refreshToken string) (*types.Token, error)
+	activityFn    func(ctx context.Context, accessToken string, input types.CreateAgentActivityInput) error
+	issueFn       func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error)
+	workflowFn    func(ctx context.Context, accessToken, teamId string) ([]types.WorkflowState, error)
+	updateFn      func(ctx context.Context, accessToken, issueId, stateId string) error
+	credentialsFn func(ctx context.Context, organizationId string) (string, error)
 
 	activities     []types.CreateAgentActivityInput
 	activityTokens []string
@@ -80,6 +81,9 @@ func (m *mockClient) SendInitialThought(ctx context.Context, sessionId, organiza
 }
 
 func (m *mockClient) GetCredentials(ctx context.Context, organizationId string) (string, error) {
+	if m.credentialsFn != nil {
+		return m.credentialsFn(ctx, organizationId)
+	}
 	return "org-access-token", nil
 }
 
@@ -612,13 +616,11 @@ func (s *WebhookSuite) TestConsume_Issue_CredentialsError_NoEvent() {
 		"data": {"id": "issue-1"}
 	}`, time.Now().UnixMilli())
 
-	s.secrets = &mockSecretManager{
-		getFn: func(ctx context.Context, secretPath, secretName string) (string, error) {
-			return "", fmt.Errorf("boom")
-		},
-	}
+	consumer := NewWEventConsumer(s.bus, &mockClient{credentialsFn: func(ctx context.Context, organizationId string) (string, error) {
+		return "", fmt.Errorf("boom")
+	}}).(*WEventConsumer)
 
-	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+	err := consumer.Consume(context.Background(), &webhook.VerifiedWEvent{
 		WEventType: WEventType_Issue,
 		Payload:    []byte(payload),
 	})
