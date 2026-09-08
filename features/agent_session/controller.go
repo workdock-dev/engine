@@ -526,13 +526,11 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	// * Transition the ticket to the started status                             *
 	// *-------------------------------------------------------------------------*
 	slog.Debug("[agent-session] transition issue to started status")
-	telemetry.SpanDo(ctx, c.tracer, "execute.transition_issue_to_started", func(ctx context.Context) {
-		if err := telemetry.SpanErr(ctx, c.tracer, "execute.transition_issue_to_started.run", func(ctx context.Context) error {
-			return agentHandler.TransitionIssueToStarted(ctx, session.IssueId, agentHandlerCredential)
-		}); err != nil {
-			slog.Warn("[agent-session] failed to transition issue to started status", "issue_id", session.IssueId, "err", err)
-		}
-	})
+	if err := telemetry.SpanErr(ctx, c.tracer, "execute.transition_issue_to_started", func(ctx context.Context) error {
+		return agentHandler.TransitionIssueToStarted(ctx, session.IssueId, agentHandlerCredential)
+	}); err != nil {
+		slog.Warn("[agent-session] failed to transition issue to started status", "issue_id", session.IssueId, "err", err)
+	}
 
 	// *-------------------------------------------------------------------------*
 	// * Create prompt                                                           *
@@ -620,13 +618,11 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 				// * Transition the ticket to In Review                                      *
 				// *-------------------------------------------------------------------------*
 				slog.Debug("[agent-session] transition issue to in review status")
-				telemetry.SpanDo(ctx, c.tracer, "execute.transition_issue_to_in_review", func(ctx context.Context) {
-					if err := telemetry.SpanErr(ctx, c.tracer, "execute.transition_issue_to_in_review.run", func(ctx context.Context) error {
-						return agentHandler.TransitionIssueToInReview(ctx, session.IssueId, agentHandlerCredential)
-					}); err != nil {
-						slog.Warn("[agent-session] failed to transition issue to in review status", "issue_id", session.IssueId, "err", err)
-					}
-				})
+				if err := telemetry.SpanErr(ctx, c.tracer, "execute.transition_issue_to_in_review", func(ctx context.Context) error {
+					return agentHandler.TransitionIssueToInReview(ctx, session.IssueId, agentHandlerCredential)
+				}); err != nil {
+					slog.Warn("[agent-session] failed to transition issue to in review status", "issue_id", session.IssueId, "err", err)
+				}
 			})
 		}
 	}()
