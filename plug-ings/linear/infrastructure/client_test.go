@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/suite"
+	"github.com/workdock-dev/engine/infrastructure/in_memory_secrets"
 	"github.com/workdock-dev/engine/plug-ings/linear/types"
 	"github.com/workdock-dev/engine/shared"
 )
@@ -90,6 +91,30 @@ func okJSONHandler(body string) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, body)
+	})
+}
+
+// newServerURL registers the handler on a fresh test server and returns its URL.
+func (s *LinearServiceSuite) newServerURL(handler http.Handler) string {
+	s.server = httptest.NewServer(handler)
+	return s.server.URL
+}
+
+// newInMemorySecretManager returns a secret manager pre-seeded with a valid
+// Linear token for "org-1".
+func newInMemorySecretManager() shared.SecretManager {
+	token, err := json.Marshal(types.Token{
+		AccessToken:  "org-access-token",
+		RefreshToken: "org-refresh-token",
+		ExpiresAt:    time.Now().Add(time.Hour),
+	})
+	if err != nil {
+		panic(err)
+	}
+	return in_memory_secrets.NewWithSeeds(map[string]map[string]string{
+		types.SecretsPath: {
+			"org-1": string(token),
+		},
 	})
 }
 
@@ -398,6 +423,68 @@ func (s *LinearServiceSuite) TestCreateAgentActivity_DoRequestFailure() {
 		AgentSessionID: "session-1",
 		Content:        types.AgentActivityContent{Type: "response", Body: "done"},
 	})
+	s.Error(err)
+}
+
+// --- SendInitialThought() ---
+
+func (s *LinearServiceSuite) TestSendInitialThought_Success() {
+	var receivedVars map[string]any
+	var receivedAuth string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		body, _ := io.ReadAll(r.Body)
+		var req graphQLRequest
+		json.Unmarshal(body, &req)
+		receivedVars = req.Variables
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"data":{"agentActivityCreate":{"success":true,"lastSyncId":1,"agentActivity":{"id":"act-1"}}}}`)
+	})
+	svc, err := NewClient(types.Config{
+		WebhookSecret: "test-secret",
+		ClientId:      "client-id",
+		ClientSecret:  "client-secret",
+		ServerUrl:     "http://localhost:8080",
+		ApiUrl:        s.newServerURL(handler) + "/graphql",
+		TokenUrl:      "http://localhost:8080/token",
+		IPs:           []string{"10.0.0.1"},
+	}, newInMemorySecretManager())
+	s.Require().NoError(err)
+
+	err = svc.SendInitialThought(context.Background(), "sess-1", "org-1")
+
+	s.Require().NoError(err)
+	input := receivedVars["input"].(map[string]any)
+	content := input["content"].(map[string]any)
+	s.Equal("sess-1", input["agentSessionId"])
+	s.Equal("thought", content["type"])
+	s.Equal("Bearer org-access-token", receivedAuth, "token must be resolved from the organization secrets")
+}
+
+func (s *LinearServiceSuite) TestSendInitialThought_MissingSecret() {
+	svc, err := NewClient(types.Config{
+		ApiUrl:   "http://localhost:8080/graphql",
+		TokenUrl: "http://localhost:8080/token",
+	}, newInMemorySecretManager())
+	s.Require().NoError(err)
+
+	err = svc.SendInitialThought(context.Background(), "sess-1", "unknown-org")
+
+	s.Error(err)
+}
+
+func (s *LinearServiceSuite) TestSendInitialThought_ActivityFailure() {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	svc, err := NewClient(types.Config{
+		ApiUrl:   s.newServerURL(handler) + "/graphql",
+		TokenUrl: "http://localhost:8080/token",
+	}, newInMemorySecretManager())
+	s.Require().NoError(err)
+
+	err = svc.SendInitialThought(context.Background(), "sess-1", "org-1")
+
 	s.Error(err)
 }
 

@@ -64,6 +64,21 @@ type issueUpdateCall struct {
 	stateId string
 }
 
+func (m *mockClient) SendInitialThought(ctx context.Context, sessionId, organizationId string) error {
+	m.activities = append(m.activities, types.CreateAgentActivityInput{
+		AgentSessionID: sessionId,
+		Content:        types.AgentActivityContent{Type: types.AgentActivityContentType_Thought, Body: ""},
+	})
+	m.activityTokens = append(m.activityTokens, "org-access-token")
+	if m.activityFn != nil {
+		return m.activityFn(ctx, "org-access-token", types.CreateAgentActivityInput{
+			AgentSessionID: sessionId,
+			Content:        types.AgentActivityContent{Type: types.AgentActivityContentType_Thought, Body: ""},
+		})
+	}
+	return nil
+}
+
 func (m *mockClient) GetIssueLabels(ctx context.Context, issueId, accessToken string) ([]string, error) {
 	if m.labelsFn != nil {
 		return m.labelsFn(ctx, issueId, accessToken)
@@ -219,6 +234,7 @@ type WebhookSuite struct {
 	suite.Suite
 	recorder *eventRecorder
 	bus      *shared.EventBus
+	client   *mockClient
 }
 
 func TestWebhookSuite(t *testing.T) {
@@ -228,10 +244,11 @@ func TestWebhookSuite(t *testing.T) {
 func (s *WebhookSuite) SetupTest() {
 	s.recorder = &eventRecorder{}
 	s.bus = newRecordingEventBus(s.recorder)
+	s.client = &mockClient{}
 }
 
 func (s *WebhookSuite) newConsumer() *WEventConsumer {
-	return NewWEventConsumer(s.bus).(*WEventConsumer)
+	return NewWEventConsumer(s.bus, s.client).(*WEventConsumer)
 }
 
 func (s *WebhookSuite) TestTransform() {
@@ -602,6 +619,126 @@ func (s *WebhookSuite) TestConsume_AgentSession_Prompt() {
 	s.Equal("do the work", data.PromptContext)
 	s.Equal("sess-1", data.AgentSession.ID)
 	s.Equal("hello", data.AgentActivity.Content.Body)
+}
+
+func (s *WebhookSuite) TestConsume_AgentSession_Created_SendsInitialThoughtBeforePromptEvent() {
+	payload := fmt.Sprintf(`{
+		"action": "%s",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d,
+		"agentSession": {"id": "sess-1"}
+	}`, types.AgentSessionAction_Created, time.Now().UnixMilli())
+
+	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_AgentSession,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err)
+	s.Require().Len(s.recorder.prompt, 1)
+
+	// The acknowledgement must reach Linear before the prompt event is
+	// processed (which performs all the DB work and job insertion).
+	s.Require().Len(s.client.activities, 1)
+	s.Equal(types.CreateAgentActivityInput{
+		AgentSessionID: "sess-1",
+		Content:        types.AgentActivityContent{Type: types.AgentActivityContentType_Thought, Body: ""},
+	}, s.client.activities[0])
+}
+
+func (s *WebhookSuite) TestConsume_AgentSession_Prompted_DoesNotSendInitialThought() {
+	payload := fmt.Sprintf(`{
+		"action": "%s",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d,
+		"agentSession": {"id": "sess-1"},
+		"agentActivity": {"signal": "", "content": {"type": "prompt", "body": "do more"}}
+	}`, types.AgentSessionAction_Prompted, time.Now().UnixMilli())
+
+	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_AgentSession,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err)
+	s.Require().Len(s.recorder.prompt, 1)
+	s.Empty(s.client.activities)
+}
+
+func (s *WebhookSuite) TestConsume_AgentSession_StopSignal_DoesNotSendInitialThought() {
+	payload := fmt.Sprintf(`{
+		"action": "%s",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d,
+		"agentSession": {"id": "sess-1"},
+		"agentActivity": {"signal": "%s"}
+	}`, types.AgentSessionAction_Created, time.Now().UnixMilli(), types.SignalType_Stop)
+
+	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_AgentSession,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err)
+	s.Empty(s.recorder.prompt)
+	s.Require().Len(s.recorder.stop, 1)
+	s.Empty(s.client.activities)
+}
+
+func (s *WebhookSuite) TestConsume_AgentSession_Created_ThoughtFailureDoesNotBlockIngestion() {
+	s.client.activityFn = func(ctx context.Context, accessToken string, input types.CreateAgentActivityInput) error {
+		return fmt.Errorf("linear api down")
+	}
+	payload := fmt.Sprintf(`{
+		"action": "%s",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d,
+		"agentSession": {"id": "sess-1"}
+	}`, types.AgentSessionAction_Created, time.Now().UnixMilli())
+
+	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_AgentSession,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err)
+	s.Require().Len(s.recorder.prompt, 1, "prompt event must still be published when the acknowledgement fails")
+	s.Require().Len(s.client.activities, 1)
+}
+
+func (s *WebhookSuite) TestConsume_AgentSession_Created_MissingSessionData() {
+	payload := fmt.Sprintf(`{
+		"action": "%s",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d
+	}`, types.AgentSessionAction_Created, time.Now().UnixMilli())
+
+	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_AgentSession,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err)
+	s.Require().Len(s.recorder.prompt, 1)
+	s.Empty(s.client.activities)
+}
+
+func (s *WebhookSuite) TestConsume_AgentSession_Created_NilClientStillIngests() {
+	consumer := NewWEventConsumer(s.bus, nil).(*WEventConsumer)
+	payload := fmt.Sprintf(`{
+		"action": "%s",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d,
+		"agentSession": {"id": "sess-1"}
+	}`, types.AgentSessionAction_Created, time.Now().UnixMilli())
+
+	err := consumer.Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_AgentSession,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err)
+	s.Require().Len(s.recorder.prompt, 1)
 }
 
 type errorReader struct{}

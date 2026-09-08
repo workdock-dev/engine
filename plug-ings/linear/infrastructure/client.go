@@ -27,6 +27,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/workdock-dev/engine/plug-ings/linear/helpers"
 	"github.com/workdock-dev/engine/plug-ings/linear/types"
 	"github.com/workdock-dev/engine/shared"
 )
@@ -55,6 +56,7 @@ type Client struct {
 	config        types.Config
 	httpClient    *http.Client
 	secretManager shared.SecretManager
+	tokenHandler  *helpers.TokenHandler
 }
 
 // NewClient initializes the Linear service and its dependencies.
@@ -75,11 +77,14 @@ func NewClient(config types.Config, secretManager shared.SecretManager) (*Client
 	}
 
 	slog.Debug("[linear-client] created", "api_url", config.ApiUrl, "token_url", config.TokenUrl)
-	return &Client{
+	client := &Client{
 		config:        config,
 		secretManager: secretManager,
 		httpClient:    &http.Client{},
-	}, nil
+	}
+	client.tokenHandler = helpers.NewTokenHandler(secretManager, client)
+
+	return client, nil
 }
 
 // RefreshToken exchanges a Linear OAuth refresh token for a fresh access
@@ -228,6 +233,32 @@ func (s *Client) CreateAgentActivity(ctx context.Context, accessToken string, in
 	}
 
 	return nil
+}
+
+// SendInitialThought immediately acknowledges a newly created agent session
+// by emitting a thought activity before any other processing happens.
+//
+//   - Resolves the Linear access token for the given organization first, so
+//     the acknowledgement does not depend on slower ingestion steps.
+//   - Sends a thought activity through CreateAgentActivity.
+//
+// It is intended to be called in the webhook ingestion path right after the
+// webhook passes verification so the provider's first-response window stays
+// intact.
+func (s *Client) SendInitialThought(ctx context.Context, sessionId, organizationId string) error {
+	credentials, err := s.tokenHandler.GetLinearAccessToken(ctx, organizationId)
+
+	if err != nil {
+		return err
+	}
+
+	return s.CreateAgentActivity(ctx, credentials, types.CreateAgentActivityInput{
+		AgentSessionID: sessionId,
+		Content: types.AgentActivityContent{
+			Type: types.AgentActivityContentType_Thought,
+			Body: "",
+		},
+	})
 }
 
 // GetIssue retrieves the state information of a Linear issue.

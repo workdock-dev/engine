@@ -49,6 +49,14 @@ const (
 	// The stop signal indicates that the user wants to stop and cancel all work for
 	// the agent session.
 	SignalType_Stop = "stop"
+
+	// The agent session event action emitted when a new agent session is
+	// created (user mention or issue delegation).
+	AgentSessionAction_Created = "created"
+
+	// The agent session event action emitted when a user sends a new message
+	// into an existing agent session.
+	AgentSessionAction_Prompted = "prompted"
 )
 
 // Linear issue workflow state types.

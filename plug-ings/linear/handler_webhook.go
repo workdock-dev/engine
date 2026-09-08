@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/workdock-dev/engine/features/webhook"
+	"github.com/workdock-dev/engine/plug-ings/linear/interfaces"
 	"github.com/workdock-dev/engine/plug-ings/linear/types"
 	"github.com/workdock-dev/engine/shared"
 )
@@ -176,13 +177,18 @@ func (t *WEventVerifier) verifyWebhookSignature(headerSignature string, body []b
 
 type WEventConsumer struct {
 	eventBus *shared.EventBus
+	client   interfaces.Client
 }
 
 // NewWEventConsumer creates a webhook consumer for processing verified
-// Linear webhook events.
-func NewWEventConsumer(eventBus *shared.EventBus) webhook.WEventConsumer {
+// Linear webhook events. The client is used to acknowledge newly created
+// agent sessions directly in the ingestion path so the provider's
+// first-response guarantee holds regardless of job queue saturation. A nil
+// client skips the early acknowledgement.
+func NewWEventConsumer(eventBus *shared.EventBus, client interfaces.Client) webhook.WEventConsumer {
 	return &WEventConsumer{
 		eventBus: eventBus,
+		client:   client,
 	}
 }
 
@@ -233,6 +239,7 @@ func (c *WEventConsumer) Consume(_ context.Context, event *webhook.VerifiedWEven
 				SessionIdentifier:      payload.AgentSession.ID,
 			})
 		} else {
+			c.acknowledgeNewAgentSession(&payload)
 			c.eventBus.Publish(context.Background(), shared.AgentSessionPromptEvent{
 				Provider: string(shared.PlatformProvider_Linear),
 				Payload:  payload,
@@ -244,6 +251,39 @@ func (c *WEventConsumer) Consume(_ context.Context, event *webhook.VerifiedWEven
 
 	slog.Debug("[webhook][linear] unhandled event", "event_type", event.WEventType)
 	return webhook.ErrWBadRequest
+}
+
+// acknowledgeNewAgentSession emits the first thought activity for a newly
+// created agent session synchronously in the ingestion path, before any
+// downstream processing (DB work, credential refresh round trips inside the
+// orchestration pipeline, job insertion) can delay it. Linear expects the
+// first response within 10 seconds of the created event or the agent is shown
+// as unresponsive, which cannot be guaranteed once the work is queued.
+//
+// It only runs after the webhook passed verification, and it is best-effort:
+// a failed acknowledgement is logged and never fails webhook ingestion.
+func (c *WEventConsumer) acknowledgeNewAgentSession(payload *types.AgentSessionEventData) {
+	if payload.Action != types.AgentSessionAction_Created {
+		return
+	}
+
+	if payload.AgentSession == nil {
+		slog.Warn("[webhook][linear] created agent session event without session data")
+		return
+	}
+
+	if c.client == nil {
+		slog.Warn("[webhook][linear] no linear client configured, skipping initial thought")
+		return
+	}
+
+	slog.Debug("[webhook][linear] sending initial thought", "session_id", payload.AgentSession.ID)
+
+	// Best-effort acknowledgement: the webhook is already verified and the
+	// prompt event will still be processed even when this fails.
+	if err := c.client.SendInitialThought(context.Background(), payload.AgentSession.ID, payload.OrganizationID); err != nil {
+		slog.Error("[webhook][linear] failed to send initial thought", "session_id", payload.AgentSession.ID, "err", err)
+	}
 }
 
 func (c *WEventConsumer) verifyTimestampRecency(timestamp int64) error {

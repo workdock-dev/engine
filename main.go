@@ -250,7 +250,7 @@ func main() {
 		server.Mux(),
 		linear.NewWEventTransformer(),
 		linear.NewWEventVerifier(cfg.Linear),
-		linear.NewWEventConsumer(eventBus),
+		linear.NewWEventConsumer(eventBus, linearClient),
 	)
 
 	organization.New(
