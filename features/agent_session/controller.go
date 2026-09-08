@@ -139,6 +139,7 @@ func (c *controller) init() error {
 	c.onAgentSessionStop()
 	c.onIssueChange()
 	c.onPullRequestCommented()
+	c.onPullRequestChecksFailed()
 	c.onGitResetConnection()
 	c.onGitCompleteConnection()
 
@@ -354,6 +355,8 @@ func (c *controller) onPullRequestCommented() {
 				return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_PullRequestCommented, event.EventType())
 			}
 
+			// TODO: Verify if installation is configured, valuable, security?
+
 			sessionEvent, err := telemetry.Span(ctx, c.tracer, "on_pull_request_comment.get_session_event", func(ctx context.Context) (*types.SessionEvent, error) {
 				return c.session.GetAgentSessionEventByGitRef(ctx, e.GitRef, e.RepoFullName)
 			})
@@ -387,6 +390,61 @@ func (c *controller) onPullRequestCommented() {
 					Seed:              &sessionEvent.Identifier,
 					GitRef:            &e.GitRef,
 					Reason:            types.AgentSessionEventReason_PRComment,
+				})
+			}); err != nil {
+				return err
+			}
+
+			return nil
+		})
+	})
+}
+
+// onPullRequestChecksFailed Configured domain event for pr checks failed
+func (c *controller) onPullRequestChecksFailed() {
+	c.eventBus.Subscribe(shared.EventType_PullRequestChecksFailed, func(ctx context.Context, event shared.DomainEvent) error {
+		return telemetry.SpanErr(ctx, c.tracer, "on_pull_request_checks_failed", func(ctx context.Context) error {
+			e, ok := event.(shared.PullRequestChecksFailedEvent)
+
+			if !ok {
+				return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_PullRequestChecksFailed, event.EventType())
+			}
+
+			// TODO: Verify if installation is configured, valuable, security?
+
+			sessionEvent, err := telemetry.Span(ctx, c.tracer, "on_pull_request_checks_failed.get_session_event", func(ctx context.Context) (*types.SessionEvent, error) {
+				return c.session.GetAgentSessionEventByGitRef(ctx, e.GitRef, e.RepoFullName)
+			})
+
+			if err != nil {
+				return err
+			}
+
+			if sessionEvent == nil {
+				return fmt.Errorf("[agent-session] session event not found: %s@%s", e.GitRef, e.RepoFullName)
+			}
+
+			session, err := telemetry.Span(ctx, c.tracer, "on_pull_request_checks_failed.get_session", func(ctx context.Context) (*types.Session, error) {
+				return c.session.GetAgentSession(ctx, sessionEvent.SessionIdentifier)
+			})
+
+			if err != nil {
+				return err
+			}
+
+			if session == nil {
+				return fmt.Errorf("[agent-session] session not found: %s", sessionEvent.SessionIdentifier)
+			}
+
+			slog.Debug("[agent-session] created session event for pull request checks failed")
+			if err := telemetry.SpanErr(ctx, c.tracer, "on_pull_request_checks_failed.create_session_event", func(ctx context.Context) error {
+				return c.session.CreateSessionEvent(ctx, &types.SessionEvent{
+					SessionIdentifier: session.Identifier,
+					Identifier:        uuid.NewV7().String(),
+					Payload:           sessionEvent.Payload,
+					Seed:              &sessionEvent.Identifier,
+					GitRef:            &e.GitRef,
+					Reason:            types.AgentSessionEventReason_PRChecksFailed,
 				})
 			}); err != nil {
 				return err
@@ -726,7 +784,7 @@ func (c *controller) createPrompt(
 	))
 
 	if sessionEvent != nil && sessionEvent.GitRef != nil && sessionEvent.Seed != nil {
-		if sessionEvent.Reason == types.AgentSessionEventReason_CheckRun {
+		if sessionEvent.Reason == types.AgentSessionEventReason_PRChecksFailed {
 			p += fmt.Sprintf(
 				PromptTemplate_PullRequestChecksFailed,
 				"The pull request checks have failed. Review the check failures, fix the issues, and ensure all checks pass before the pull request can be merged.",
