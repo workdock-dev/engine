@@ -263,24 +263,24 @@ func (h *HarnessHandler) Parse(
 
 				switch partType {
 				case "retry":
+					sendThought(ctx, "")
 					m.RetryCount.Add(ctx, 1, metric.WithAttributes(
 						attribute.String("gen_ai.provider.name", providerName),
 					))
-					fallthrough
 				case "step_start":
-					fallthrough
+					sendThought(ctx, "")
 				case "file":
-					fallthrough
+					sendThought(ctx, "")
 				case "subtask":
-					fallthrough
+					sendThought(ctx, "")
 				case "snapshot":
-					fallthrough
+					sendThought(ctx, "")
 				case "patch":
-					fallthrough
+					sendThought(ctx, "")
 				case "agent":
-					fallthrough
+					sendThought(ctx, "")
 				case "compaction":
-					sendThought(ctx, "compacting")
+					sendThought(ctx, "")
 				case "reasoning":
 					var p types.ReasoningPart
 

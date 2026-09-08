@@ -370,7 +370,7 @@ func (s *HarnessSuite) TestParse_ThoughtOnlyParts() {
 		rec := s.parse(context.Background(), wire(partType, json.RawMessage(`{}`)))
 
 		s.Require().Len(rec.thoughts, 1, "part type %s", partType)
-		s.Equal("compacting", rec.thoughts[0])
+		s.Empty(rec.thoughts[0])
 		s.Empty(rec.responses)
 	}
 }
@@ -770,8 +770,8 @@ func (s *HarnessSuite) TestParse_MixedStream() {
 	)
 
 	s.Empty(rec.actions[1:])
-	s.Len(rec.thoughts, 2)                 // step_start + reasoning
-	s.Equal("compacting", rec.thoughts[0]) // step_start
+	s.Len(rec.thoughts, 2)   // step_start + reasoning
+	s.Empty(rec.thoughts[0]) // step_start
 	s.Equal("deep thought", rec.thoughts[1])
 	s.Equal([]string{"here is the answer", ""}, rec.responses) // text + step_finish
 
@@ -966,7 +966,7 @@ func (s *HarnessSuite) TestParse_Text_IncrementsMessageCount() {
 
 func (s *HarnessSuite) TestParse_RetryIncrementsRetryCount() {
 	rec := s.parse(context.Background(), wire("retry", json.RawMessage(`{}`)))
-	s.Require().Equal([]string{"compacting"}, rec.thoughts)
+	s.Require().Equal([]string{""}, rec.thoughts)
 
 	retryCount, ok := s.collectMetrics(context.Background())[METRICS_NAME+".retry.count"]
 	s.Require().True(ok)
