@@ -89,6 +89,10 @@ func (m *mockClient) CreateAgentActivity(ctx context.Context, accessToken string
 	return nil
 }
 
+func (m *mockClient) SendInitialThought(ctx context.Context, sessionId, organizationId string) error {
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // TokenHandlerSuite
 // ---------------------------------------------------------------------------

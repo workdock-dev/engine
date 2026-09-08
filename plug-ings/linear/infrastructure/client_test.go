@@ -462,9 +462,6 @@ func (s *LinearServiceSuite) TestSendInitialThought_Success() {
 }
 
 func (s *LinearServiceSuite) TestSendInitialThought_MissingSecret() {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		s.Fail("no activity call expected when credentials cannot be resolved")
-	})
 	svc, err := NewClient(types.Config{
 		ApiUrl:   "http://localhost:8080/graphql",
 		TokenUrl: "http://localhost:8080/token",
