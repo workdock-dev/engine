@@ -43,13 +43,25 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockClient struct {
-	labelsFn       func(ctx context.Context, issueId, accessToken string) ([]string, error)
-	exchangeFn     func(ctx context.Context, code string) (*types.TokenExchanged, error)
-	workspaceFn    func(ctx context.Context, accessToken string) (*types.WorkspaceInfo, error)
-	refreshFn      func(ctx context.Context, refreshToken string) (*types.Token, error)
-	activityFn     func(ctx context.Context, accessToken string, input types.CreateAgentActivityInput) error
+	labelsFn    func(ctx context.Context, issueId, accessToken string) ([]string, error)
+	exchangeFn  func(ctx context.Context, code string) (*types.TokenExchanged, error)
+	workspaceFn func(ctx context.Context, accessToken string) (*types.WorkspaceInfo, error)
+	refreshFn   func(ctx context.Context, refreshToken string) (*types.Token, error)
+	activityFn  func(ctx context.Context, accessToken string, input types.CreateAgentActivityInput) error
+	issueFn     func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error)
+	workflowFn  func(ctx context.Context, accessToken, teamId string) ([]types.WorkflowState, error)
+	updateFn    func(ctx context.Context, accessToken, issueId, stateId string) error
+
 	activities     []types.CreateAgentActivityInput
 	activityTokens []string
+	issueCalls     []string
+	workflowCalls  []string
+	issueUpdates   []issueUpdateCall
+}
+
+type issueUpdateCall struct {
+	issueId string
+	stateId string
 }
 
 func (m *mockClient) GetIssueLabels(ctx context.Context, issueId, accessToken string) ([]string, error) {
@@ -57,6 +69,39 @@ func (m *mockClient) GetIssueLabels(ctx context.Context, issueId, accessToken st
 		return m.labelsFn(ctx, issueId, accessToken)
 	}
 	return []string{"bug", "backend"}, nil
+}
+
+func (m *mockClient) GetIssue(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+	m.issueCalls = append(m.issueCalls, issueId)
+	if m.issueFn != nil {
+		return m.issueFn(ctx, accessToken, issueId)
+	}
+	return &types.IssueStateResult{
+		ID:        issueId,
+		TeamID:    "team-1",
+		StateName: "Todo",
+		StateType: types.IssueStateType_Unstarted,
+	}, nil
+}
+
+func (m *mockClient) GetTeamWorkflowStates(ctx context.Context, accessToken, teamId string) ([]types.WorkflowState, error) {
+	m.workflowCalls = append(m.workflowCalls, teamId)
+	if m.workflowFn != nil {
+		return m.workflowFn(ctx, accessToken, teamId)
+	}
+	return []types.WorkflowState{
+		{ID: "state-todo", Name: "Todo", Type: types.IssueStateType_Unstarted, Position: 0},
+		{ID: "state-in-progress", Name: "In Progress", Type: types.IssueStateType_Started, Position: 1},
+		{ID: "state-in-review", Name: "In Review", Type: types.IssueStateType_Started, Position: 2},
+	}, nil
+}
+
+func (m *mockClient) UpdateIssueState(ctx context.Context, accessToken, issueId, stateId string) error {
+	m.issueUpdates = append(m.issueUpdates, issueUpdateCall{issueId: issueId, stateId: stateId})
+	if m.updateFn != nil {
+		return m.updateFn(ctx, accessToken, issueId, stateId)
+	}
+	return nil
 }
 
 func (m *mockClient) ExchangeCode(ctx context.Context, code string) (*types.TokenExchanged, error) {
@@ -849,6 +894,224 @@ func (s *AgentSessionSuite) TestSend_ActivityErrorPropagates() {
 	}
 
 	err := s.handler.SendThought(context.Background(), "sess-1", "token-1", "thinking")
+
+	s.Error(err)
+}
+
+// ---------------------------------------------------------------------------
+// Issue state transitions
+// ---------------------------------------------------------------------------
+
+func (s *AgentSessionSuite) TestGetIssueState() {
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		s.Equal("token-1", accessToken)
+		s.Equal("issue-1", issueId)
+		return &types.IssueStateResult{ID: issueId, TeamID: "team-1", StateName: "Todo", StateType: types.IssueStateType_Unstarted}, nil
+	}
+
+	state, err := s.handler.GetIssueState(context.Background(), "issue-1", "token-1")
+
+	s.Require().NoError(err)
+	s.Equal("Todo", state.Name)
+	s.Equal(types.IssueStateType_Unstarted, state.Type)
+}
+
+func (s *AgentSessionSuite) TestGetIssueState_Error() {
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		return nil, fmt.Errorf("api down")
+	}
+
+	_, err := s.handler.GetIssueState(context.Background(), "issue-1", "token-1")
+
+	s.Error(err)
+}
+
+func (s *AgentSessionSuite) TestTransitionIssueToStarted_UnstartedIssue() {
+	s.client.workflowFn = func(ctx context.Context, accessToken, teamId string) ([]types.WorkflowState, error) {
+		s.Equal("team-1", teamId)
+		return []types.WorkflowState{
+			{ID: "state-todo", Name: "Todo", Type: types.IssueStateType_Unstarted, Position: 0},
+			{ID: "state-in-progress", Name: "In Progress", Type: types.IssueStateType_Started, Position: 1},
+			{ID: "state-in-review", Name: "In Review", Type: types.IssueStateType_Started, Position: 2},
+		}, nil
+	}
+
+	err := s.handler.TransitionIssueToStarted(context.Background(), "issue-1", "token-1")
+
+	s.Require().NoError(err)
+	s.Require().Len(s.client.issueUpdates, 1)
+	s.Equal("issue-1", s.client.issueUpdates[0].issueId)
+	s.Equal("state-in-progress", s.client.issueUpdates[0].stateId)
+}
+
+func (s *AgentSessionSuite) TestTransitionIssueToStarted_SelectsLowestPosition() {
+	s.client.workflowFn = func(ctx context.Context, accessToken, teamId string) ([]types.WorkflowState, error) {
+		return []types.WorkflowState{
+			{ID: "state-in-review", Name: "In Review", Type: types.IssueStateType_Started, Position: 5},
+			{ID: "state-in-progress", Name: "In Progress", Type: types.IssueStateType_Started, Position: 2},
+		}, nil
+	}
+
+	err := s.handler.TransitionIssueToStarted(context.Background(), "issue-1", "token-1")
+
+	s.Require().NoError(err)
+	s.Require().Len(s.client.issueUpdates, 1)
+	s.Equal("state-in-progress", s.client.issueUpdates[0].stateId)
+}
+
+func (s *AgentSessionSuite) TestTransitionIssueToStarted_AlreadyStarted_Skips() {
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		return &types.IssueStateResult{ID: issueId, TeamID: "team-1", StateName: "In Progress", StateType: types.IssueStateType_Started}, nil
+	}
+
+	err := s.handler.TransitionIssueToStarted(context.Background(), "issue-1", "token-1")
+
+	s.NoError(err)
+	s.Empty(s.client.issueUpdates, "no issueUpdate must be issued")
+	s.Empty(s.client.workflowCalls, "workflow states must not be queried")
+}
+
+func (s *AgentSessionSuite) TestTransitionIssueToStarted_AlreadyCompleted_Skips() {
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		return &types.IssueStateResult{ID: issueId, TeamID: "team-1", StateName: "Done", StateType: types.IssueStateType_Completed}, nil
+	}
+
+	err := s.handler.TransitionIssueToStarted(context.Background(), "issue-1", "token-1")
+
+	s.NoError(err)
+	s.Empty(s.client.issueUpdates)
+}
+
+func (s *AgentSessionSuite) TestTransitionIssueToStarted_AlreadyCanceled_Skips() {
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		return &types.IssueStateResult{ID: issueId, TeamID: "team-1", StateName: "Canceled", StateType: types.IssueStateType_Canceled}, nil
+	}
+
+	err := s.handler.TransitionIssueToStarted(context.Background(), "issue-1", "token-1")
+
+	s.NoError(err)
+	s.Empty(s.client.issueUpdates)
+}
+
+func (s *AgentSessionSuite) TestTransitionIssueToStarted_GetIssueError() {
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		return nil, fmt.Errorf("api down")
+	}
+
+	err := s.handler.TransitionIssueToStarted(context.Background(), "issue-1", "token-1")
+
+	s.Error(err)
+	s.Empty(s.client.issueUpdates)
+}
+
+func (s *AgentSessionSuite) TestTransitionIssueToStarted_WorkflowError() {
+	s.client.workflowFn = func(ctx context.Context, accessToken, teamId string) ([]types.WorkflowState, error) {
+		return nil, fmt.Errorf("api down")
+	}
+
+	err := s.handler.TransitionIssueToStarted(context.Background(), "issue-1", "token-1")
+
+	s.Error(err)
+	s.Empty(s.client.issueUpdates)
+}
+
+func (s *AgentSessionSuite) TestTransitionIssueToStarted_NoStartedState() {
+	s.client.workflowFn = func(ctx context.Context, accessToken, teamId string) ([]types.WorkflowState, error) {
+		return []types.WorkflowState{
+			{ID: "state-todo", Name: "Todo", Type: types.IssueStateType_Unstarted, Position: 0},
+		}, nil
+	}
+
+	err := s.handler.TransitionIssueToStarted(context.Background(), "issue-1", "token-1")
+
+	s.Error(err)
+	s.Contains(err.Error(), "no started workflow state")
+	s.Empty(s.client.issueUpdates)
+}
+
+func (s *AgentSessionSuite) TestTransitionIssueToStarted_UpdateError() {
+	s.client.updateFn = func(ctx context.Context, accessToken, issueId, stateId string) error {
+		return fmt.Errorf("api down")
+	}
+
+	err := s.handler.TransitionIssueToStarted(context.Background(), "issue-1", "token-1")
+
+	s.Error(err)
+}
+
+func (s *AgentSessionSuite) TestTransitionIssueToInReview() {
+	s.client.workflowFn = func(ctx context.Context, accessToken, teamId string) ([]types.WorkflowState, error) {
+		s.Equal("team-1", teamId)
+		return []types.WorkflowState{
+			{ID: "state-todo", Name: "Todo", Type: types.IssueStateType_Unstarted, Position: 0},
+			{ID: "state-in-progress", Name: "In Progress", Type: types.IssueStateType_Started, Position: 1},
+			{ID: "state-in-review", Name: "In Review", Type: types.IssueStateType_Started, Position: 2},
+		}, nil
+	}
+
+	err := s.handler.TransitionIssueToInReview(context.Background(), "issue-1", "token-1")
+
+	s.Require().NoError(err)
+	s.Require().Len(s.client.issueUpdates, 1)
+	s.Equal("issue-1", s.client.issueUpdates[0].issueId)
+	s.Equal("state-in-review", s.client.issueUpdates[0].stateId)
+}
+
+func (s *AgentSessionSuite) TestTransitionIssueToInReview_Canceled_Skips() {
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		return &types.IssueStateResult{ID: issueId, TeamID: "team-1", StateName: "Canceled", StateType: types.IssueStateType_Canceled}, nil
+	}
+
+	err := s.handler.TransitionIssueToInReview(context.Background(), "issue-1", "token-1")
+
+	s.NoError(err)
+	s.Empty(s.client.issueUpdates, "no issueUpdate must be issued")
+	s.Empty(s.client.workflowCalls, "workflow states must not be queried")
+}
+
+func (s *AgentSessionSuite) TestTransitionIssueToInReview_GetIssueError() {
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		return nil, fmt.Errorf("api down")
+	}
+
+	err := s.handler.TransitionIssueToInReview(context.Background(), "issue-1", "token-1")
+
+	s.Error(err)
+	s.Empty(s.client.issueUpdates)
+}
+
+func (s *AgentSessionSuite) TestTransitionIssueToInReview_WorkflowError() {
+	s.client.workflowFn = func(ctx context.Context, accessToken, teamId string) ([]types.WorkflowState, error) {
+		return nil, fmt.Errorf("api down")
+	}
+
+	err := s.handler.TransitionIssueToInReview(context.Background(), "issue-1", "token-1")
+
+	s.Error(err)
+	s.Empty(s.client.issueUpdates)
+}
+
+func (s *AgentSessionSuite) TestTransitionIssueToInReview_NoInReviewState() {
+	s.client.workflowFn = func(ctx context.Context, accessToken, teamId string) ([]types.WorkflowState, error) {
+		return []types.WorkflowState{
+			{ID: "state-todo", Name: "Todo", Type: types.IssueStateType_Unstarted, Position: 0},
+			{ID: "state-in-progress", Name: "In Progress", Type: types.IssueStateType_Started, Position: 1},
+		}, nil
+	}
+
+	err := s.handler.TransitionIssueToInReview(context.Background(), "issue-1", "token-1")
+
+	s.Error(err)
+	s.Contains(err.Error(), "no \"In Review\" workflow state")
+	s.Empty(s.client.issueUpdates)
+}
+
+func (s *AgentSessionSuite) TestTransitionIssueToInReview_UpdateError() {
+	s.client.updateFn = func(ctx context.Context, accessToken, issueId, stateId string) error {
+		return fmt.Errorf("api down")
+	}
+
+	err := s.handler.TransitionIssueToInReview(context.Background(), "issue-1", "token-1")
 
 	s.Error(err)
 }

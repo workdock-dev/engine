@@ -21,7 +21,10 @@ import (
 )
 
 type Client interface {
+	GetIssue(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error)
 	GetIssueLabels(ctx context.Context, issueId, accessToken string) ([]string, error)
+	GetTeamWorkflowStates(ctx context.Context, accessToken, teamId string) ([]types.WorkflowState, error)
+	UpdateIssueState(ctx context.Context, accessToken, issueId, stateId string) error
 	ExchangeCode(ctx context.Context, code string) (*types.TokenExchanged, error)
 	GetWorkspaceInfo(ctx context.Context, accessToken string) (*types.WorkspaceInfo, error)
 	RefreshToken(ctx context.Context, refreshToken string) (*types.Token, error)

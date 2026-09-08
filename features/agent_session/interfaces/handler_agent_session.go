@@ -27,6 +27,12 @@ type PromptContext struct {
 	Issue   types.Issue
 }
 
+// IssueState describes the workflow state of a ticket on the work platform.
+type IssueState struct {
+	Name string
+	Type string
+}
+
 // HandlerAgentSession is the interfaces required to be implemented
 // by work platforms that provides agent assignment to tickets
 type HandlerAgentSession interface {
@@ -59,4 +65,16 @@ type HandlerAgentSession interface {
 
 	// SendServerInternalError sends a generic server internal error
 	SendServerInternalError(ctx context.Context, sessionId, accessToken string) error
+
+	// GetIssueState returns the workflow state metadata of the ticket
+	GetIssueState(ctx context.Context, issueId, accessToken string) (*IssueState, error)
+
+	// TransitionIssueToStarted moves the ticket to the provider's first started
+	// workflow state when the agent session begins executing, unless the ticket
+	// is already in a started, completed, or canceled state type
+	TransitionIssueToStarted(ctx context.Context, issueId, accessToken string) error
+
+	// TransitionIssueToInReview moves the ticket to the provider's workflow
+	// state representing completed work awaiting review
+	TransitionIssueToInReview(ctx context.Context, issueId, accessToken string) error
 }

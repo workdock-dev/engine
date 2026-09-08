@@ -1758,6 +1758,73 @@ func (s *ControllerSuite) TestExecute_Success_NoPullRequest() {
 	s.Empty(s.sessionRep.updatedResults, "no PR means no result update")
 }
 
+// runSandboxToCompletion configures the sandbox mock to close its output
+// channels immediately (the harness produced no messages) and return a
+// no-result shutdown function.
+func (s *ControllerSuite) runSandboxToCompletion() {
+	s.sandboxHdl.runFn = func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
+		go func() {
+			close(stdout)
+			close(stderr)
+		}()
+
+		return func(ctx context.Context) string {
+			return "no pr"
+		}, nil
+	}
+	s.gitHdl.parseLatestResultFn = func(changes string) *types.PullRequest {
+		return nil
+	}
+}
+
+func (s *ControllerSuite) TestExecute_TransitionsIssueToStartedOnStart() {
+	s.prepareExecutable()
+	s.runSandboxToCompletion()
+
+	status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
+
+	s.Require().NoError(err)
+	s.Equal(types.EventJobStatus_Succeeded, status)
+	s.Equal([]string{"issue-1"}, s.agentHdl.transitionStarted, "issue must transition to started on session start")
+}
+
+func (s *ControllerSuite) TestExecute_TransitionsIssueToInReviewOnCompletion() {
+	s.prepareExecutable()
+	s.runSandboxToCompletion()
+
+	status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
+
+	s.Require().NoError(err)
+	s.Equal(types.EventJobStatus_Succeeded, status)
+	s.Equal([]string{"issue-1"}, s.agentHdl.transitionedInReview, "issue must transition to In Review on completion")
+}
+
+func (s *ControllerSuite) TestExecute_TransitionStartedError_DoesNotFailJob() {
+	s.prepareExecutable()
+	s.runSandboxToCompletion()
+	s.agentHdl.transitionStartedFn = func(ctx context.Context, issueId, accessToken string) error {
+		return errors.New("transition failed")
+	}
+
+	status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
+
+	s.Require().NoError(err)
+	s.Equal(types.EventJobStatus_Succeeded, status, "a failed started transition must not fail the job")
+}
+
+func (s *ControllerSuite) TestExecute_TransitionInReviewError_DoesNotFailJob() {
+	s.prepareExecutable()
+	s.runSandboxToCompletion()
+	s.agentHdl.transitionInReviewFn = func(ctx context.Context, issueId, accessToken string) error {
+		return errors.New("transition failed")
+	}
+
+	status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
+
+	s.Require().NoError(err)
+	s.Equal(types.EventJobStatus_Succeeded, status, "a failed In Review transition must not fail the job")
+}
+
 // ---------------------------------------------------------------------------
 // harness
 // ---------------------------------------------------------------------------

@@ -429,12 +429,25 @@ func (s *LinearServiceSuite) TestGetIssue_NilIssue() {
 }
 
 func (s *LinearServiceSuite) TestGetIssue_Success() {
-	issueJSON := `{"data":{"issue":{"id":"issue-1","state":{"name":"Done","type":"completed"}}}}`
+	issueJSON := `{"data":{"issue":{"id":"issue-1","team":{"id":"team-1"},"state":{"name":"Done","type":"completed"}}}}`
 	handler := okJSONHandler(issueJSON)
 	svc := s.newService(handler)
 	issue, err := svc.GetIssue(context.Background(), "token", "issue-1")
 	s.NoError(err)
 	s.Equal("issue-1", issue.ID)
+	s.Equal("team-1", issue.TeamID)
+	s.Equal("Done", issue.StateName)
+	s.Equal("completed", issue.StateType)
+}
+
+func (s *LinearServiceSuite) TestGetIssue_Success_NilTeam() {
+	issueJSON := `{"data":{"issue":{"id":"issue-1","team":null,"state":{"name":"Done","type":"completed"}}}}`
+	handler := okJSONHandler(issueJSON)
+	svc := s.newService(handler)
+	issue, err := svc.GetIssue(context.Background(), "token", "issue-1")
+	s.NoError(err)
+	s.Equal("issue-1", issue.ID)
+	s.Empty(issue.TeamID)
 	s.Equal("Done", issue.StateName)
 	s.Equal("completed", issue.StateType)
 }
@@ -483,6 +496,94 @@ func (s *LinearServiceSuite) TestGetIssueLabels_Success() {
 	s.NoError(err)
 	s.Len(labels, 1)
 	s.Equal("repo=workdock-dev/engine", labels[0])
+}
+
+// --- GetTeamWorkflowStates() ---
+
+func (s *LinearServiceSuite) TestGetTeamWorkflowStates_DoRequestFailure() {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	svc := s.newService(handler)
+	_, err := svc.GetTeamWorkflowStates(context.Background(), "token", "team-1")
+	s.Error(err)
+}
+
+func (s *LinearServiceSuite) TestGetTeamWorkflowStates_BadJSON() {
+	handler := okJSONHandler(`{"data": "not-an-object"}`)
+	svc := s.newService(handler)
+	_, err := svc.GetTeamWorkflowStates(context.Background(), "token", "team-1")
+	s.Error(err)
+	s.Contains(err.Error(), "failed to unmarshal response")
+}
+
+func (s *LinearServiceSuite) TestGetTeamWorkflowStates_NilTeam() {
+	handler := okJSONHandler(`{"data":{"team":null}}`)
+	svc := s.newService(handler)
+	_, err := svc.GetTeamWorkflowStates(context.Background(), "token", "team-1")
+	s.Error(err)
+	s.Contains(err.Error(), "team not found")
+}
+
+func (s *LinearServiceSuite) TestGetTeamWorkflowStates_Success() {
+	statesJSON := `{"data":{"team":{"states":{"nodes":[{"id":"state-1","name":"In Progress","type":"started","position":1},{"id":"state-2","name":"Todo","type":"unstarted","position":0}]}}}}`
+	handler := okJSONHandler(statesJSON)
+	svc := s.newService(handler)
+	states, err := svc.GetTeamWorkflowStates(context.Background(), "token", "team-1")
+	s.Require().NoError(err)
+	s.Require().Len(states, 2)
+	s.Equal("state-1", states[0].ID)
+	s.Equal("In Progress", states[0].Name)
+	s.Equal("started", states[0].Type)
+	s.Equal(float64(1), states[0].Position)
+	s.Equal("state-2", states[1].ID)
+	s.Equal("Todo", states[1].Name)
+	s.Equal("unstarted", states[1].Type)
+	s.Equal(float64(0), states[1].Position)
+}
+
+// --- UpdateIssueState() ---
+
+func (s *LinearServiceSuite) TestUpdateIssueState_Success() {
+	var receivedVars map[string]any
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req graphQLRequest
+		json.Unmarshal(body, &req)
+		receivedVars = req.Variables
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"data":{"issueUpdate":{"success":true,"lastSyncId":1}}}`)
+	})
+	svc := s.newService(handler)
+	err := svc.UpdateIssueState(context.Background(), "token", "issue-1", "state-1")
+	s.NoError(err)
+	s.Equal("issue-1", receivedVars["id"])
+	input := receivedVars["input"].(map[string]any)
+	s.Equal("state-1", input["stateId"])
+}
+
+func (s *LinearServiceSuite) TestUpdateIssueState_SuccessFalse() {
+	handler := okJSONHandler(`{"data":{"issueUpdate":{"success":false,"lastSyncId":1}}}`)
+	svc := s.newService(handler)
+	err := svc.UpdateIssueState(context.Background(), "token", "issue-1", "state-1")
+	s.Error(err)
+	s.Contains(err.Error(), "unsuccess")
+}
+
+func (s *LinearServiceSuite) TestUpdateIssueState_DoRequestFailure() {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	svc := s.newService(handler)
+	err := svc.UpdateIssueState(context.Background(), "token", "issue-1", "state-1")
+	s.Error(err)
+}
+
+func (s *LinearServiceSuite) TestUpdateIssueState_BadJSON() {
+	handler := okJSONHandler(`{"data": "not-an-object"}`)
+	svc := s.newService(handler)
+	err := svc.UpdateIssueState(context.Background(), "token", "issue-1", "state-1")
+	s.Error(err)
 }
 
 // --- doRequest() (tested via GetWorkspaceInfo which calls doRequest) ---
