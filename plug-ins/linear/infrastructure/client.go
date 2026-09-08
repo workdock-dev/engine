@@ -27,8 +27,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/workdock-dev/engine/plug-ings/linear/helpers"
-	"github.com/workdock-dev/engine/plug-ings/linear/types"
+	"github.com/workdock-dev/engine/plug-ins/linear/helpers"
+	"github.com/workdock-dev/engine/plug-ins/linear/types"
 	"github.com/workdock-dev/engine/shared"
 )
 

@@ -17,7 +17,7 @@ package interfaces
 import (
 	"context"
 
-	"github.com/workdock-dev/engine/plug-ings/github/types"
+	"github.com/workdock-dev/engine/plug-ins/github/types"
 )
 
 type Client interface {

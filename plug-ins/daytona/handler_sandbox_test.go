@@ -24,7 +24,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
-	"github.com/workdock-dev/engine/plug-ings/daytona/types"
+	"github.com/workdock-dev/engine/plug-ins/daytona/types"
 )
 
 type SandboxSuite struct {

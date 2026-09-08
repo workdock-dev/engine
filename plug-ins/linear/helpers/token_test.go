@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/suite"
-	"github.com/workdock-dev/engine/plug-ings/linear/interfaces"
-	"github.com/workdock-dev/engine/plug-ings/linear/types"
+	"github.com/workdock-dev/engine/plug-ins/linear/interfaces"
+	"github.com/workdock-dev/engine/plug-ins/linear/types"
 	"github.com/workdock-dev/engine/shared"
 )
 

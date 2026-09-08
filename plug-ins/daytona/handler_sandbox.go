@@ -28,8 +28,8 @@ import (
 	"github.com/daytona/clients/sdk-go/pkg/options"
 	sdktypes "github.com/daytona/clients/sdk-go/pkg/types"
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
-	"github.com/workdock-dev/engine/plug-ings/daytona/helpers"
-	"github.com/workdock-dev/engine/plug-ings/daytona/types"
+	"github.com/workdock-dev/engine/plug-ins/daytona/helpers"
+	"github.com/workdock-dev/engine/plug-ins/daytona/types"
 )
 
 const (

@@ -17,7 +17,7 @@ package interfaces
 import (
 	"context"
 
-	"github.com/workdock-dev/engine/plug-ings/linear/types"
+	"github.com/workdock-dev/engine/plug-ins/linear/types"
 )
 
 type Client interface {

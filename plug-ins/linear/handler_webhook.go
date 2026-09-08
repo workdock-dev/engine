@@ -30,8 +30,8 @@ import (
 	"time"
 
 	"github.com/workdock-dev/engine/features/webhook"
-	"github.com/workdock-dev/engine/plug-ings/linear/interfaces"
-	"github.com/workdock-dev/engine/plug-ings/linear/types"
+	"github.com/workdock-dev/engine/plug-ins/linear/interfaces"
+	"github.com/workdock-dev/engine/plug-ins/linear/types"
 	"github.com/workdock-dev/engine/shared"
 )
 
