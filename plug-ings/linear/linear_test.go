@@ -140,6 +140,14 @@ type initialThought struct {
 	organizationId string
 }
 
+func (m *mockInitialThoughtRouter) SendInitialThought(ctx context.Context, sessionId, organizationId string) error {
+	m.thoughts = append(m.thoughts, initialThought{
+		sessionId:      sessionId,
+		organizationId: organizationId,
+	})
+	return m.err
+}
+
 func newRecordingEventBus(rec *eventRecorder) *shared.EventBus {
 	bus := shared.NewEventBus()
 	handle := func(ctx context.Context, event shared.DomainEvent) error {
