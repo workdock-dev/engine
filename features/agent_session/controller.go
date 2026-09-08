@@ -386,7 +386,7 @@ func (c *controller) onPullRequestCommented() {
 			}
 
 			if *session.RepoFullName != e.RepoFullName {
-				return fmt.Errorf("[agent-session] session's repo doesn't match pull request repo")
+				return fmt.Errorf("[agent-session] session's repo doesn't match pull request repo %s != %s", *session.RepoFullName, e.RepoFullName)
 			}
 
 			slog.Debug("[agent-session] created session event for pull request comment review")
@@ -449,7 +449,7 @@ func (c *controller) onPullRequestChecksFailed() {
 			}
 
 			if *session.RepoFullName != e.RepoFullName {
-				return fmt.Errorf("[agent-session] session's repo doesn't match pull request repo")
+				return fmt.Errorf("[agent-session] session's repo doesn't match pull request repo %s != %s", *session.RepoFullName, e.RepoFullName)
 			}
 
 			slog.Debug("[agent-session] created session event for pull request checks failed")

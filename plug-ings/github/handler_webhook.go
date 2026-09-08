@@ -396,13 +396,18 @@ func (c *WEventConsumer) handleCheckSuite(event *types.WebhookEvent) error {
 		return nil
 	}
 
+	if event.Repository == nil {
+		slog.Warn("[webhook][github] check suite event without repository data", "action", event.Action)
+		return nil
+	}
+
 	installationId := strconv.Itoa(event.Installation.ID)
 
 	for _, pr := range event.CheckSuite.PullRequests {
 		c.eventBus.Publish(context.Background(), shared.PullRequestChecksFailedEvent{
 			Provider:       shared.PlatformProvider_GitHub,
 			GitRef:         pr.Head.Ref,
-			RepoFullName:   event.CheckSuite.Repository.FullName,
+			RepoFullName:   event.Repository.FullName,
 			InstallationId: installationId,
 			ChecksFailed:   []string{pr.URL},
 		})

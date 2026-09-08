@@ -34,6 +34,7 @@ type WebhookEvent struct {
 	EventType           string        `json:"event_type"`
 	Action              string        `json:"action"`
 	Installation        *Installation `json:"installation,omitempty"`
+	Repository          *Repository   `json:"repository"`
 	Repositories        []Repository  `json:"repositories,omitempty"`
 	RepositoriesAdded   []Repository  `json:"repositories_added,omitempty"`
 	RepositoriesRemoved []Repository  `json:"repositories_removed,omitempty"`
@@ -86,5 +87,4 @@ type CheckSuite struct {
 	Status       string        `json:"status"`
 	Conclusion   *string       `json:"conclusion"`
 	PullRequests []PullRequest `json:"pull_requests,omitempty"`
-	Repository   Repository    `json:"repository"`
 }
