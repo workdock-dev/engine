@@ -929,6 +929,7 @@ func (s *WebhookSuite) TestHandleCheckSuite_Success() {
 			"installation": {"id": 5},
 			"check_suite": {
 				"conclusion": "failure",
+				"repository": {"full_name": "owner/repo"},
 				"pull_requests": [
 					{"head": {"ref": "suite-1", "repo": {"full_name": "owner/repo"}}, "url": "https://github.com/pull/10"},
 					{"head": {"ref": "suite-2", "repo": {"full_name": "owner/repo"}}, "url": "https://github.com/pull/11"}

@@ -349,7 +349,7 @@ type mockSessionRepository struct {
 	getAgentSessionFn              func(ctx context.Context, identifier string) (*types.Session, error)
 	getAgentSessionsByIssueIdFn    func(ctx context.Context, issueId string) ([]*types.Session, error)
 	getAgentSessionEventFn         func(ctx context.Context, identifier string) (*types.SessionEvent, error)
-	getAgentSessionEventByGitRefFn func(ctx context.Context, identifier, repoFullName string) (*types.SessionEvent, error)
+	getAgentSessionEventByGitRefFn func(ctx context.Context, identifier string) (*types.SessionEvent, error)
 	createSessionEventFn           func(ctx context.Context, event *types.SessionEvent) error
 	resumeSessionEventFn           func(ctx context.Context, event *types.SessionEvent) error
 	upsertAgentSessionFn           func(ctx context.Context, session *types.Session) error
@@ -385,9 +385,9 @@ func (m *mockSessionRepository) GetAgentSessionEvent(ctx context.Context, identi
 	return nil, nil
 }
 
-func (m *mockSessionRepository) GetAgentSessionEventByGitRef(ctx context.Context, identifier, repoFullName string) (*types.SessionEvent, error) {
+func (m *mockSessionRepository) GetAgentSessionEventByGitRef(ctx context.Context, identifier string) (*types.SessionEvent, error) {
 	if m.getAgentSessionEventByGitRefFn != nil {
-		return m.getAgentSessionEventByGitRefFn(ctx, identifier, repoFullName)
+		return m.getAgentSessionEventByGitRefFn(ctx, identifier)
 	}
 	return nil, nil
 }
