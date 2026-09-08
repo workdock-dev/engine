@@ -330,7 +330,11 @@ func (c *controller) onAgentSessionStop() {
 	})
 }
 
-// onIssueChange Configured domain event for agent session
+// onIssueChange Configured domain event for agent session. Archives the
+// sandboxes of all the sessions associated with an issue when the issue is
+// updated into a done workflow state. It re-checks the current issue state
+// with the provider because webhook payloads only carry the state's display
+// name, not its type.
 func (c *controller) onIssueChange() {
 	c.eventBus.Subscribe(shared.EventType_IssueChange, func(ctx context.Context, event shared.DomainEvent) error {
 		e, ok := event.(shared.IssueChangedEvent)
@@ -350,83 +354,77 @@ func (c *controller) onIssueChange() {
 			return nil
 		}
 
-		return telemetry.SpanErr(ctx, c.tracer, "on_issue_change.archive_done_sandboxes", func(ctx context.Context) error {
-			return c.archiveDoneSandboxes(ctx, e.Provider, payload.IssueId())
+		issueId := payload.IssueId()
+
+		return telemetry.SpanErr(ctx, c.tracer, "on_issue_change", func(ctx context.Context) error {
+			sessions, err := telemetry.Span(ctx, c.tracer, "on_issue_change.get_sessions", func(ctx context.Context) ([]*types.Session, error) {
+				return c.session.GetAgentSessionsByIssueId(ctx, issueId)
+			})
+
+			if err != nil {
+				return err
+			}
+
+			// No sessions means no sandboxes to archive
+			if len(sessions) == 0 {
+				slog.Debug("[agent-session] no sessions found for issue, nothing to archive", "issue_id", issueId)
+				return nil
+			}
+
+			agentHandler, ok := c.agentHandlerRegistry[e.Provider]
+
+			if !ok {
+				return fmt.Errorf("[agent-session] agent session handler not found in registry: %s", e.Provider)
+			}
+
+			sandboxHandler, ok := c.sandboxHandlerRegistry[string(shared.PlatformProvider_Daytona)]
+
+			if !ok {
+				return fmt.Errorf("[agent-session] provider %s not configured for sandbox handler", shared.PlatformProvider_Daytona)
+			}
+
+			credentials, err := telemetry.Span(ctx, c.tracer, "on_issue_change.get_credentials", func(ctx context.Context) (string, error) {
+				return agentHandler.GetCredentials(ctx, sessions[0].OrganizationIdentifier)
+			})
+
+			if err != nil {
+				return err
+			}
+
+			issueState, err := telemetry.Span(ctx, c.tracer, "on_issue_change.get_issue_state", func(ctx context.Context) (*interfaces.IssueState, error) {
+				return agentHandler.GetIssueState(ctx, issueId, credentials)
+			})
+
+			if err != nil {
+				return err
+			}
+
+			// The ticket is not done, keep the sandboxes alive
+			if issueState.Type != interfaces.IssueStateType_Completed {
+				slog.Debug("[agent-session] issue state is not done, skipping archive", "issue_id", issueId, "state_type", issueState.Type)
+				return nil
+			}
+
+			for _, session := range sessions {
+				if err := telemetry.SpanErr(ctx, c.tracer, "on_issue_change.archive_sandbox", func(ctx context.Context) error {
+					return sandboxHandler.Archive(ctx, &interfaces.SandboxConfig{
+						Session: session,
+					})
+				}); err != nil {
+					slog.Error("[agent-session] failed to archive sandbox for session",
+						"err", err,
+						"session_identifier", session.Identifier,
+						"issue_id", issueId,
+					)
+
+					// Continue archiving the remaining sandboxes even if one fails
+					continue
+				}
+			}
+
+			return nil
 		})
 	})
-}
-
-// archiveDoneSandboxes archives the sandboxes of all the sessions associated
-// with an issue when the issue sits in a done workflow state. It re-checks the
-// current issue state with the provider because webhook payloads only carry
-// the state's display name, not its type.
-func (c *controller) archiveDoneSandboxes(ctx context.Context, provider, issueId string) error {
-	sessions, err := telemetry.Span(ctx, c.tracer, "on_issue_change.get_sessions", func(ctx context.Context) ([]*types.Session, error) {
-		return c.session.GetAgentSessionsByIssueId(ctx, issueId)
-	})
-
-	if err != nil {
-		return err
-	}
-
-	// No sessions means no sandboxes to archive
-	if len(sessions) == 0 {
-		slog.Debug("[agent-session] no sessions found for issue, nothing to archive", "issue_id", issueId)
-		return nil
-	}
-
-	agentHandler, ok := c.agentHandlerRegistry[provider]
-
-	if !ok {
-		return fmt.Errorf("[agent-session] agent session handler not found in registry: %s", provider)
-	}
-
-	sandboxHandler, ok := c.sandboxHandlerRegistry[string(shared.PlatformProvider_Daytona)]
-
-	if !ok {
-		return fmt.Errorf("[agent-session] provider %s not configured for sandbox handler", shared.PlatformProvider_Daytona)
-	}
-
-	credentials, err := telemetry.Span(ctx, c.tracer, "on_issue_change.get_credentials", func(ctx context.Context) (string, error) {
-		return agentHandler.GetCredentials(ctx, sessions[0].OrganizationIdentifier)
-	})
-
-	if err != nil {
-		return err
-	}
-
-	issueState, err := telemetry.Span(ctx, c.tracer, "on_issue_change.get_issue_state", func(ctx context.Context) (*interfaces.IssueState, error) {
-		return agentHandler.GetIssueState(ctx, issueId, credentials)
-	})
-
-	if err != nil {
-		return err
-	}
-
-	// The ticket is not done, keep the sandboxes alive
-	if issueState.Type != interfaces.IssueStateType_Completed {
-		slog.Debug("[agent-session] issue state is not done, skipping archive", "issue_id", issueId, "state_type", issueState.Type)
-		return nil
-	}
-
-	for _, session := range sessions {
-		if err := telemetry.SpanErr(ctx, c.tracer, "on_issue_change.archive_sandbox", func(ctx context.Context) error {
-			return sandboxHandler.Archive(ctx, &interfaces.SandboxConfig{
-				Session: session,
-			})
-		}); err != nil {
-			slog.Error("[agent-session] failed to archive sandbox for session",
-				"err", err,
-				"session_identifier", session.Identifier,
-				"issue_id", issueId,
-			)
-
-			// Continue archiving the remaining sandboxes even if one fails
-			continue
-		}
-	}
-
-	return nil
 }
 
 // onPullRequestCommented Configured domain event for pr review comment
