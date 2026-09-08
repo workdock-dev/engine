@@ -192,8 +192,8 @@ func (m *mockSecretManager) Delete(ctx context.Context, secretPath, secretName s
 // Publish is synchronous, so recorded events are available immediately.
 type eventRecorder struct {
 	archiveEvents []shared.AgentSessionArchiveEvent
-	prompt      []shared.AgentSessionPromptEvent
-	stop        []shared.AgentSessionStopEvent
+	prompt        []shared.AgentSessionPromptEvent
+	stop          []shared.AgentSessionStopEvent
 }
 
 func newRecordingEventBus(rec *eventRecorder) *shared.EventBus {
