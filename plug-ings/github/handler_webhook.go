@@ -40,7 +40,6 @@ const (
 	WEventType_InstallationRepositories = "installation_repositories"
 	WEventType_Issues                   = "issues"
 	WEventType_PullRequestReviewComment = "pull_request_review_comment"
-	WEventType_CheckRun                 = "check_run"
 	WEventType_CheckSuite               = "check_suite"
 )
 
@@ -188,16 +187,12 @@ func (c *WEventConsumer) Consume(ctx context.Context, event *webhook.VerifiedWEv
 	}
 
 	if event.WEventType == WEventType_Issues {
-		// return s.handleIssues(e)
+		// TODO: Implement GitHub as a WorkItem provider e.g. Linear style
 		return nil
 	}
 
 	if event.WEventType == WEventType_PullRequestReviewComment {
 		return c.handlePullRequestComment(&payload)
-	}
-
-	if event.WEventType == WEventType_CheckRun {
-		return c.handleCheckRun(&payload)
 	}
 
 	if event.WEventType == WEventType_CheckSuite {
@@ -363,59 +358,6 @@ func (c *WEventConsumer) handlePullRequestComment(event *types.WebhookEvent) err
 	return nil
 }
 
-func (c *WEventConsumer) handleCheckRun(event *types.WebhookEvent) error {
-	if event.CheckRun == nil {
-		slog.Warn("[webhook][github] check run event without check_run data", "action", event.Action)
-		return nil
-	}
-
-	if event.Sender == nil {
-		slog.Warn("[webhook][github] check run event without sender", "action", event.Action)
-		return nil
-	}
-
-	if event.Sender.Login == c.config.BotLoginId {
-		return nil
-	}
-
-	if event.CheckRun.Conclusion == nil {
-		slog.Warn("[webhook][github] check run event without conclusion", "action", event.Action)
-		return nil
-	}
-
-	if event.Action != "completed" {
-		return nil
-	}
-
-	if *event.CheckRun.Conclusion != "failure" && *event.CheckRun.Conclusion != "timed_out" {
-		return nil
-	}
-
-	if event.Installation == nil {
-		slog.Warn("[webhook][github] check run event without installation data", "action", event.Action)
-		return nil
-	}
-
-	if len(event.CheckRun.PullRequests) == 0 {
-		slog.Warn("[webhook][github] check run event without pull requests, ignoring")
-		return nil
-	}
-
-	installationId := strconv.Itoa(event.Installation.ID)
-
-	for _, pr := range event.CheckRun.PullRequests {
-		c.eventBus.Publish(context.Background(), shared.PullRequestChecksFailedEvent{
-			Provider:       shared.PlatformProvider_GitHub,
-			GitRef:         pr.Head.Ref,
-			RepoFullName:   pr.Head.Repo.FullName,
-			InstallationId: installationId,
-			ChecksFailed:   []string{event.CheckRun.URL},
-		})
-	}
-
-	return nil
-}
-
 func (c *WEventConsumer) handleCheckSuite(event *types.WebhookEvent) error {
 	if event.CheckSuite == nil {
 		slog.Warn("[webhook][github] check suite event without check_suite data", "action", event.Action)
@@ -454,13 +396,18 @@ func (c *WEventConsumer) handleCheckSuite(event *types.WebhookEvent) error {
 		return nil
 	}
 
+	if event.Repository == nil {
+		slog.Warn("[webhook][github] check suite event without repository data", "action", event.Action)
+		return nil
+	}
+
 	installationId := strconv.Itoa(event.Installation.ID)
 
 	for _, pr := range event.CheckSuite.PullRequests {
 		c.eventBus.Publish(context.Background(), shared.PullRequestChecksFailedEvent{
 			Provider:       shared.PlatformProvider_GitHub,
 			GitRef:         pr.Head.Ref,
-			RepoFullName:   pr.Head.Repo.FullName,
+			RepoFullName:   event.Repository.FullName,
 			InstallationId: installationId,
 			ChecksFailed:   []string{pr.URL},
 		})

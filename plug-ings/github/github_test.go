@@ -597,7 +597,6 @@ func (s *WebhookSuite) TestConsume_InvalidPayload() {
 		WEventType_Installation,
 		WEventType_InstallationRepositories,
 		WEventType_PullRequestReviewComment,
-		WEventType_CheckRun,
 		WEventType_CheckSuite,
 		"totally_unknown",
 	}
@@ -887,72 +886,6 @@ func (s *WebhookSuite) TestHandlePullRequestComment_Success() {
 }
 
 // ---------------------------------------------------------------------------
-// WEventConsumer — check_run
-// ---------------------------------------------------------------------------
-
-func (s *WebhookSuite) TestHandleCheckRun() {
-	consumer := s.newConsumer()
-
-	tests := []struct {
-		name    string
-		payload string
-	}{
-		{name: "nil check run", payload: `{"action":"completed"}`},
-		{name: "nil sender", payload: `{"action":"completed","check_run":{"conclusion":"failure"}}`},
-		{name: "bot login", payload: `{"action":"completed","sender":{"login":"workdock-bot"},"check_run":{"conclusion":"failure"}}`},
-		{name: "nil conclusion", payload: `{"action":"completed","sender":{"login":"alice"},"check_run":{}}`},
-		{name: "not completed", payload: `{"action":"in_progress","sender":{"login":"alice"},"check_run":{"conclusion":"failure"}}`},
-		{name: "passing conclusion", payload: `{"action":"completed","sender":{"login":"alice"},"check_run":{"conclusion":"success"}}`},
-		{name: "nil installation", payload: `{"action":"completed","sender":{"login":"alice"},"check_run":{"conclusion":"failure"}}`},
-		{name: "no pull requests", payload: `{"action":"completed","sender":{"login":"alice"},"installation":{"id":3},"check_run":{"conclusion":"failure"}}`},
-	}
-
-	for _, tt := range tests {
-		s.Run(tt.name, func() {
-			err := consumer.Consume(context.Background(), &webhook.VerifiedWEvent{
-				WEventType: WEventType_CheckRun,
-				Payload:    []byte(tt.payload),
-			})
-
-			s.NoError(err)
-		})
-	}
-
-	s.Empty(s.recorder.checks)
-}
-
-func (s *WebhookSuite) TestHandleCheckRun_Success() {
-	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
-		WEventType: WEventType_CheckRun,
-		Payload: []byte(`{
-			"action": "completed",
-			"sender": {"login": "alice"},
-			"installation": {"id": 3},
-			"check_run": {
-				"conclusion": "timed_out",
-				"url": "https://api.github.com/checks/1",
-				"pull_requests": [
-					{"head": {"ref": "pr-1", "repo": {"full_name": "owner/repo"}}},
-					{"head": {"ref": "pr-2", "repo": {"full_name": "owner/repo"}}}
-				]
-			}
-		}`),
-	})
-
-	s.Require().NoError(err)
-	s.Require().Len(s.recorder.checks, 2)
-
-	for i, expectedRef := range []string{"pr-1", "pr-2"} {
-		event := s.recorder.checks[i]
-		s.Equal(shared.PlatformProvider_GitHub, event.Provider)
-		s.Equal(expectedRef, event.GitRef)
-		s.Equal("owner/repo", event.RepoFullName)
-		s.Equal("3", event.InstallationId)
-		s.Equal([]string{"https://api.github.com/checks/1"}, event.ChecksFailed)
-	}
-}
-
-// ---------------------------------------------------------------------------
 // WEventConsumer — check_suite
 // ---------------------------------------------------------------------------
 
@@ -971,6 +904,7 @@ func (s *WebhookSuite) TestHandleCheckSuite() {
 		{name: "passing conclusion", payload: `{"action":"completed","sender":{"login":"alice"},"check_suite":{"conclusion":"success"}}`},
 		{name: "nil installation", payload: `{"action":"completed","sender":{"login":"alice"},"check_suite":{"conclusion":"failure"}}`},
 		{name: "no pull requests", payload: `{"action":"completed","sender":{"login":"alice"},"installation":{"id":5},"check_suite":{"conclusion":"failure"}}`},
+		{name: "nil repository", payload: `{"action":"completed","sender":{"login":"alice"},"installation":{"id":5},"check_suite":{"conclusion":"failure","pull_requests":[{"head":{"ref":"r1"},"url":"https://github.com/pull/1"}]}}`},
 	}
 
 	for _, tt := range tests {
@@ -994,6 +928,7 @@ func (s *WebhookSuite) TestHandleCheckSuite_Success() {
 			"action": "completed",
 			"sender": {"login": "alice"},
 			"installation": {"id": 5},
+			"repository": {"full_name": "owner/repo"},
 			"check_suite": {
 				"conclusion": "failure",
 				"pull_requests": [

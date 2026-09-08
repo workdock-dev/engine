@@ -34,12 +34,12 @@ type WebhookEvent struct {
 	EventType           string        `json:"event_type"`
 	Action              string        `json:"action"`
 	Installation        *Installation `json:"installation,omitempty"`
+	Repository          *Repository   `json:"repository"`
 	Repositories        []Repository  `json:"repositories,omitempty"`
 	RepositoriesAdded   []Repository  `json:"repositories_added,omitempty"`
 	RepositoriesRemoved []Repository  `json:"repositories_removed,omitempty"`
 	Sender              *User         `json:"sender,omitempty"`
 	PullRequest         *PullRequest  `json:"pull_request"`
-	CheckRun            *CheckRun     `json:"check_run,omitempty"`
 	CheckSuite          *CheckSuite   `json:"check_suite,omitempty"`
 }
 
@@ -77,18 +77,6 @@ type Head struct {
 
 type Repo struct {
 	FullName string `json:"full_name"`
-}
-
-type CheckRun struct {
-	ID           int64         `json:"id"`
-	NodeID       string        `json:"node_id"`
-	HeadBranch   string        `json:"head_branch"`
-	HeadSHA      string        `json:"head_sha"`
-	Status       string        `json:"status"`
-	Conclusion   *string       `json:"conclusion"`
-	URL          string        `json:"url"`
-	CheckSuite   *CheckSuite   `json:"check_suite,omitempty"`
-	PullRequests []PullRequest `json:"pull_requests,omitempty"`
 }
 
 type CheckSuite struct {

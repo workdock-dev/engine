@@ -23,9 +23,9 @@ import (
 type AgentSessionEventReason string
 
 const (
-	AgentSessionEventReason_Prompt    AgentSessionEventReason = "user_prompt"
-	AgentSessionEventReason_PRComment AgentSessionEventReason = "pr_comment"
-	AgentSessionEventReason_CheckRun  AgentSessionEventReason = "check_run"
+	AgentSessionEventReason_Prompt         AgentSessionEventReason = "user_prompt"
+	AgentSessionEventReason_PRComment      AgentSessionEventReason = "pr_comment"
+	AgentSessionEventReason_PRChecksFailed AgentSessionEventReason = "pr_checks_failed"
 )
 
 type Session struct {

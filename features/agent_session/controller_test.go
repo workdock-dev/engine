@@ -295,6 +295,7 @@ func (s *ControllerSuite) TestInit_RegistersAllEventSubscriptions() {
 		shared.EventType_AgentSessionStop,
 		shared.EventType_IssueChange,
 		shared.EventType_PullRequestCommented,
+		shared.EventType_PullRequestChecksFailed,
 		shared.EventType_GitResetConnection,
 		shared.EventType_GitCompleteConnection,
 	} {
@@ -765,7 +766,7 @@ func (s *ControllerSuite) TestOnPullRequestCommented_MismatchedEventType() {
 
 func (s *ControllerSuite) TestOnPullRequestCommented_EventLookupError() {
 	s.initController()
-	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier, repoFullName string) (*types.SessionEvent, error) {
+	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
 		return nil, errors.New("git ref lookup failed")
 	}
 
@@ -777,19 +778,19 @@ func (s *ControllerSuite) TestOnPullRequestCommented_EventLookupError() {
 
 func (s *ControllerSuite) TestOnPullRequestCommented_EventNotFound() {
 	s.initController()
-	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier, repoFullName string) (*types.SessionEvent, error) {
+	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
 		return nil, nil
 	}
 
 	err := s.publish(shared.EventType_PullRequestCommented, shared.PullRequestCommentedEvent{GitRef: "workdock/main", RepoFullName: "workdock/repo"})
 
 	s.Error(err)
-	s.ErrorContains(err, "session event not found: workdock/main@workdock/repo")
+	s.ErrorContains(err, "session event not found: workdock/main")
 }
 
 func (s *ControllerSuite) TestOnPullRequestCommented_SessionLookupError() {
 	s.initController()
-	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier, repoFullName string) (*types.SessionEvent, error) {
+	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
 		return testSessionEvent, nil
 	}
 	s.sessionRep.getAgentSessionFn = func(ctx context.Context, identifier string) (*types.Session, error) {
@@ -804,7 +805,7 @@ func (s *ControllerSuite) TestOnPullRequestCommented_SessionLookupError() {
 
 func (s *ControllerSuite) TestOnPullRequestCommented_SessionNotFound() {
 	s.initController()
-	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier, repoFullName string) (*types.SessionEvent, error) {
+	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
 		return testSessionEvent, nil
 	}
 	s.sessionRep.getAgentSessionFn = func(ctx context.Context, identifier string) (*types.Session, error) {
@@ -819,7 +820,7 @@ func (s *ControllerSuite) TestOnPullRequestCommented_SessionNotFound() {
 
 func (s *ControllerSuite) TestOnPullRequestCommented_Success() {
 	s.initController()
-	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier, repoFullName string) (*types.SessionEvent, error) {
+	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
 		seedEvent := &types.SessionEvent{
 			SessionIdentifier: "sess-1",
 			Identifier:        "seed-evt-1",
@@ -829,7 +830,9 @@ func (s *ControllerSuite) TestOnPullRequestCommented_Success() {
 		return seedEvent, nil
 	}
 	s.sessionRep.getAgentSessionFn = func(ctx context.Context, identifier string) (*types.Session, error) {
-		return newTestSession(), nil
+		session := newTestSession()
+		session.RepoFullName = repoName("workdock/repo")
+		return session, nil
 	}
 
 	err := s.publish(shared.EventType_PullRequestCommented, shared.PullRequestCommentedEvent{GitRef: "workdock/main", RepoFullName: "workdock/repo"})
@@ -847,19 +850,207 @@ func (s *ControllerSuite) TestOnPullRequestCommented_Success() {
 	s.NotEmpty(created.Identifier, "new event should have a generated identifier")
 }
 
-func (s *ControllerSuite) TestOnPullRequestCommented_CreateEventError() {
+func (s *ControllerSuite) TestOnPullRequestCommented_RepoNotSet() {
 	s.initController()
-	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier, repoFullName string) (*types.SessionEvent, error) {
+	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
 		return testSessionEvent, nil
 	}
 	s.sessionRep.getAgentSessionFn = func(ctx context.Context, identifier string) (*types.Session, error) {
-		return newTestSession(), nil
+		return newTestSession(), nil // session without a repo
+	}
+
+	err := s.publish(shared.EventType_PullRequestCommented, shared.PullRequestCommentedEvent{GitRef: "workdock/main", RepoFullName: "workdock/repo"})
+
+	s.Error(err)
+	s.ErrorContains(err, "repo not set")
+	s.Empty(s.sessionRep.createdEvents)
+}
+
+func (s *ControllerSuite) TestOnPullRequestCommented_RepoMismatch() {
+	s.initController()
+	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
+		return testSessionEvent, nil
+	}
+	s.sessionRep.getAgentSessionFn = func(ctx context.Context, identifier string) (*types.Session, error) {
+		session := newTestSession()
+		session.RepoFullName = repoName("workdock/other")
+		return session, nil
+	}
+
+	err := s.publish(shared.EventType_PullRequestCommented, shared.PullRequestCommentedEvent{GitRef: "workdock/main", RepoFullName: "workdock/repo"})
+
+	s.Error(err)
+	s.ErrorContains(err, "session's repo doesn't match pull request repo")
+	s.Empty(s.sessionRep.createdEvents)
+}
+
+func (s *ControllerSuite) TestOnPullRequestCommented_CreateEventError() {
+	s.initController()
+	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
+		return testSessionEvent, nil
+	}
+	s.sessionRep.getAgentSessionFn = func(ctx context.Context, identifier string) (*types.Session, error) {
+		session := newTestSession()
+		session.RepoFullName = repoName("workdock/repo")
+		return session, nil
 	}
 	s.sessionRep.createSessionEventFn = func(ctx context.Context, event *types.SessionEvent) error {
 		return errors.New("create failed")
 	}
 
 	err := s.publish(shared.EventType_PullRequestCommented, shared.PullRequestCommentedEvent{GitRef: "workdock/main", RepoFullName: "workdock/repo"})
+
+	s.Error(err)
+	s.ErrorContains(err, "create failed")
+}
+
+// ---------------------------------------------------------------------------
+// onPullRequestChecksFailed
+// ---------------------------------------------------------------------------
+
+func (s *ControllerSuite) TestOnPullRequestChecksFailed_MismatchedEventType() {
+	s.initController()
+	err := s.publish(shared.EventType_PullRequestChecksFailed, mismatchedEvent{eventType: shared.EventType_PullRequestChecksFailed})
+
+	s.Error(err)
+	s.ErrorContains(err, "expected event type pull_request.checks_failed")
+}
+
+func (s *ControllerSuite) TestOnPullRequestChecksFailed_EventLookupError() {
+	s.initController()
+	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
+		return nil, errors.New("git ref lookup failed")
+	}
+
+	err := s.publish(shared.EventType_PullRequestChecksFailed, shared.PullRequestChecksFailedEvent{GitRef: "workdock/main", RepoFullName: "workdock/repo"})
+
+	s.Error(err)
+	s.ErrorContains(err, "git ref lookup failed")
+}
+
+func (s *ControllerSuite) TestOnPullRequestChecksFailed_EventNotFound() {
+	s.initController()
+	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
+		return nil, nil
+	}
+
+	err := s.publish(shared.EventType_PullRequestChecksFailed, shared.PullRequestChecksFailedEvent{GitRef: "workdock/main", RepoFullName: "workdock/repo"})
+
+	s.Error(err)
+	s.ErrorContains(err, "session event not found: workdock/main")
+}
+
+func (s *ControllerSuite) TestOnPullRequestChecksFailed_SessionLookupError() {
+	s.initController()
+	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
+		return testSessionEvent, nil
+	}
+	s.sessionRep.getAgentSessionFn = func(ctx context.Context, identifier string) (*types.Session, error) {
+		return nil, errors.New("session lookup failed")
+	}
+
+	err := s.publish(shared.EventType_PullRequestChecksFailed, shared.PullRequestChecksFailedEvent{GitRef: "workdock/main", RepoFullName: "workdock/repo"})
+
+	s.Error(err)
+	s.ErrorContains(err, "session lookup failed")
+}
+
+func (s *ControllerSuite) TestOnPullRequestChecksFailed_SessionNotFound() {
+	s.initController()
+	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
+		return testSessionEvent, nil
+	}
+	s.sessionRep.getAgentSessionFn = func(ctx context.Context, identifier string) (*types.Session, error) {
+		return nil, nil
+	}
+
+	err := s.publish(shared.EventType_PullRequestChecksFailed, shared.PullRequestChecksFailedEvent{GitRef: "workdock/main", RepoFullName: "workdock/repo"})
+
+	s.Error(err)
+	s.ErrorContains(err, "session not found: sess-1")
+}
+
+func (s *ControllerSuite) TestOnPullRequestChecksFailed_Success() {
+	s.initController()
+	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
+		seedEvent := &types.SessionEvent{
+			SessionIdentifier: "sess-1",
+			Identifier:        "seed-evt-1",
+			Payload:           []byte(`{"seeded":true}`),
+			Reason:            types.AgentSessionEventReason_Prompt,
+		}
+		return seedEvent, nil
+	}
+	s.sessionRep.getAgentSessionFn = func(ctx context.Context, identifier string) (*types.Session, error) {
+		session := newTestSession()
+		session.RepoFullName = repoName("workdock/repo")
+		return session, nil
+	}
+
+	err := s.publish(shared.EventType_PullRequestChecksFailed, shared.PullRequestChecksFailedEvent{GitRef: "workdock/main", RepoFullName: "workdock/repo"})
+
+	s.Require().NoError(err)
+	s.Require().Len(s.sessionRep.createdEvents, 1)
+
+	created := s.sessionRep.createdEvents[0]
+	s.Equal("sess-1", created.SessionIdentifier)
+	s.Equal("seed-evt-1", *created.Seed)
+	s.Require().NotNil(created.GitRef)
+	s.Equal("workdock/main", *created.GitRef)
+	s.Equal(types.AgentSessionEventReason_PRChecksFailed, created.Reason)
+	s.Equal([]byte(`{"seeded":true}`), []byte(created.Payload))
+	s.NotEmpty(created.Identifier, "new event should have a generated identifier")
+}
+
+func (s *ControllerSuite) TestOnPullRequestChecksFailed_RepoNotSet() {
+	s.initController()
+	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
+		return testSessionEvent, nil
+	}
+	s.sessionRep.getAgentSessionFn = func(ctx context.Context, identifier string) (*types.Session, error) {
+		return newTestSession(), nil // session without a repo
+	}
+
+	err := s.publish(shared.EventType_PullRequestChecksFailed, shared.PullRequestChecksFailedEvent{GitRef: "workdock/main", RepoFullName: "workdock/repo"})
+
+	s.Error(err)
+	s.ErrorContains(err, "repo not set")
+	s.Empty(s.sessionRep.createdEvents)
+}
+
+func (s *ControllerSuite) TestOnPullRequestChecksFailed_RepoMismatch() {
+	s.initController()
+	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
+		return testSessionEvent, nil
+	}
+	s.sessionRep.getAgentSessionFn = func(ctx context.Context, identifier string) (*types.Session, error) {
+		session := newTestSession()
+		session.RepoFullName = repoName("workdock/other")
+		return session, nil
+	}
+
+	err := s.publish(shared.EventType_PullRequestChecksFailed, shared.PullRequestChecksFailedEvent{GitRef: "workdock/main", RepoFullName: "workdock/repo"})
+
+	s.Error(err)
+	s.ErrorContains(err, "session's repo doesn't match pull request repo")
+	s.Empty(s.sessionRep.createdEvents)
+}
+
+func (s *ControllerSuite) TestOnPullRequestChecksFailed_CreateEventError() {
+	s.initController()
+	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
+		return testSessionEvent, nil
+	}
+	s.sessionRep.getAgentSessionFn = func(ctx context.Context, identifier string) (*types.Session, error) {
+		session := newTestSession()
+		session.RepoFullName = repoName("workdock/repo")
+		return session, nil
+	}
+	s.sessionRep.createSessionEventFn = func(ctx context.Context, event *types.SessionEvent) error {
+		return errors.New("create failed")
+	}
+
+	err := s.publish(shared.EventType_PullRequestChecksFailed, shared.PullRequestChecksFailedEvent{GitRef: "workdock/main", RepoFullName: "workdock/repo"})
 
 	s.Error(err)
 	s.ErrorContains(err, "create failed")
@@ -1150,7 +1341,7 @@ func (s *ControllerSuite) TestCreatePrompt_CheckRun() {
 		Identifier: "evt-2",
 		Seed:       &seed,
 		GitRef:     &ref,
-		Reason:     types.AgentSessionEventReason_CheckRun,
+		Reason:     types.AgentSessionEventReason_PRChecksFailed,
 	}
 
 	p := s.c.createPrompt(newTestSession(), event, testPromptContext)

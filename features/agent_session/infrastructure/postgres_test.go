@@ -260,7 +260,7 @@ func (s *PostgresSuite) TestGetAgentSessionEvent_Error() {
 func (s *PostgresSuite) TestGetAgentSessionEventByGitRef_Success() {
 	s.pool.queryRowFn = func(ctx context.Context, sql string, args ...any) pgx.Row {
 		s.Equal(GetAgentSessionEventByGitRefSql, sql)
-		s.Equal([]any{"workdock/main", "workdock/repo"}, args)
+		s.Equal([]any{"workdock/main"}, args)
 		return &mockRow{scanFn: func(dest ...any) error {
 			*dest[0].(*string) = "sess-1"
 			*dest[1].(*string) = "evt-1"
@@ -274,7 +274,7 @@ func (s *PostgresSuite) TestGetAgentSessionEventByGitRef_Success() {
 		}}
 	}
 
-	event, err := s.repo.GetAgentSessionEventByGitRef(context.Background(), "workdock/main", "workdock/repo")
+	event, err := s.repo.GetAgentSessionEventByGitRef(context.Background(), "workdock/main")
 
 	s.Require().NoError(err)
 	s.Require().NotNil(event)
@@ -288,7 +288,7 @@ func (s *PostgresSuite) TestGetAgentSessionEventByGitRef_NotFound() {
 		return &mockRow{scanFn: func(dest ...any) error { return pgx.ErrNoRows }}
 	}
 
-	event, err := s.repo.GetAgentSessionEventByGitRef(context.Background(), "workdock/main", "workdock/repo")
+	event, err := s.repo.GetAgentSessionEventByGitRef(context.Background(), "workdock/main")
 
 	s.NoError(err)
 	s.Nil(event)
@@ -299,7 +299,7 @@ func (s *PostgresSuite) TestGetAgentSessionEventByGitRef_Error() {
 		return &mockRow{scanFn: func(dest ...any) error { return fmt.Errorf("db error") }}
 	}
 
-	event, err := s.repo.GetAgentSessionEventByGitRef(context.Background(), "workdock/main", "workdock/repo")
+	event, err := s.repo.GetAgentSessionEventByGitRef(context.Background(), "workdock/main")
 
 	s.Error(err)
 	s.Nil(event)
