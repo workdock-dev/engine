@@ -23,9 +23,9 @@ import (
 
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
 	agent_session_types "github.com/workdock-dev/engine/features/agent_session/types"
-	"github.com/workdock-dev/engine/plug-ings/linear/helpers"
-	"github.com/workdock-dev/engine/plug-ings/linear/interfaces"
-	"github.com/workdock-dev/engine/plug-ings/linear/types"
+	"github.com/workdock-dev/engine/plug-ins/linear/helpers"
+	"github.com/workdock-dev/engine/plug-ins/linear/interfaces"
+	"github.com/workdock-dev/engine/plug-ins/linear/types"
 	"github.com/workdock-dev/engine/shared"
 )
 

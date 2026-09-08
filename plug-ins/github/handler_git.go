@@ -22,8 +22,8 @@ import (
 
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
 	agent_session_types "github.com/workdock-dev/engine/features/agent_session/types"
-	"github.com/workdock-dev/engine/plug-ings/github/interfaces"
-	"github.com/workdock-dev/engine/plug-ings/github/types"
+	"github.com/workdock-dev/engine/plug-ins/github/interfaces"
+	"github.com/workdock-dev/engine/plug-ins/github/types"
 	"github.com/workdock-dev/engine/shared"
 )
 

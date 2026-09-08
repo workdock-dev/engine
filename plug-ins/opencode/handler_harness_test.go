@@ -24,7 +24,7 @@ import (
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
 	agent_session_metrics "github.com/workdock-dev/engine/features/agent_session/metrics"
 	agent_session_types "github.com/workdock-dev/engine/features/agent_session/types"
-	"github.com/workdock-dev/engine/plug-ings/opencode/types"
+	"github.com/workdock-dev/engine/plug-ins/opencode/types"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"

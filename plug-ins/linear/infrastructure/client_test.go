@@ -26,7 +26,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 	"github.com/workdock-dev/engine/infrastructure/in_memory_secrets"
-	"github.com/workdock-dev/engine/plug-ings/linear/types"
+	"github.com/workdock-dev/engine/plug-ins/linear/types"
 	"github.com/workdock-dev/engine/shared"
 )
 

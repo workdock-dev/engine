@@ -41,16 +41,16 @@ import (
 	"github.com/workdock-dev/engine/infrastructure/infisical_client"
 	"github.com/workdock-dev/engine/infrastructure/otlp_client"
 	"github.com/workdock-dev/engine/infrastructure/server"
-	"github.com/workdock-dev/engine/plug-ings/daytona"
-	daytona_types "github.com/workdock-dev/engine/plug-ings/daytona/types"
-	"github.com/workdock-dev/engine/plug-ings/github"
-	github_infra "github.com/workdock-dev/engine/plug-ings/github/infrastructure"
-	github_types "github.com/workdock-dev/engine/plug-ings/github/types"
-	"github.com/workdock-dev/engine/plug-ings/linear"
-	linear_infra "github.com/workdock-dev/engine/plug-ings/linear/infrastructure"
-	linear_types "github.com/workdock-dev/engine/plug-ings/linear/types"
-	"github.com/workdock-dev/engine/plug-ings/opencode"
-	opencode_types "github.com/workdock-dev/engine/plug-ings/opencode/types"
+	"github.com/workdock-dev/engine/plug-ins/daytona"
+	daytona_types "github.com/workdock-dev/engine/plug-ins/daytona/types"
+	"github.com/workdock-dev/engine/plug-ins/github"
+	github_infra "github.com/workdock-dev/engine/plug-ins/github/infrastructure"
+	github_types "github.com/workdock-dev/engine/plug-ins/github/types"
+	"github.com/workdock-dev/engine/plug-ins/linear"
+	linear_infra "github.com/workdock-dev/engine/plug-ins/linear/infrastructure"
+	linear_types "github.com/workdock-dev/engine/plug-ins/linear/types"
+	"github.com/workdock-dev/engine/plug-ins/opencode"
+	opencode_types "github.com/workdock-dev/engine/plug-ins/opencode/types"
 	"github.com/workdock-dev/engine/shared"
 	"gopkg.in/yaml.v3"
 )
@@ -74,7 +74,7 @@ type Config struct {
 	HarnessLivenessProbe agent_session_types.HarnessLivenessProbeConfig `yaml:"harness_liveness_probe"`
 	MCPs                 []MCPConfig                                    `yaml:"mcps"`
 
-	// plug-ings configuration
+	// plug-ins configuration
 	Linear   linear_types.Config   `yaml:"linear"`
 	Daytona  daytona_types.Config  `yaml:"daytona"`
 	Opencode opencode_types.Config `yaml:"opencode"`
@@ -218,7 +218,7 @@ func main() {
 	exit(err)
 
 	// *-------------------------------------------------------------------------*
-	// * Setup plug-ings                                                         *
+	// * Setup plug-ins                                                         *
 	// *-------------------------------------------------------------------------*
 
 	linearAgentSessionHandler := linear.NewAgentSessionHandler(linearClient, secretManager)
