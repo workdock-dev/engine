@@ -293,7 +293,7 @@ func (s *ControllerSuite) TestInit_RegistersAllEventSubscriptions() {
 		shared.EventType_AgentSessionPrompt,
 		shared.EventType_AgentSessionResume,
 		shared.EventType_AgentSessionStop,
-		shared.EventType_IssueChange,
+		shared.EventType_AgentSessionArchive,
 		shared.EventType_PullRequestCommented,
 		shared.EventType_PullRequestChecksFailed,
 		shared.EventType_GitResetConnection,
@@ -734,22 +734,104 @@ func (s *ControllerSuite) TestOnAgentSessionStop_CancelError() {
 }
 
 // ---------------------------------------------------------------------------
-// onIssueChange
+// onAgentSessionArchive
 // ---------------------------------------------------------------------------
 
-func (s *ControllerSuite) TestOnIssueChange_MismatchedEventType() {
+func (s *ControllerSuite) TestOnAgentSessionArchive_MismatchedEventType() {
 	s.initController()
-	err := s.publish(shared.EventType_IssueChange, mismatchedEvent{eventType: shared.EventType_IssueChange})
+	err := s.publish(shared.EventType_AgentSessionArchive, mismatchedEvent{eventType: shared.EventType_AgentSessionArchive})
 
 	s.Error(err)
-	s.ErrorContains(err, "expected event type issue.changed")
+	s.ErrorContains(err, "expected event type agent_session.archive")
 }
 
-func (s *ControllerSuite) TestOnIssueChange_Success() {
+func (s *ControllerSuite) TestOnAgentSessionArchive_NoSessions_NothingToArchive() {
 	s.initController()
-	err := s.publish(shared.EventType_IssueChange, shared.IssueChangedEvent{})
 
-	s.NoError(err)
+	err := s.publish(shared.EventType_AgentSessionArchive, shared.AgentSessionArchiveEvent{
+		Provider: string(shared.PlatformProvider_Linear),
+		IssueId:  "issue-1",
+	})
+
+	s.Require().NoError(err)
+	s.Empty(s.sandboxHdl.archived)
+}
+
+func (s *ControllerSuite) TestOnAgentSessionArchive_SandboxHandlerNotFound() {
+	s.initController()
+	s.sessionRep.getAgentSessionsByIssueIdFn = func(ctx context.Context, issueId string) ([]*types.Session, error) {
+		return []*types.Session{newTestSession()}, nil
+	}
+	delete(s.c.sandboxHandlerRegistry, "daytona")
+
+	err := s.publish(shared.EventType_AgentSessionArchive, shared.AgentSessionArchiveEvent{
+		Provider: string(shared.PlatformProvider_Linear),
+		IssueId:  "issue-1",
+	})
+
+	s.Error(err)
+	s.ErrorContains(err, "provider daytona not configured for sandbox handler")
+}
+
+func (s *ControllerSuite) TestOnAgentSessionArchive_DoneEvent_ArchivesAllSessionSandboxes() {
+	s.initController()
+	sessions := []*types.Session{newTestSession()}
+	second := newTestSession()
+	second.Identifier = "sess-2"
+	sessions = append(sessions, second)
+	s.sessionRep.getAgentSessionsByIssueIdFn = func(ctx context.Context, issueId string) ([]*types.Session, error) {
+		s.Equal("issue-1", issueId)
+		return sessions, nil
+	}
+
+	err := s.publish(shared.EventType_AgentSessionArchive, shared.AgentSessionArchiveEvent{
+		Provider: string(shared.PlatformProvider_Linear),
+		IssueId:  "issue-1",
+	})
+
+	s.Require().NoError(err)
+	s.Require().Len(s.sandboxHdl.archived, 2)
+	s.Equal("sess-1", s.sandboxHdl.archived[0].Session.Identifier)
+	s.Equal("sess-2", s.sandboxHdl.archived[1].Session.Identifier)
+}
+
+func (s *ControllerSuite) TestOnAgentSessionArchive_ArchiveError_ContinuesWithOtherSessions() {
+	s.initController()
+	second := newTestSession()
+	second.Identifier = "sess-2"
+	s.sessionRep.getAgentSessionsByIssueIdFn = func(ctx context.Context, issueId string) ([]*types.Session, error) {
+		return []*types.Session{newTestSession(), second}, nil
+	}
+	s.sandboxHdl.archiveFn = func(ctx context.Context, config *interfaces.SandboxConfig) error {
+		if config.Session.Identifier == "sess-1" {
+			return errors.New("archive failed")
+		}
+		return nil
+	}
+
+	err := s.publish(shared.EventType_AgentSessionArchive, shared.AgentSessionArchiveEvent{
+		Provider: string(shared.PlatformProvider_Linear),
+		IssueId:  "issue-1",
+	})
+
+	s.Require().NoError(err, "one session failing to archive must not fail the event")
+	s.Require().Len(s.sandboxHdl.archived, 2, "the remaining session must still be archived")
+}
+
+func (s *ControllerSuite) TestOnAgentSessionArchive_SessionsLookupError() {
+	s.initController()
+	s.sessionRep.getAgentSessionsByIssueIdFn = func(ctx context.Context, issueId string) ([]*types.Session, error) {
+		return nil, errors.New("sessions lookup failed")
+	}
+
+	err := s.publish(shared.EventType_AgentSessionArchive, shared.AgentSessionArchiveEvent{
+		Provider: string(shared.PlatformProvider_Linear),
+		IssueId:  "issue-1",
+	})
+
+	s.Error(err)
+	s.ErrorContains(err, "sessions lookup failed")
+	s.Empty(s.sandboxHdl.archived)
 }
 
 // ---------------------------------------------------------------------------

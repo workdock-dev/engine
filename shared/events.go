@@ -26,7 +26,7 @@ type DomainEvent interface {
 type EventHandler func(ctx context.Context, event DomainEvent) error
 
 const (
-	EventType_IssueChange             = "issue.changed"
+	EventType_AgentSessionArchive     = "agent_session.archive"
 	EventType_AgentSessionPrompt      = "agent_session.prompt"
 	EventType_AgentSessionResume      = "agent_session.resume"
 	EventType_AgentSessionStop        = "agent_session.stop"
@@ -39,13 +39,16 @@ const (
 
 // *--------------------------------------------------------------------------*
 
-type IssueChangedEvent struct {
+// AgentSessionArchiveEvent signals that a ticket reached a done workflow
+// state on its work platform. It carries the fields required to archive the
+// sandboxes of the ticket's agent sessions.
+type AgentSessionArchiveEvent struct {
 	Provider string
-	Payload  any
+	IssueId  string
 }
 
-func (e IssueChangedEvent) EventType() string {
-	return EventType_IssueChange
+func (e AgentSessionArchiveEvent) EventType() string {
+	return EventType_AgentSessionArchive
 }
 
 // *--------------------------------------------------------------------------*

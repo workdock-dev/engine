@@ -137,7 +137,7 @@ func (c *controller) init() error {
 	c.onAgentSessionPrompt()
 	c.onAgentSessionResume()
 	c.onAgentSessionStop()
-	c.onIssueChange()
+	c.onAgentSessionArchive()
 	c.onPullRequestCommented()
 	c.onPullRequestChecksFailed()
 	c.onGitResetConnection()
@@ -330,18 +330,56 @@ func (c *controller) onAgentSessionStop() {
 	})
 }
 
-// onIssueChange Configured domain event for agent session
-func (c *controller) onIssueChange() {
-	c.eventBus.Subscribe(shared.EventType_IssueChange, func(ctx context.Context, event shared.DomainEvent) error {
-		_, ok := event.(shared.IssueChangedEvent)
+// onAgentSessionArchive Configured domain event for agent session. Archives the
+// sandboxes of all the sessions associated with an issue when the issue
+// reached a done workflow state. Only provider-verified done events are
+// published on the event bus.
+func (c *controller) onAgentSessionArchive() {
+	c.eventBus.Subscribe(shared.EventType_AgentSessionArchive, func(ctx context.Context, event shared.DomainEvent) error {
+		return telemetry.SpanErr(ctx, c.tracer, "on_agent_session_archive", func(ctx context.Context) error {
+			e, ok := event.(shared.AgentSessionArchiveEvent)
 
-		if !ok {
-			return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_IssueChange, event.EventType())
-		}
+			if !ok {
+				return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_AgentSessionArchive, event.EventType())
+			}
 
-		// TODO Implement/Handle issue status changed
+			sessions, err := telemetry.Span(ctx, c.tracer, "on_agent_session_archive.get_sessions", func(ctx context.Context) ([]*types.Session, error) {
+				return c.session.GetAgentSessionsByIssueId(ctx, e.IssueId)
+			})
 
-		return nil
+			if err != nil {
+				return err
+			}
+
+			// No sessions means no sandboxes to archive
+			if len(sessions) == 0 {
+				slog.Debug("[agent-session] no sessions found for issue, nothing to archive", "issue_id", e.IssueId)
+				return nil
+			}
+
+			sandboxHandler, ok := c.sandboxHandlerRegistry[string(shared.PlatformProvider_Daytona)]
+
+			if !ok {
+				return fmt.Errorf("[agent-session] provider %s not configured for sandbox handler", shared.PlatformProvider_Daytona)
+			}
+
+			for _, session := range sessions {
+				if err := telemetry.SpanErr(ctx, c.tracer, "on_agent_session_archive.archive_sandbox", func(ctx context.Context) error {
+					return sandboxHandler.Archive(ctx, &interfaces.SandboxConfig{
+						Session:      session,
+						SessionEvent: &types.SessionEvent{SessionIdentifier: session.Identifier},
+					})
+				}); err != nil {
+					slog.Error("[agent-session] failed to archive sandbox for session",
+						"err", err,
+						"session_identifier", session.Identifier,
+						"issue_id", e.IssueId,
+					)
+				}
+			}
+
+			return nil
+		})
 	})
 }
 

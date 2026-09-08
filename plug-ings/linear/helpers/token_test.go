@@ -105,6 +105,10 @@ func (m *mockClient) SendInitialThought(ctx context.Context, sessionId, organiza
 	return nil
 }
 
+func (m *mockClient) GetCredentials(ctx context.Context, organizationId string) (string, error) {
+	return "", nil
+}
+
 // ---------------------------------------------------------------------------
 // TokenHandlerSuite
 // ---------------------------------------------------------------------------

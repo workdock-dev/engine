@@ -221,11 +221,16 @@ func (m *mockGitHandler) ParseLatestChangesResult(changes string) *types.PullReq
 
 type mockSandboxHandler struct {
 	runFn func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error)
+	// archiveFn overrides the default archive behaviour; when nil, archiving
+	// succeeds and is recorded.
+	archiveFn func(ctx context.Context, config *interfaces.SandboxConfig) error
 
 	runConfig   *interfaces.SandboxConfig
 	runStdout   chan<- string
 	runStderr   chan<- string
 	shutdownRan bool
+	archived    []*interfaces.SandboxConfig
+	archiveErr  error
 }
 
 func (m *mockSandboxHandler) Run(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
@@ -242,7 +247,11 @@ func (m *mockSandboxHandler) Run(ctx context.Context, config *interfaces.Sandbox
 }
 
 func (m *mockSandboxHandler) Archive(ctx context.Context, config *interfaces.SandboxConfig) error {
-	return nil
+	m.archived = append(m.archived, config)
+	if m.archiveFn != nil {
+		return m.archiveFn(ctx, config)
+	}
+	return m.archiveErr
 }
 
 // --- HandlerHarness mock ---
@@ -362,6 +371,7 @@ type mockSessionRepository struct {
 	updatedResults   []*types.SessionEvent
 	cancelSession    string
 	cancelReason     string
+	issueLookups     []string
 }
 
 func (m *mockSessionRepository) GetAgentSession(ctx context.Context, identifier string) (*types.Session, error) {
@@ -372,6 +382,7 @@ func (m *mockSessionRepository) GetAgentSession(ctx context.Context, identifier 
 }
 
 func (m *mockSessionRepository) GetAgentSessionsByIssueId(ctx context.Context, issueId string) ([]*types.Session, error) {
+	m.issueLookups = append(m.issueLookups, issueId)
 	if m.getAgentSessionsByIssueIdFn != nil {
 		return m.getAgentSessionsByIssueIdFn(ctx, issueId)
 	}

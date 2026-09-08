@@ -211,10 +211,9 @@ func (c *WEventConsumer) Consume(_ context.Context, event *webhook.VerifiedWEven
 			return err
 		}
 
-		c.eventBus.Publish(context.Background(), shared.IssueChangedEvent{
-			Provider: string(shared.PlatformProvider_Linear),
-			Payload:  payload,
-		})
+		if err := c.consumeIssueEvent(payload); err != nil {
+			slog.Error("[webhook][linear] failed to consume issue event", "err", err)
+		}
 
 		return nil
 	}
@@ -251,6 +250,43 @@ func (c *WEventConsumer) Consume(_ context.Context, event *webhook.VerifiedWEven
 
 	slog.Debug("[webhook][linear] unhandled event", "event_type", event.WEventType)
 	return webhook.ErrWBadRequest
+}
+
+// consumeIssueEvent verifies whether an issue update event moved the issue
+// into a done workflow state and, only when it did, publishes the
+// AgentSessionArchiveEvent to archive the issue's sandboxes.
+//
+// The webhook payload only carries the state's display name, not its type, so
+// the current issue state is re-checked against Linear. Verification errors
+// are logged upstream and never fail webhook ingestion.
+func (c *WEventConsumer) consumeIssueEvent(payload types.IssueStatusChangePayload) error {
+	if payload.Action != "update" {
+		return nil
+	}
+
+	credentials, err := c.client.GetCredentials(context.Background(), payload.OrganizationID)
+
+	if err != nil {
+		return err
+	}
+
+	issue, err := c.client.GetIssue(context.Background(), credentials, payload.Data.ID)
+
+	if err != nil {
+		return err
+	}
+
+	if issue.StateType != types.IssueStateType_Completed {
+		slog.Debug("[webhook][linear] issue state is not done, skipping archive event", "issue_id", payload.Data.ID, "state_type", issue.StateType)
+		return nil
+	}
+
+	c.eventBus.Publish(context.Background(), shared.AgentSessionArchiveEvent{
+		Provider: string(shared.PlatformProvider_Linear),
+		IssueId:  payload.Data.ID,
+	})
+
+	return nil
 }
 
 // acknowledgeNewAgentSession emits the first thought activity for a newly

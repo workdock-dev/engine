@@ -43,14 +43,15 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockClient struct {
-	labelsFn    func(ctx context.Context, issueId, accessToken string) ([]string, error)
-	exchangeFn  func(ctx context.Context, code string) (*types.TokenExchanged, error)
-	workspaceFn func(ctx context.Context, accessToken string) (*types.WorkspaceInfo, error)
-	refreshFn   func(ctx context.Context, refreshToken string) (*types.Token, error)
-	activityFn  func(ctx context.Context, accessToken string, input types.CreateAgentActivityInput) error
-	issueFn     func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error)
-	workflowFn  func(ctx context.Context, accessToken, teamId string) ([]types.WorkflowState, error)
-	updateFn    func(ctx context.Context, accessToken, issueId, stateId string) error
+	labelsFn      func(ctx context.Context, issueId, accessToken string) ([]string, error)
+	exchangeFn    func(ctx context.Context, code string) (*types.TokenExchanged, error)
+	workspaceFn   func(ctx context.Context, accessToken string) (*types.WorkspaceInfo, error)
+	refreshFn     func(ctx context.Context, refreshToken string) (*types.Token, error)
+	activityFn    func(ctx context.Context, accessToken string, input types.CreateAgentActivityInput) error
+	issueFn       func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error)
+	workflowFn    func(ctx context.Context, accessToken, teamId string) ([]types.WorkflowState, error)
+	updateFn      func(ctx context.Context, accessToken, issueId, stateId string) error
+	credentialsFn func(ctx context.Context, organizationId string) (string, error)
 
 	activities     []types.CreateAgentActivityInput
 	activityTokens []string
@@ -77,6 +78,13 @@ func (m *mockClient) SendInitialThought(ctx context.Context, sessionId, organiza
 		})
 	}
 	return nil
+}
+
+func (m *mockClient) GetCredentials(ctx context.Context, organizationId string) (string, error) {
+	if m.credentialsFn != nil {
+		return m.credentialsFn(ctx, organizationId)
+	}
+	return "org-access-token", nil
 }
 
 func (m *mockClient) GetIssueLabels(ctx context.Context, issueId, accessToken string) ([]string, error) {
@@ -183,17 +191,17 @@ func (m *mockSecretManager) Delete(ctx context.Context, secretPath, secretName s
 // eventRecorder subscribes to the Linear-relevant events on a real EventBus.
 // Publish is synchronous, so recorded events are available immediately.
 type eventRecorder struct {
-	issueChange []shared.IssueChangedEvent
-	prompt      []shared.AgentSessionPromptEvent
-	stop        []shared.AgentSessionStopEvent
+	archiveEvents []shared.AgentSessionArchiveEvent
+	prompt        []shared.AgentSessionPromptEvent
+	stop          []shared.AgentSessionStopEvent
 }
 
 func newRecordingEventBus(rec *eventRecorder) *shared.EventBus {
 	bus := shared.NewEventBus()
 	handle := func(ctx context.Context, event shared.DomainEvent) error {
 		switch e := event.(type) {
-		case shared.IssueChangedEvent:
-			rec.issueChange = append(rec.issueChange, e)
+		case shared.AgentSessionArchiveEvent:
+			rec.archiveEvents = append(rec.archiveEvents, e)
 		case shared.AgentSessionPromptEvent:
 			rec.prompt = append(rec.prompt, e)
 		case shared.AgentSessionStopEvent:
@@ -201,7 +209,7 @@ func newRecordingEventBus(rec *eventRecorder) *shared.EventBus {
 		}
 		return nil
 	}
-	bus.Subscribe(shared.EventType_IssueChange, handle)
+	bus.Subscribe(shared.EventType_AgentSessionArchive, handle)
 	bus.Subscribe(shared.EventType_AgentSessionPrompt, handle)
 	bus.Subscribe(shared.EventType_AgentSessionStop, handle)
 	return bus
@@ -498,7 +506,7 @@ func (s *WebhookSuite) TestConsume_UnhandledEventType() {
 	})
 
 	s.ErrorIs(err, webhook.ErrWBadRequest)
-	s.Empty(s.recorder.issueChange)
+	s.Empty(s.recorder.archiveEvents)
 	s.Empty(s.recorder.prompt)
 }
 
@@ -509,7 +517,7 @@ func (s *WebhookSuite) TestConsume_Issue_InvalidJson() {
 	})
 
 	s.ErrorIs(err, webhook.ErrWBadRequest)
-	s.Empty(s.recorder.issueChange)
+	s.Empty(s.recorder.archiveEvents)
 }
 
 func (s *WebhookSuite) TestConsume_Issue_StaleTimestamp() {
@@ -519,7 +527,7 @@ func (s *WebhookSuite) TestConsume_Issue_StaleTimestamp() {
 	})
 
 	s.ErrorIs(err, webhook.ErrWUnAuthorized)
-	s.Empty(s.recorder.issueChange)
+	s.Empty(s.recorder.archiveEvents)
 }
 
 func (s *WebhookSuite) TestConsume_Issue_Success() {
@@ -531,22 +539,115 @@ func (s *WebhookSuite) TestConsume_Issue_Success() {
 		"updatedFrom": {"stateName": "Todo"}
 	}`, time.Now().UnixMilli())
 
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		s.Equal("org-access-token", accessToken)
+		s.Equal("issue-1", issueId)
+		return &types.IssueStateResult{
+			ID:        issueId,
+			TeamID:    "team-1",
+			StateName: "Done",
+			StateType: types.IssueStateType_Completed,
+		}, nil
+	}
+
 	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
 		WEventType: WEventType_Issue,
 		Payload:    []byte(payload),
 	})
 
 	s.Require().NoError(err)
-	s.Require().Len(s.recorder.issueChange, 1)
+	s.Require().Len(s.recorder.archiveEvents, 1)
 
-	event := s.recorder.issueChange[0]
+	event := s.recorder.archiveEvents[0]
 	s.Equal(string(shared.PlatformProvider_Linear), event.Provider)
-	issuePayload, ok := event.Payload.(types.IssueStatusChangePayload)
-	s.Require().True(ok)
-	s.Equal("update", issuePayload.Action)
-	s.Equal("org-1", issuePayload.OrganizationID)
-	s.Equal("issue-1", issuePayload.Data.ID)
-	s.Equal("Todo", issuePayload.UpdatedFrom.StateName)
+	s.Equal("issue-1", event.IssueId)
+}
+
+func (s *WebhookSuite) TestConsume_Issue_NotCompletedState_NoEvent() {
+	payload := fmt.Sprintf(`{
+		"action": "update",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d,
+		"data": {"id": "issue-1"},
+		"updatedFrom": {"stateName": "Done"}
+	}`, time.Now().UnixMilli())
+
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		return &types.IssueStateResult{
+			ID:        issueId,
+			TeamID:    "team-1",
+			StateName: "Todo",
+			StateType: types.IssueStateType_Unstarted,
+		}, nil
+	}
+
+	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_Issue,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err)
+	s.Empty(s.recorder.archiveEvents, "non-done issues must not emit the agent session archive event")
+}
+
+func (s *WebhookSuite) TestConsume_Issue_CreationAction_NoEvent() {
+	payload := fmt.Sprintf(`{
+		"action": "create",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d,
+		"data": {"id": "issue-1"}
+	}`, time.Now().UnixMilli())
+
+	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_Issue,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err)
+	s.Empty(s.recorder.archiveEvents, "creation events must not emit the agent session archive event")
+	s.Empty(s.client.issueCalls, "creation events must not query the issue state")
+}
+
+func (s *WebhookSuite) TestConsume_Issue_CredentialsError_NoEvent() {
+	payload := fmt.Sprintf(`{
+		"action": "update",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d,
+		"data": {"id": "issue-1"}
+	}`, time.Now().UnixMilli())
+
+	consumer := NewWEventConsumer(s.bus, &mockClient{credentialsFn: func(ctx context.Context, organizationId string) (string, error) {
+		return "", fmt.Errorf("boom")
+	}}).(*WEventConsumer)
+
+	err := consumer.Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_Issue,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err, "issue verification failures must not fail webhook ingestion")
+	s.Empty(s.recorder.archiveEvents)
+}
+
+func (s *WebhookSuite) TestConsume_Issue_GetIssueError_NoEvent() {
+	payload := fmt.Sprintf(`{
+		"action": "update",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d,
+		"data": {"id": "issue-1"}
+	}`, time.Now().UnixMilli())
+
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		return nil, fmt.Errorf("linear api down")
+	}
+
+	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_Issue,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err, "issue verification failures must not fail webhook ingestion")
+	s.Empty(s.recorder.archiveEvents)
 }
 
 func (s *WebhookSuite) TestConsume_AgentSession_InvalidJson() {
@@ -783,7 +884,7 @@ func (s *AgentSessionSuite) TestIngest_WrongEventType() {
 
 type mismatchedDomainEvent struct{}
 
-func (m mismatchedDomainEvent) EventType() string { return "issue.changed" }
+func (m mismatchedDomainEvent) EventType() string { return "agent_session.prompt" }
 
 func (s *AgentSessionSuite) TestIngest_WrongPayload() {
 	_, _, err := s.handler.Ingest(shared.AgentSessionPromptEvent{Payload: "not-a-struct"})
