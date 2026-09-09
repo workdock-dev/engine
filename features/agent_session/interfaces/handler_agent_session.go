@@ -70,11 +70,12 @@ type HandlerAgentSession interface {
 	GetIssueState(ctx context.Context, issueId, accessToken string) (*IssueState, error)
 
 	// TransitionIssueToStarted moves the ticket to the provider's first started
-	// workflow state when the agent session begins executing, unless the ticket
-	// is already in a started, completed, or canceled state type
+	// workflow state when the agent session begins executing, regardless of
+	// the ticket's current state
 	TransitionIssueToStarted(ctx context.Context, issueId, accessToken string) error
 
 	// TransitionIssueToInReview moves the ticket to the provider's workflow
-	// state representing completed work awaiting review
+	// state representing completed work awaiting review, regardless of the
+	// ticket's current state
 	TransitionIssueToInReview(ctx context.Context, issueId, accessToken string) error
 }
