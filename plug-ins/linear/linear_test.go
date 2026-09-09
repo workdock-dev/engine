@@ -1197,6 +1197,25 @@ func (s *AgentSessionSuite) TestTransitionIssueToStarted_SelectsLowestPosition()
 	s.Equal("state-in-progress", s.client.issueUpdates[0].stateId)
 }
 
+func (s *AgentSessionSuite) TestTransitionIssueToStarted_InReviewIssue() {
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		return &types.IssueStateResult{ID: issueId, TeamID: "team-1", StateName: "In Review", StateType: types.IssueStateType_Started}, nil
+	}
+	s.client.workflowFn = func(ctx context.Context, accessToken, teamId string) ([]types.WorkflowState, error) {
+		return []types.WorkflowState{
+			{ID: "state-in-progress", Name: "In Progress", Type: types.IssueStateType_Started, Position: 1},
+			{ID: "state-in-review", Name: "In Review", Type: types.IssueStateType_Started, Position: 2},
+		}, nil
+	}
+
+	err := s.handler.TransitionIssueToStarted(context.Background(), "issue-1", "token-1")
+
+	s.Require().NoError(err)
+	s.Require().Len(s.client.issueUpdates, 1)
+	s.Equal("issue-1", s.client.issueUpdates[0].issueId)
+	s.Equal("state-in-progress", s.client.issueUpdates[0].stateId, "an issue in In Review must move back to the first started state")
+}
+
 func (s *AgentSessionSuite) TestTransitionIssueToStarted_AlreadyStarted_Skips() {
 	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
 		return &types.IssueStateResult{ID: issueId, TeamID: "team-1", StateName: "In Progress", StateType: types.IssueStateType_Started}, nil
@@ -1205,8 +1224,7 @@ func (s *AgentSessionSuite) TestTransitionIssueToStarted_AlreadyStarted_Skips() 
 	err := s.handler.TransitionIssueToStarted(context.Background(), "issue-1", "token-1")
 
 	s.NoError(err)
-	s.Empty(s.client.issueUpdates, "no issueUpdate must be issued")
-	s.Empty(s.client.workflowCalls, "workflow states must not be queried")
+	s.Empty(s.client.issueUpdates, "no issueUpdate must be issued when already in the first started state")
 }
 
 func (s *AgentSessionSuite) TestTransitionIssueToStarted_AlreadyCompleted_Skips() {
