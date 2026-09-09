@@ -1216,37 +1216,41 @@ func (s *AgentSessionSuite) TestTransitionIssueToStarted_InReviewIssue() {
 	s.Equal("state-in-progress", s.client.issueUpdates[0].stateId, "an issue in In Review must move back to the first started state")
 }
 
-func (s *AgentSessionSuite) TestTransitionIssueToStarted_AlreadyStarted_Skips() {
+func (s *AgentSessionSuite) TestTransitionIssueToStarted_AlreadyStarted_Transitions() {
 	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
 		return &types.IssueStateResult{ID: issueId, TeamID: "team-1", StateName: "In Progress", StateType: types.IssueStateType_Started}, nil
 	}
 
 	err := s.handler.TransitionIssueToStarted(context.Background(), "issue-1", "token-1")
 
-	s.NoError(err)
-	s.Empty(s.client.issueUpdates, "no issueUpdate must be issued when already in the first started state")
+	s.Require().NoError(err)
+	s.Require().Len(s.client.issueUpdates, 1)
+	s.Equal("issue-1", s.client.issueUpdates[0].issueId)
+	s.Equal("state-in-progress", s.client.issueUpdates[0].stateId, "an issue already in the first started state must still be transitioned")
 }
 
-func (s *AgentSessionSuite) TestTransitionIssueToStarted_AlreadyCompleted_Skips() {
+func (s *AgentSessionSuite) TestTransitionIssueToStarted_AlreadyCompleted_Transitions() {
 	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
 		return &types.IssueStateResult{ID: issueId, TeamID: "team-1", StateName: "Done", StateType: types.IssueStateType_Completed}, nil
 	}
 
 	err := s.handler.TransitionIssueToStarted(context.Background(), "issue-1", "token-1")
 
-	s.NoError(err)
-	s.Empty(s.client.issueUpdates)
+	s.Require().NoError(err)
+	s.Require().Len(s.client.issueUpdates, 1)
+	s.Equal("state-in-progress", s.client.issueUpdates[0].stateId, "a completed issue must still be transitioned to the first started state")
 }
 
-func (s *AgentSessionSuite) TestTransitionIssueToStarted_AlreadyCanceled_Skips() {
+func (s *AgentSessionSuite) TestTransitionIssueToStarted_AlreadyCanceled_Transitions() {
 	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
 		return &types.IssueStateResult{ID: issueId, TeamID: "team-1", StateName: "Canceled", StateType: types.IssueStateType_Canceled}, nil
 	}
 
 	err := s.handler.TransitionIssueToStarted(context.Background(), "issue-1", "token-1")
 
-	s.NoError(err)
-	s.Empty(s.client.issueUpdates)
+	s.Require().NoError(err)
+	s.Require().Len(s.client.issueUpdates, 1)
+	s.Equal("state-in-progress", s.client.issueUpdates[0].stateId, "a canceled issue must still be transitioned to the first started state")
 }
 
 func (s *AgentSessionSuite) TestTransitionIssueToStarted_GetIssueError() {
@@ -1313,16 +1317,41 @@ func (s *AgentSessionSuite) TestTransitionIssueToInReview() {
 	s.Equal("state-in-review", s.client.issueUpdates[0].stateId)
 }
 
-func (s *AgentSessionSuite) TestTransitionIssueToInReview_Canceled_Skips() {
+func (s *AgentSessionSuite) TestTransitionIssueToInReview_AlreadyInReview_Transitions() {
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		return &types.IssueStateResult{ID: issueId, TeamID: "team-1", StateName: "In Review", StateType: types.IssueStateType_Started}, nil
+	}
+
+	err := s.handler.TransitionIssueToInReview(context.Background(), "issue-1", "token-1")
+
+	s.Require().NoError(err)
+	s.Require().Len(s.client.issueUpdates, 1)
+	s.Equal("issue-1", s.client.issueUpdates[0].issueId)
+	s.Equal("state-in-review", s.client.issueUpdates[0].stateId, "an issue already in In Review must still be transitioned")
+}
+
+func (s *AgentSessionSuite) TestTransitionIssueToInReview_AlreadyCompleted_Transitions() {
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		return &types.IssueStateResult{ID: issueId, TeamID: "team-1", StateName: "Done", StateType: types.IssueStateType_Completed}, nil
+	}
+
+	err := s.handler.TransitionIssueToInReview(context.Background(), "issue-1", "token-1")
+
+	s.Require().NoError(err)
+	s.Require().Len(s.client.issueUpdates, 1)
+	s.Equal("state-in-review", s.client.issueUpdates[0].stateId, "a completed issue must still be transitioned to In Review")
+}
+
+func (s *AgentSessionSuite) TestTransitionIssueToInReview_AlreadyCanceled_Transitions() {
 	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
 		return &types.IssueStateResult{ID: issueId, TeamID: "team-1", StateName: "Canceled", StateType: types.IssueStateType_Canceled}, nil
 	}
 
 	err := s.handler.TransitionIssueToInReview(context.Background(), "issue-1", "token-1")
 
-	s.NoError(err)
-	s.Empty(s.client.issueUpdates, "no issueUpdate must be issued")
-	s.Empty(s.client.workflowCalls, "workflow states must not be queried")
+	s.Require().NoError(err)
+	s.Require().Len(s.client.issueUpdates, 1)
+	s.Equal("state-in-review", s.client.issueUpdates[0].stateId, "a canceled issue must still be transitioned to In Review")
 }
 
 func (s *AgentSessionSuite) TestTransitionIssueToInReview_GetIssueError() {
