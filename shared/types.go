@@ -23,6 +23,7 @@ const (
 	PlatformProvider_Daytona PlatformProvider = "daytona"
 
 	HarnessProvider_OpenCode HarnessProvider = "opencode"
+	HarnessProvider_PiDev    HarnessProvider = "pidev"
 )
 
 type Organization struct {

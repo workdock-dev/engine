@@ -51,6 +51,8 @@ import (
 	linear_types "github.com/workdock-dev/engine/plug-ins/linear/types"
 	"github.com/workdock-dev/engine/plug-ins/opencode"
 	opencode_types "github.com/workdock-dev/engine/plug-ins/opencode/types"
+	"github.com/workdock-dev/engine/plug-ins/pidev"
+	pidev_types "github.com/workdock-dev/engine/plug-ins/pidev/types"
 	"github.com/workdock-dev/engine/shared"
 	"gopkg.in/yaml.v3"
 )
@@ -78,6 +80,7 @@ type Config struct {
 	Linear   linear_types.Config   `yaml:"linear"`
 	Daytona  daytona_types.Config  `yaml:"daytona"`
 	Opencode opencode_types.Config `yaml:"opencode"`
+	Pidev    pidev_types.Config    `yaml:"pidev"`
 	Github   github_types.Config   `yaml:"github"`
 
 	// infrastructure configuration
@@ -225,6 +228,7 @@ func main() {
 	githubGitHandler := github.NewGitHandler(cfg.Github, githubClient, secretManager)
 	daytonaSandboxHandler := daytona.NewSandboxHandler(cfg.Daytona)
 	opencodeHarnessHandler := opencode.NewHarnessHandler(cfg.Opencode)
+	pidevHarnessHandler := pidev.NewHarnessHandler(cfg.Pidev)
 
 	// *-------------------------------------------------------------------------*
 	// * Setup application                                                       *
@@ -287,6 +291,7 @@ func main() {
 			},
 			agent_session.HarnessHandlerRegistry{
 				string(shared.HarnessProvider_OpenCode): opencodeHarnessHandler,
+				string(shared.HarnessProvider_PiDev):    pidevHarnessHandler,
 			},
 			&MCPFromConfigFile{config: cfg},
 			eventBus,

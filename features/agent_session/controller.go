@@ -795,10 +795,10 @@ func (c *controller) getHandlers(session *types.Session) (
 	}
 
 	// TODO: Make this dynamic
-	harnessHandler, ok := c.harnessHandlerRegistry[string(shared.HarnessProvider_OpenCode)]
+	harnessHandler, ok := c.harnessHandlerRegistry[string(shared.HarnessProvider_PiDev)]
 
 	if !ok {
-		return nil, nil, nil, nil, fmt.Errorf("[agent-session] provider %s not configured for harness handler", shared.HarnessProvider_OpenCode)
+		return nil, nil, nil, nil, fmt.Errorf("[agent-session] provider %s not configured for harness handler", shared.HarnessProvider_PiDev)
 	}
 
 	return agentHandler, gitHandler, sandboxHandler, harnessHandler, nil
