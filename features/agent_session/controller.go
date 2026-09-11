@@ -702,7 +702,10 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 
 	defer func() {
 		if shutdown != nil {
-			telemetry.SpanDo(ctx, c.tracer, "execute.sandbox.shutdown", func(ctx context.Context) {
+			// The job context can be cancelled by the time the sandbox shuts down;
+			// finalization (PR result, response event and the In Review transition)
+			// must still complete.
+			telemetry.SpanDo(context.WithoutCancel(ctx), c.tracer, "execute.sandbox.shutdown", func(ctx context.Context) {
 				slog.Debug("[agent-session] sandbox shutdown")
 				result := shutdown(context.Background())
 
