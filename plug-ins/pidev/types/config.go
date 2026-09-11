@@ -37,8 +37,9 @@ type ProviderConfig struct {
 }
 
 type Config struct {
-	Version       string          `yaml:"version"`
-	ThinkingLevel string          `yaml:"thinking_level"`
-	Tools         []string        `yaml:"tools"`
-	Provider      *ProviderConfig `yaml:"provider"`
+	Version           string          `yaml:"version"`
+	ThinkingLevel     string          `yaml:"thinking_level"`
+	Tools             []string        `yaml:"tools"`
+	Provider          *ProviderConfig `yaml:"provider"`
+	McpAdapterVersion string          `yaml:"mcp_adapter_version"`
 }

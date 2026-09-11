@@ -80,18 +80,9 @@ opencode:
       models:
         openai/gpt-oss-20b:free: {}
 
-# pi.dev coding harness (https://pi.dev). Tools maps to pi's --tools
-# allowlist of built-in tools; omit it to use the default
-# read, bash, edit, grep, find, ls, write.
-#
-# provider declares a custom provider in ~/.pi/agent/models.json for
-# OpenAI-compatible endpoints that pi does not ship (e.g. Ollama Cloud).
-# api_key supports pi's value syntax including "$ENV_VAR" interpolation; the
-# environment variable is provided by the daytona secrets below. Omit the
-# provider block to select a built-in provider (e.g. openrouter) whose key
-# resolves from the sandbox environment.
 pidev:
   version: 0.85.1
+  mcp_adapter_version: "2.33.0"
   # thinking_level: "high"
   tools:
     - "read"
@@ -108,7 +99,6 @@ pidev:
     api_key: "$OLLAMA_API_KEY"
     models:
       - id: "glm-5.3-flash:cloud"
-        context_window: 128000
 
 github:
   bot_login_id: "workdock[bot]"

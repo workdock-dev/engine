@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -989,6 +990,17 @@ func (c *controller) sandbox(
 		return nil, nil, nil, nil, err
 	} else {
 		fileUploads[file] = data
+	}
+
+	// Get harness custom files and prepare them for upload
+	files, err := harnessHandler.GetFiles(harnessConfig)
+
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	for _, file := range files {
+		maps.Copy(fileUploads, file)
 	}
 
 	shutdown, err := sandboxHandler.Run(

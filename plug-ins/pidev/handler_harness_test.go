@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -185,32 +184,8 @@ func (s *HarnessSuite) TestGetPromptFile() {
 
 func (s *HarnessSuite) TestRunCommand_Format() {
 	expected := fmt.Sprintf(
-		"mkdir -p %[1]s && cd %[1]s && PI_SKIP_VERSION_CHECK=1 pi --mode json --tools %[2]s -c < %[3]s",
-		WORKSPACE_PATH, strings.Join(defaultTools, ","), PROMPT_FILE_PATH,
-	)
-
-	s.Equal(expected, s.handler.RunCommand())
-}
-
-func (s *HarnessSuite) TestRunCommand_ConfigToolsOverride() {
-	s.handler.config = types.Config{
-		Tools: []string{"read", "grep", "ls"},
-	}
-
-	expected := fmt.Sprintf(
-		"mkdir -p %[1]s && cd %[1]s && PI_SKIP_VERSION_CHECK=1 pi --mode json --tools read,grep,ls -c < %[2]s",
+		"mkdir -p %[1]s && cd %[1]s && PI_SKIP_VERSION_CHECK=1 pi --mode json -c < %[2]s",
 		WORKSPACE_PATH, PROMPT_FILE_PATH,
-	)
-
-	s.Equal(expected, s.handler.RunCommand())
-}
-
-func (s *HarnessSuite) TestRunCommand_EmptyConfigToolsFallBackToDefaults() {
-	s.handler.config = types.Config{}
-
-	expected := fmt.Sprintf(
-		"mkdir -p %[1]s && cd %[1]s && PI_SKIP_VERSION_CHECK=1 pi --mode json --tools %[2]s -c < %[3]s",
-		WORKSPACE_PATH, strings.Join(defaultTools, ","), PROMPT_FILE_PATH,
 	)
 
 	s.Equal(expected, s.handler.RunCommand())
@@ -230,8 +205,8 @@ func (s *HarnessSuite) TestRunCommand_ProviderAndModel() {
 	}
 
 	expected := fmt.Sprintf(
-		"mkdir -p %[1]s && cd %[1]s && PI_SKIP_VERSION_CHECK=1 pi --mode json --tools %[2]s --provider ollama --model glm-5.3-flash:cloud -c < %[3]s",
-		WORKSPACE_PATH, strings.Join(defaultTools, ","), PROMPT_FILE_PATH,
+		"mkdir -p %[1]s && cd %[1]s && PI_SKIP_VERSION_CHECK=1 pi --mode json --provider ollama --model glm-5.3-flash:cloud -c < %[2]s",
+		WORKSPACE_PATH, PROMPT_FILE_PATH,
 	)
 
 	s.Equal(expected, s.handler.RunCommand())
@@ -243,8 +218,8 @@ func (s *HarnessSuite) TestRunCommand_ThinkingLevel() {
 	}
 
 	expected := fmt.Sprintf(
-		"mkdir -p %[1]s && cd %[1]s && PI_SKIP_VERSION_CHECK=1 pi --mode json --tools %[2]s --thinking high -c < %[3]s",
-		WORKSPACE_PATH, strings.Join(defaultTools, ","), PROMPT_FILE_PATH,
+		"mkdir -p %[1]s && cd %[1]s && PI_SKIP_VERSION_CHECK=1 pi --mode json --thinking high -c < %[2]s",
+		WORKSPACE_PATH, PROMPT_FILE_PATH,
 	)
 
 	s.Equal(expected, s.handler.RunCommand())
@@ -256,8 +231,11 @@ func (s *HarnessSuite) TestRunCommand_ThinkingLevel() {
 
 // settingsFileShape extracts the interesting keys of the generated settings JSON.
 type settingsFileShape struct {
-	DefaultThinkingLevel string `json:"defaultThinkingLevel"`
-	DefaultProjectTrust  string `json:"defaultProjectTrust"`
+	DefaultThinkingLevel string   `json:"defaultThinkingLevel"`
+	DefaultProjectTrust  string   `json:"defaultProjectTrust"`
+	DefaultTools         []string `json:"defaultTools"`
+	Packages             []string `json:"packages"`
+	NpmCommand           []string `json:"npmCommand"`
 }
 
 // modelsFileShape extracts the interesting keys of the generated models.json.
@@ -276,6 +254,15 @@ type modelsFileShape struct {
 	} `json:"providers"`
 }
 
+// mcpFileShape extracts the interesting keys of the generated mcp.json.
+type mcpFileShape struct {
+	McpServers map[string]struct {
+		Url       string            `json:"url"`
+		Headers   map[string]string `json:"headers"`
+		Lifecycle string            `json:"lifecycle"`
+	} `json:"mcpServers"`
+}
+
 func (s *HarnessSuite) unmarshalSettings(config agent_session_interfaces.HarnessConfig) settingsFileShape {
 	s.T().Helper()
 
@@ -288,14 +275,36 @@ func (s *HarnessSuite) unmarshalSettings(config agent_session_interfaces.Harness
 	return parsed
 }
 
-func (s *HarnessSuite) unmarshalModels(config agent_session_interfaces.HarnessConfig) modelsFileShape {
+// findFile extracts the data of the file at the given path from GetFiles.
+func (s *HarnessSuite) findFile(files []map[string][]byte, path string) []byte {
 	s.T().Helper()
 
-	path, data, err := s.handler.GetConfigFile(&config)
-	s.Require().NoError(err)
-	s.Require().Equal(MODELS_FILE_PATH, path)
+	for _, file := range files {
+		if data, ok := file[path]; ok {
+			return data
+		}
+	}
+
+	s.FailNow("file not found in GetFiles result", "path %s", path)
+	return nil
+}
+
+func (s *HarnessSuite) unmarshalModelsFromFiles(files []map[string][]byte) modelsFileShape {
+	s.T().Helper()
+
+	data := s.findFile(files, MODELS_FILE_PATH)
 
 	var parsed modelsFileShape
+	s.Require().NoError(json.Unmarshal(data, &parsed))
+	return parsed
+}
+
+func (s *HarnessSuite) unmarshalMcpFromFiles(files []map[string][]byte) mcpFileShape {
+	s.T().Helper()
+
+	data := s.findFile(files, MCP_FILE_PATH)
+
+	var parsed mcpFileShape
 	s.Require().NoError(json.Unmarshal(data, &parsed))
 	return parsed
 }
@@ -307,20 +316,45 @@ func (s *HarnessSuite) TestGetConfigFile_Defaults() {
 
 	s.Equal("always", parsed.DefaultProjectTrust)
 	s.Empty(parsed.DefaultThinkingLevel)
+	s.Equal(defaultTools, parsed.DefaultTools)
+	s.Empty(parsed.Packages)
+	s.Empty(parsed.NpmCommand)
 }
 
-func (s *HarnessSuite) TestGetConfigFile_ThinkingLevel() {
+func (s *HarnessSuite) TestGetConfigFile_ThinkingLevelAndTools() {
 	s.handler.config = types.Config{
 		ThinkingLevel: "high",
+		Tools:         []string{"read", "grep", "ls"},
 	}
 
 	parsed := s.unmarshalSettings(agent_session_interfaces.HarnessConfig{})
 
 	s.Equal("high", parsed.DefaultThinkingLevel)
 	s.Equal("always", parsed.DefaultProjectTrust)
+	s.Equal([]string{"read", "grep", "ls"}, parsed.DefaultTools)
 }
 
-func (s *HarnessSuite) TestGetConfigFile_HandlerProvider() {
+func (s *HarnessSuite) TestGetConfigFile_McpAdapterPackage() {
+	s.handler.config = types.Config{
+		McpAdapterVersion: "2.33.0",
+	}
+
+	parsed := s.unmarshalSettings(agent_session_interfaces.HarnessConfig{})
+
+	s.Equal([]string{"npm:pi-mcp-adapter@2.33.0"}, parsed.Packages)
+	s.Equal(NPM_COMMAND, parsed.NpmCommand)
+}
+
+func (s *HarnessSuite) TestGetFiles_NoExtrasReturnsNil() {
+	s.handler.config = types.Config{}
+
+	files, err := s.handler.GetFiles(&agent_session_interfaces.HarnessConfig{})
+
+	s.Require().NoError(err)
+	s.Nil(files)
+}
+
+func (s *HarnessSuite) TestGetFiles_HandlerProvider() {
 	s.handler.config = types.Config{
 		Provider: &types.ProviderConfig{
 			Name:    "ollama",
@@ -339,7 +373,11 @@ func (s *HarnessSuite) TestGetConfigFile_HandlerProvider() {
 		},
 	}
 
-	parsed := s.unmarshalModels(agent_session_interfaces.HarnessConfig{})
+	files, err := s.handler.GetFiles(&agent_session_interfaces.HarnessConfig{})
+	s.Require().NoError(err)
+	s.Len(files, 1)
+
+	parsed := s.unmarshalModelsFromFiles(files)
 
 	provider, ok := parsed.Providers["ollama"]
 	s.Require().True(ok)
@@ -354,7 +392,7 @@ func (s *HarnessSuite) TestGetConfigFile_HandlerProvider() {
 	s.Equal(32000, provider.Models[0].MaxTokens)
 }
 
-func (s *HarnessSuite) TestGetConfigFile_HandlerProviderDefaults() {
+func (s *HarnessSuite) TestGetFiles_HandlerProviderDefaults() {
 	s.handler.config = types.Config{
 		Provider: &types.ProviderConfig{
 			ApiKey: "ollama",
@@ -364,7 +402,11 @@ func (s *HarnessSuite) TestGetConfigFile_HandlerProviderDefaults() {
 		},
 	}
 
-	parsed := s.unmarshalModels(agent_session_interfaces.HarnessConfig{})
+	files, err := s.handler.GetFiles(&agent_session_interfaces.HarnessConfig{})
+	s.Require().NoError(err)
+	s.Len(files, 1)
+
+	parsed := s.unmarshalModelsFromFiles(files)
 
 	provider, ok := parsed.Providers["ollama"]
 	s.Require().True(ok)
@@ -379,7 +421,7 @@ func (s *HarnessSuite) TestGetConfigFile_HandlerProviderDefaults() {
 	s.Zero(provider.Models[0].MaxTokens)
 }
 
-func (s *HarnessSuite) TestGetConfigFile_ParamProviderOverridesHandlerProvider() {
+func (s *HarnessSuite) TestGetFiles_ParamProviderOverridesHandlerProvider() {
 	s.handler.config = types.Config{
 		Provider: &types.ProviderConfig{
 			Name:    "ollama",
@@ -400,7 +442,11 @@ func (s *HarnessSuite) TestGetConfigFile_ParamProviderOverridesHandlerProvider()
 		},
 	}
 
-	parsed := s.unmarshalModels(config)
+	files, err := s.handler.GetFiles(&config)
+	s.Require().NoError(err)
+	s.Len(files, 1)
+
+	parsed := s.unmarshalModelsFromFiles(files)
 
 	s.Require().Len(parsed.Providers, 1)
 	provider, ok := parsed.Providers["openrouter"]
@@ -410,6 +456,72 @@ func (s *HarnessSuite) TestGetConfigFile_ParamProviderOverridesHandlerProvider()
 	s.Equal("${OPENROUTER_API_KEY}", provider.ApiKey)
 	s.Require().Len(provider.Models, 1)
 	s.Equal("anthropic/claude-3.5-sonnet", provider.Models[0].Id)
+}
+
+func (s *HarnessSuite) TestGetFiles_Mcps() {
+	config := agent_session_interfaces.HarnessConfig{
+		Mcps: []agent_session_interfaces.MCPConfig{
+			{
+				Name:    "My MCP",
+				Url:     "https://example.com/mcp",
+				AuthKey: "MY_MCP_AUTH_SECRET_ENV_VAR_NAME",
+			},
+			{
+				Name:    "Other MCP",
+				Url:     "https://other.example.com/mcp",
+				AuthKey: "OTHER_ENV_VAR",
+			},
+		},
+	}
+
+	files, err := s.handler.GetFiles(&config)
+	s.Require().NoError(err)
+	s.Len(files, 1)
+
+	parsed := s.unmarshalMcpFromFiles(files)
+	s.Require().Len(parsed.McpServers, 2)
+
+	server, ok := parsed.McpServers["My MCP"]
+	s.Require().True(ok)
+	s.Equal("https://example.com/mcp", server.Url)
+	s.Equal("lazy", server.Lifecycle)
+	s.Equal(
+		map[string]string{"Authorization": "Bearer ${MY_MCP_AUTH_SECRET_ENV_VAR_NAME}"},
+		server.Headers,
+	)
+
+	other, ok := parsed.McpServers["Other MCP"]
+	s.Require().True(ok)
+	s.Equal("https://other.example.com/mcp", other.Url)
+	s.Equal(
+		map[string]string{"Authorization": "Bearer ${OTHER_ENV_VAR}"},
+		other.Headers,
+	)
+}
+
+func (s *HarnessSuite) TestGetFiles_ProviderAndMcps() {
+	s.handler.config = types.Config{
+		Provider: &types.ProviderConfig{
+			Name:   "ollama",
+			ApiKey: "$OLLAMA_API_KEY",
+			Models: []types.ModelConfig{
+				{Id: "glm-5.3-flash:cloud"},
+			},
+		},
+	}
+
+	config := agent_session_interfaces.HarnessConfig{
+		Mcps: []agent_session_interfaces.MCPConfig{
+			{Name: "My MCP", Url: "https://example.com/mcp", AuthKey: "ENV_VAR"},
+		},
+	}
+
+	files, err := s.handler.GetFiles(&config)
+	s.Require().NoError(err)
+	s.Len(files, 2)
+
+	s.unmarshalModelsFromFiles(files)
+	s.unmarshalMcpFromFiles(files)
 }
 
 // ---------------------------------------------------------------------------

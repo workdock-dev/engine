@@ -72,6 +72,10 @@ func (h *HarnessHandler) GetPromptFile(prompt string) (string, []byte) {
 	return PROMPT_FILE_PATH, []byte(prompt)
 }
 
+func (h *HarnessHandler) GetFiles(config *agent_session_interfaces.HarnessConfig) ([]map[string][]byte, error) {
+	return nil, nil
+}
+
 func (h *HarnessHandler) GetConfigFile(config *agent_session_interfaces.HarnessConfig) (string, []byte, error) {
 	permissions := []byte("{\"*\":\"allow\"}")
 	mcps := []byte("{}")

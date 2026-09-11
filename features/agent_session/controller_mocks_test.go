@@ -261,6 +261,7 @@ type mockHarnessHandler struct {
 	getCommandsFn       func() []string
 	getPromptFileFn     func(prompt string) (string, []byte)
 	getConfigFileFn     func(config *interfaces.HarnessConfig) (string, []byte, error)
+	getFilesFn          func(config *interfaces.HarnessConfig) ([]map[string][]byte, error)
 	runCommandFn        func() string
 	parseFn             func(
 		ctx context.Context,
@@ -308,6 +309,13 @@ func (m *mockHarnessHandler) GetConfigFile(config *interfaces.HarnessConfig) (st
 		return m.getConfigFileFn(config)
 	}
 	return "/tmp/config.json", []byte("{}"), nil
+}
+
+func (m *mockHarnessHandler) GetFiles(config *interfaces.HarnessConfig) ([]map[string][]byte, error) {
+	if m.getFilesFn != nil {
+		return m.getFilesFn(config)
+	}
+	return nil, nil
 }
 
 func (m *mockHarnessHandler) RunCommand() string {

@@ -38,11 +38,17 @@ const (
 	WORKSPACE_PATH     = "/home/${USER}/workspace"
 	CONFIG_FILE_PATH   = "/home/${USER}/.pi/agent/settings.json"
 	MODELS_FILE_PATH   = "/home/${USER}/.pi/agent/models.json"
+	MCP_FILE_PATH      = "/home/${USER}/.pi/agent/mcp.json"
 	PROMPT_FILE_PATH   = "/tmp/prompt.txt"
 	DEFAULT_API        = "openai-completions"
 	DEFAULT_MODEL_NAME = "ollama"
 	DEFAULT_BASE_URL   = "https://ollama.com/v1"
+	MCP_ADAPTER_SOURCE = "npm:pi-mcp-adapter"
 )
+
+// NPM_COMMAND suppresses notice-level install output (package counts,
+// funding and audit notices) that npm prints on every package operation.
+var NPM_COMMAND = []string{"npm", "--no-fund", "--no-audit", "--loglevel=silent"}
 
 // defaultTools are the pi built-in tools enabled when the config does not
 // provide any. bash is included so the agent can clone the repository and
@@ -80,11 +86,54 @@ func (h *HarnessHandler) GetPromptFile(prompt string) (string, []byte) {
 	return PROMPT_FILE_PATH, []byte(prompt)
 }
 
-// GetConfigFile returns either a custom provider declaration for
-// ~/.pi/agent/models.json or the global settings file for built-in
-// providers, whose API keys resolve from the sandbox environment.
-// https://pi.dev/docs/latest/models
+// GetConfigFile returns the global settings file for
+// ~/.pi/agent/settings.json. Built-in providers resolve their API keys from
+// the sandbox environment. defaultTools selects the built-in tools while
+// extension tools such as the MCP adapter remain enabled.
+// https://pi.dev/docs/latest/settings
 func (h *HarnessHandler) GetConfigFile(config *agent_session_interfaces.HarnessConfig) (string, []byte, error) {
+	tools := h.config.Tools
+
+	if len(tools) == 0 {
+		tools = defaultTools
+	}
+
+	settings := map[string]any{
+		"defaultProjectTrust": "always",
+		"defaultTools":        tools,
+	}
+
+	if h.config.ThinkingLevel != "" {
+		settings["defaultThinkingLevel"] = h.config.ThinkingLevel
+	}
+
+	if h.config.McpAdapterVersion != "" {
+		settings["packages"] = []string{
+			fmt.Sprintf("%s@%s", MCP_ADAPTER_SOURCE, h.config.McpAdapterVersion),
+		}
+
+		// npm runs with stdout and stderr routed to pi's stderr in JSON mode;
+		// silence notice-level package output while keeping real errors
+		settings["npmCommand"] = NPM_COMMAND
+	}
+
+	data, err := json.Marshal(settings)
+
+	if err != nil {
+		slog.Error("[harness][pidev] failed to marshal settings", "err", err)
+		return "", nil, err
+	}
+
+	return CONFIG_FILE_PATH, data, nil
+}
+
+// GetFiles returns additional custom files: the custom provider declaration
+// for ~/.pi/agent/models.json and the engine-configured MCP servers for
+// ~/.pi/agent/mcp.json consumed by pi-mcp-adapter.
+// https://pi.dev/docs/latest/models and https://pi.dev/packages/pi-mcp-adapter
+func (h *HarnessHandler) GetFiles(config *agent_session_interfaces.HarnessConfig) ([]map[string][]byte, error) {
+	files := make([]map[string][]byte, 0)
+
 	// *-------------------------------------------------------------------------*
 	// * config through params overrides handler default config                  *
 	// *-------------------------------------------------------------------------*
@@ -98,38 +147,60 @@ func (h *HarnessHandler) GetConfigFile(config *agent_session_interfaces.HarnessC
 		})
 
 		if err != nil {
-			return "", nil, err
+			return nil, err
 		}
 
-		return MODELS_FILE_PATH, data, nil
-	}
-
-	if h.config.Provider != nil {
+		files = append(files, map[string][]byte{MODELS_FILE_PATH: data})
+	} else if h.config.Provider != nil {
 		data, err := h.modelsJson(h.config.Provider)
 
 		if err != nil {
-			return "", nil, err
+			return nil, err
 		}
 
-		return MODELS_FILE_PATH, data, nil
+		files = append(files, map[string][]byte{MODELS_FILE_PATH: data})
 	}
 
-	settings := map[string]any{
-		"defaultProjectTrust": "always",
+	if len(config.Mcps) > 0 {
+		data, err := h.mcpJson(config.Mcps)
+
+		if err != nil {
+			return nil, err
+		}
+
+		files = append(files, map[string][]byte{MCP_FILE_PATH: data})
 	}
 
-	if h.config.ThinkingLevel != "" {
-		settings["defaultThinkingLevel"] = h.config.ThinkingLevel
+	if len(files) == 0 {
+		return nil, nil
 	}
 
-	data, err := json.Marshal(settings)
+	return files, nil
+}
+
+func (h *HarnessHandler) mcpJson(mcps []agent_session_interfaces.MCPConfig) ([]byte, error) {
+	servers := make(map[string]any, len(mcps))
+
+	for _, mcp := range mcps {
+		servers[mcp.Name] = map[string]any{
+			"url": mcp.Url,
+			"headers": map[string]string{
+				"Authorization": fmt.Sprintf("Bearer ${%s}", mcp.AuthKey),
+			},
+			"lifecycle": "lazy",
+		}
+	}
+
+	data, err := json.Marshal(map[string]any{
+		"mcpServers": servers,
+	})
 
 	if err != nil {
-		slog.Error("[harness][pidev] failed to marshal settings", "err", err)
-		return "", nil, err
+		slog.Error("[harness][pidev] failed to marshal mcp config", "err", err)
+		return nil, err
 	}
 
-	return CONFIG_FILE_PATH, data, nil
+	return data, nil
 }
 
 func (h *HarnessHandler) modelsJson(provider *types.ProviderConfig) ([]byte, error) {
@@ -195,13 +266,7 @@ func (h *HarnessHandler) modelsJson(provider *types.ProviderConfig) ([]byte, err
 }
 
 func (h *HarnessHandler) RunCommand() string {
-	tools := h.config.Tools
-
-	if len(tools) == 0 {
-		tools = defaultTools
-	}
-
-	flags := fmt.Sprintf("--mode json --tools %s", strings.Join(tools, ","))
+	flags := "--mode json"
 
 	if h.config.Provider != nil {
 		model := ""
@@ -218,11 +283,14 @@ func (h *HarnessHandler) RunCommand() string {
 	}
 
 	// --mode json    output all events as JSON lines
-	// --tools        allowlist specific built-in tools
 	// --provider     provider, such as ollama or openrouter
 	// --model        model pattern or ID
 	// --thinking     thinking level
 	// -c             continue the most recent session
+	//
+	// Built-in tools are selected through the defaultTools settings key
+	// instead of --tools, which is a strict allowlist over all tools and
+	// would disable extension tools such as the MCP adapter.
 	return fmt.Sprintf(`mkdir -p %[1]s && cd %[1]s && PI_SKIP_VERSION_CHECK=1 pi %[2]s -c < %[3]s`,
 		WORKSPACE_PATH, flags, PROMPT_FILE_PATH,
 	)
@@ -316,7 +384,7 @@ func (h *HarnessHandler) Parse(
 					"bash_execution_update", "session_info_changed", "thinking_level_changed",
 					"entry_appended", "auto_retry_end", "summarization_retry_scheduled",
 					"summarization_retry_attempt_start", "summarization_retry_finished",
-					"message_start", "turn_end", "agent_end", "text_start", "thinking_start":
+					"message_start", "turn_end", "agent_end", "text_start", "thinking_start", "tool_execution_update":
 					// Session bookkeeping events without provider output; the
 					// final authoritative message arrives on message_end.
 					// text_start/thinking_start only occur as
