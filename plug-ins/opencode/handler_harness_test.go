@@ -175,6 +175,13 @@ func (s *HarnessSuite) TestGetCommands_Nil() {
 	s.Nil(s.handler.GetCommands())
 }
 
+func (s *HarnessSuite) TestGetFiles_Nil() {
+	files, err := s.handler.GetFiles(&agent_session_interfaces.HarnessConfig{})
+
+	s.Require().NoError(err)
+	s.Nil(files)
+}
+
 func (s *HarnessSuite) TestGetPromptFile() {
 	path, data := s.handler.GetPromptFile("do the work")
 

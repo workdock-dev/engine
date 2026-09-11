@@ -193,7 +193,7 @@ func (s *ControllerSuite) SetupTest() {
 		agentHandlerRegistry:      AgentHandlerRegistry{"linear": s.agentHdl},
 		gitHostingHandlerRegistry: GitHandlerRegistry{"github": s.gitHdl},
 		sandboxHandlerRegistry:    SandboxHandlerRegistry{"daytona": s.sandboxHdl},
-		harnessHandlerRegistry:    HarnessHandlerRegistry{"opencode": s.harnessHdl},
+		harnessHandlerRegistry:    HarnessHandlerRegistry{"pidev": s.harnessHdl},
 		mcpHandler:                s.mcpHdl,
 		organization:              s.orgRepo,
 		git:                       s.gitRepo,
@@ -236,7 +236,7 @@ func (s *ControllerSuite) TestNew_SubscribesAndRunsScheduler() {
 			AgentHandlerRegistry{"linear": s.agentHdl},
 			GitHandlerRegistry{"github": s.gitHdl},
 			SandboxHandlerRegistry{"daytona": s.sandboxHdl},
-			HarnessHandlerRegistry{"opencode": s.harnessHdl},
+			HarnessHandlerRegistry{"pidev": s.harnessHdl},
 			s.mcpHdl,
 			s.eventBus,
 			s.secretMgr,
@@ -272,7 +272,7 @@ func (s *ControllerSuite) TestNew_SchedulerInitError() {
 		AgentHandlerRegistry{"linear": s.agentHdl},
 		GitHandlerRegistry{"github": s.gitHdl},
 		SandboxHandlerRegistry{"daytona": s.sandboxHdl},
-		HarnessHandlerRegistry{"opencode": s.harnessHdl},
+		HarnessHandlerRegistry{"pidev": s.harnessHdl},
 		s.mcpHdl,
 		s.eventBus,
 		s.secretMgr,
@@ -1350,12 +1350,12 @@ func (s *ControllerSuite) TestGetHandlers_MissingSandboxHandler() {
 }
 
 func (s *ControllerSuite) TestGetHandlers_MissingHarnessHandler() {
-	delete(s.c.harnessHandlerRegistry, "opencode")
+	delete(s.c.harnessHandlerRegistry, "pidev")
 
 	_, _, _, _, err := s.c.getHandlers(newTestSession())
 
 	s.Error(err)
-	s.ErrorContains(err, "provider opencode not configured for harness handler")
+	s.ErrorContains(err, "provider pidev not configured for harness handler")
 }
 
 // ---------------------------------------------------------------------------
@@ -1783,6 +1783,46 @@ func (s *ControllerSuite) TestSandbox_GetConfigFileError() {
 	s.Nil(stdout)
 	s.Nil(stderr)
 	s.Nil(shutdown)
+}
+
+func (s *ControllerSuite) TestSandbox_GetFilesError() {
+	s.harnessHdl.getFilesFn = func(config *interfaces.HarnessConfig) ([]map[string][]byte, error) {
+		return nil, errors.New("files failed")
+	}
+
+	harnessConfig, stdout, stderr, shutdown, err := s.c.sandbox(
+		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		nil, "prompt", newTestSession(), testSessionEvent,
+	)
+
+	s.Error(err)
+	s.ErrorContains(err, "files failed")
+	s.Nil(harnessConfig)
+	s.Nil(stdout)
+	s.Nil(stderr)
+	s.Nil(shutdown)
+}
+
+func (s *ControllerSuite) TestSandbox_GetFilesMergedIntoFileUploads() {
+	s.harnessHdl.getFilesFn = func(config *interfaces.HarnessConfig) ([]map[string][]byte, error) {
+		return []map[string][]byte{
+			{"/tmp/one.json": []byte(`{"one":1}`)},
+			{"/tmp/two.json": []byte(`{"two":2}`)},
+		}, nil
+	}
+
+	_, _, _, _, err := s.c.sandbox(
+		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		nil, "prompt", newTestSession(), testSessionEvent,
+	)
+
+	s.Require().NoError(err)
+	config := s.sandboxHdl.runConfig
+	s.Require().NotNil(config)
+	s.Len(config.FileUploads, 4) // prompt + GetConfigFile + two GetFiles
+	s.Equal([]byte(`{"one":1}`), config.FileUploads["/tmp/one.json"])
+	s.Equal([]byte(`{"two":2}`), config.FileUploads["/tmp/two.json"])
+	s.Equal([]byte("{}"), config.FileUploads["/tmp/config.json"])
 }
 
 func (s *ControllerSuite) TestSandbox_RunError() {

@@ -80,6 +80,26 @@ opencode:
       models:
         openai/gpt-oss-20b:free: {}
 
+pidev:
+  version: 0.85.1
+  mcp_adapter_version: "2.33.0"
+  # thinking_level: "high"
+  tools:
+    - "read"
+    - "bash"
+    - "edit"
+    - "grep"
+    - "find"
+    - "ls"
+    - "write"
+  provider:
+    name: "ollama"
+    base_url: "https://ollama.com/v1"
+    api: "openai-completions"
+    api_key: "$OLLAMA_API_KEY"
+    models:
+      - id: "glm-5.3-flash:cloud"
+
 github:
   bot_login_id: "workdock[bot]"
   client_id: "replace-with-github-app-client-id"

@@ -55,6 +55,10 @@ type HandlerHarness interface {
 	// return file path+data
 	GetConfigFile(config *HarnessConfig) (string, []byte, error)
 
+	// GetFiles pass in custom configuration
+	// return a list of custom upload files, each file is a map of path+data
+	GetFiles(config *HarnessConfig) ([]map[string][]byte, error)
+
 	// RunCommand returns the harness command for execution
 	RunCommand() string
 

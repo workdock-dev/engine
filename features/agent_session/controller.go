@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -795,10 +796,10 @@ func (c *controller) getHandlers(session *types.Session) (
 	}
 
 	// TODO: Make this dynamic
-	harnessHandler, ok := c.harnessHandlerRegistry[string(shared.HarnessProvider_OpenCode)]
+	harnessHandler, ok := c.harnessHandlerRegistry[string(shared.HarnessProvider_PiDev)]
 
 	if !ok {
-		return nil, nil, nil, nil, fmt.Errorf("[agent-session] provider %s not configured for harness handler", shared.HarnessProvider_OpenCode)
+		return nil, nil, nil, nil, fmt.Errorf("[agent-session] provider %s not configured for harness handler", shared.HarnessProvider_PiDev)
 	}
 
 	return agentHandler, gitHandler, sandboxHandler, harnessHandler, nil
@@ -989,6 +990,17 @@ func (c *controller) sandbox(
 		return nil, nil, nil, nil, err
 	} else {
 		fileUploads[file] = data
+	}
+
+	// Get harness custom files and prepare them for upload
+	files, err := harnessHandler.GetFiles(harnessConfig)
+
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	for _, file := range files {
+		maps.Copy(fileUploads, file)
 	}
 
 	shutdown, err := sandboxHandler.Run(
