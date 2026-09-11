@@ -702,7 +702,13 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 
 	defer func() {
 		if shutdown != nil {
-			telemetry.SpanDo(ctx, c.tracer, "execute.sandbox.shutdown", func(ctx context.Context) {
+			// The job context can already be cancelled when this runs (user stop
+			// or scheduler shutdown while the harness was running). Finalization
+			// must still persist the session result and notify the user, so run
+			// it on a context that keeps tracing values but ignores cancellation.
+			finalizeCtx := context.WithoutCancel(ctx)
+
+			telemetry.SpanDo(finalizeCtx, c.tracer, "execute.sandbox.shutdown", func(ctx context.Context) {
 				slog.Debug("[agent-session] sandbox shutdown")
 				result := shutdown(context.Background())
 
