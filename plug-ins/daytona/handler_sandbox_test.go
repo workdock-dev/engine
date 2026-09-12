@@ -21,7 +21,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/suite"
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
@@ -70,28 +69,6 @@ func (s *SandboxSuite) TestIsContextCanceledOrDeadlineExceeded() {
 			s.Equal(tt.want, handler.isContextCanceledOrDeadlineExceeded(tt.err))
 		})
 	}
-}
-
-// ---------------------------------------------------------------------------
-// shouldStopSandbox
-// ---------------------------------------------------------------------------
-
-func (s *SandboxSuite) TestShouldStopSandbox() {
-	handler := &SandboxHandler{}
-
-	s.True(handler.shouldStopSandbox(context.Background()),
-		"a live run must stop the sandbox on teardown")
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	// A cancelled run must not stop the shared sandbox: a new prompt may
-	// already be running on it.
-	s.False(handler.shouldStopSandbox(ctx))
-
-	deadlineCtx, deadlineCancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Minute))
-	defer deadlineCancel()
-	// An expired (requeued) run must not stop the shared sandbox either.
-	s.False(handler.shouldStopSandbox(deadlineCtx))
 }
 
 // ---------------------------------------------------------------------------

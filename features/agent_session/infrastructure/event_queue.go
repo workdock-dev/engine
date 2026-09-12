@@ -73,6 +73,10 @@ func NewEventQueue(client shared.PostgresPool, conn DBConn) *EventQueue {
 //   - Its status is Running but the previous execution lease has expired,
 //     allowing another worker to recover and continue processing.
 //
+// and no other job of the same session is Running or Cancelling: a job in the
+// cancelling state is having its teardown finalized and the sandbox it uses
+// must not be taken over by a new attempt mid-teardown.
+//
 // If the job is not claimable, Claim returns ErrJobNotRunnable.
 //
 // On success, Claim:

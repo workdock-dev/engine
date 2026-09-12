@@ -302,7 +302,16 @@ func (s *TaskScheduler) execute(ctx context.Context, job *types.EventJob, starte
 		s.metrics.recordJob(ctx, ResultCancelled, "", duration)
 
 		if errors.Is(context.Cause(ctx), errJobCancelledByUser) {
-			slog.Debug("[task-scheduler] job cancelled by user, job already cancelled in database", "event_identifier", job.SessionEventIdentifier, "success", "-")
+			// The cancel request left the job in 'cancelling' while the handler
+			// ran its teardown. The teardown is done: finalize the cancellation.
+			// The database trigger uses this transition to release the jobs the
+			// session queued while the cancellation was in progress. The parent
+			// context is already cancelled, so run the update on a non-cancelled
+			// context.
+			slog.Debug("[task-scheduler] job cancelled by user, finalizing cancellation", "event_identifier", job.SessionEventIdentifier, "success", "-")
+			telemetry.SpanErr(context.WithoutCancel(ctx), s.tracer, "job.cancelled", func(ctx context.Context) error {
+				return s.extQueue.Complete(ctx, job.SessionEventIdentifier, types.EventJobStatus_Cancelled)
+			})
 			return
 		}
 

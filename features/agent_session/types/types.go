@@ -31,6 +31,7 @@ type JobHandler func(ctx context.Context, job *EventJob) (EventJobStatus, error)
 const (
 	EventJobStatus_Queued         EventJobStatus = "queued"
 	EventJobStatus_Running        EventJobStatus = "running"
+	EventJobStatus_Cancelling     EventJobStatus = "cancelling"
 	EventJobStatus_Retry          EventJobStatus = "retry"
 	EventJobStatus_AwaitingAction EventJobStatus = "awaiting_action"
 	EventJobStatus_Succeeded      EventJobStatus = "succeeded"
