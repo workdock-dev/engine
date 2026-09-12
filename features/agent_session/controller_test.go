@@ -258,6 +258,39 @@ func (s *ControllerSuite) TestNew_SubscribesAndRunsScheduler() {
 	}
 }
 
+func (s *ControllerSuite) TestNew_DisabledSchedulerDoesNotRun() {
+	// Listen is only reached by a running scheduler; reaching it while the
+	// scheduler is disabled means the flag was ignored.
+	s.queue.listenFn = func(ctx context.Context) (<-chan struct{}, <-chan string, error) {
+		s.Fail("the task scheduler ran while disabled")
+		return nil, nil, nil
+	}
+
+	err := New(
+		context.Background(),
+		types.TaskSchedulerConfig{Workers: 1, Disabled: true},
+		types.HarnessLivenessProbeConfig{},
+		AgentHandlerRegistry{"linear": s.agentHdl},
+		GitHandlerRegistry{"github": s.gitHdl},
+		SandboxHandlerRegistry{"daytona": s.sandboxHdl},
+		HarnessHandlerRegistry{"pidev": s.harnessHdl},
+		s.mcpHdl,
+		s.eventBus,
+		s.secretMgr,
+		s.orgRepo,
+		s.sessionRep,
+		s.gitRepo,
+		s.queue,
+	)
+
+	s.NoError(err)
+
+	// init still ran: the domain event subscriptions remain registered so
+	// session events keep being queued for another scheduler instance.
+	_, ok := s.eventBus.HandlerAt(shared.EventType_AgentSessionPrompt, 0)
+	s.True(ok, "expected the agent session prompt subscription to be registered")
+}
+
 func (s *ControllerSuite) TestNew_SchedulerInitError() {
 	// A failing global meter provider makes NewTaskScheduler (and therefore
 	// init) fail; restore to a fresh no-op provider afterwards.

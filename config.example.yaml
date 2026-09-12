@@ -27,6 +27,9 @@ server_address: ":8080"
 task_scheduler:
   workers: 3
   max_attempts: 2
+  # Set to true to turn off the task scheduler: queued agent session jobs are
+  # not claimed or executed by this instance.
+  # disabled: false
 
 harness_liveness_probe:
   max_misses: 3
