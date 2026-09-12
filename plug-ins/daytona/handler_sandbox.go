@@ -229,6 +229,21 @@ func (h *SandboxHandler) Run(
 	}
 
 	// *-------------------------------------------------------------------------*
+	// * Run the session configuration commands (e.g. git credential setup)      *
+	// *                                                                         *
+	// * Unlike CommandsWhenCreated these must run on every session since        *
+	// * sandboxes are reused and the configuration is required before the       *
+	// * harness starts issuing git commands                                     *
+	// *-------------------------------------------------------------------------*
+
+	slog.Debug("[sandbox][daytona] session commands")
+	for _, cmd := range config.Commands {
+		if _, _, err := h.executeCommand(ctx, sandbox, config, cmd, time.Minute*1); err != nil {
+			return shutdown, err
+		}
+	}
+
+	// *-------------------------------------------------------------------------*
 	// * Create an execution process since interacting with the AI takes time    *
 	// *-------------------------------------------------------------------------*
 
