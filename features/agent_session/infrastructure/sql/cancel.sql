@@ -14,11 +14,22 @@
 
 UPDATE public.jobs
 SET
-    status = 'cancelled',
+    -- A running job is only marked 'cancelling': its worker is still tearing
+    -- the handler down (the sandbox is shared across the session, so a new
+    -- prompt must not run on it mid-teardown). The scheduler finalizes the
+    -- cancellation once the handler returns.
+    status = CASE
+        WHEN status = 'running' THEN 'cancelling'
+        ELSE 'cancelled'
+    END,
     cancellation_reason = $2,
     next_attempt_at = null,
-    lease_owner = null,
-    lease_expires_at = null,
+    -- The lease of a cancelling job is kept: the heartbeats that renew it
+    -- stop once the job context is cancelled, so an expired lease means the
+    -- worker died mid-teardown and the orphan-recovery job finalizes the
+    -- cancellation.
+    lease_owner = CASE WHEN status = 'running' THEN lease_owner ELSE null END,
+    lease_expires_at = CASE WHEN status = 'running' THEN lease_expires_at ELSE null END,
     updated_at = now()
 WHERE
     queued_by = $1

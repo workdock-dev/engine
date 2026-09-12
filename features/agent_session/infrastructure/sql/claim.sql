@@ -39,7 +39,10 @@ WITH next_job AS (
             JOIN public.sessions_events running_se
                 ON running_se.identifier = running_job.session_event_identifier
             WHERE
-                running_job.status = 'running'
+                -- A 'cancelling' job of the same session blocks the claim too:
+                -- its sandbox is being torn down and jobs of the session must
+                -- run on it only after the teardown finishes.
+                running_job.status IN ('running', 'cancelling')
                 AND running_job.id <> j.id
                 AND running_se.session_identifier = se.session_identifier
         )

@@ -1123,6 +1123,12 @@ func (c *controller) harness(
 				case <-ctx.Done():
 					return ctx.Err()
 				case <-ticker.C:
+					// A cancellation can land while the ticker fires; a run whose
+					// context is already being torn down must never report misses.
+					if err := ctx.Err(); err != nil {
+						return err
+					}
+
 					m := missed.Add(1)
 
 					if m == 0 {

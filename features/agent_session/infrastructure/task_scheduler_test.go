@@ -432,15 +432,26 @@ func (s *TaskSchedulerSuite) TestRun_CancellationChannel() {
 	time.Sleep(100 * time.Millisecond)
 
 	q.sendCancel("evt-cancel-ch")
-	time.Sleep(100 * time.Millisecond)
+
+	// A job cancelled by the user is finalized once its teardown is done:
+	// Complete transitions the job from 'cancelling' to 'cancelled' so the
+	// database trigger releases the jobs the session queued while the
+	// cancellation was in progress.
+	q.waitForTerminal()
+
+	q.assertCompleted(s.T(), "evt-cancel-ch", types.EventJobStatus_Cancelled)
 
 	q.mu.Lock()
-	completed := q.completedIds
 	failed := q.failedIds
 	retried := q.retriedIds
+	lastCompleteCtx := q.lastCompleteCtx
 	q.mu.Unlock()
 
-	s.Empty(completed)
+	// The finalization runs on a non-cancelled context: the parent context is
+	// cancelled by the time Complete is called, and the update must still
+	// reach the database.
+	s.Require().NotNil(lastCompleteCtx)
+	s.NoError(lastCompleteCtx.Err())
 	s.Empty(failed)
 	s.Empty(retried)
 
@@ -807,6 +818,7 @@ type mockQueue struct {
 	mu                sync.Mutex
 	completedIds      []string
 	completedStatuses []types.EventJobStatus
+	lastCompleteCtx   context.Context
 	retriedIds        []string
 	retryCauses       []error
 	failedIds         []string
@@ -915,6 +927,7 @@ func (m *mockQueue) Complete(ctx context.Context, id string, status types.EventJ
 	m.mu.Lock()
 	m.completedIds = append(m.completedIds, id)
 	m.completedStatuses = append(m.completedStatuses, status)
+	m.lastCompleteCtx = ctx
 	err := m.completeErr
 	m.mu.Unlock()
 	m.signalTerminal()

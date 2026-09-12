@@ -268,14 +268,22 @@ func (h *SandboxHandler) Run(
 		return shutdown, err
 	}
 
+	// Channel are closed internally
+	listening = true
+
 	go func() {
 		slog.Debug("[sandbox][daytona] streaming command logs", "event_identifier", config.SessionEvent.Identifier)
 
-		// Channel are closed internally
-		listening = true
 		if err := h.streamSessionCommandLogs(ctx, sandbox, config, cmdId, stdout, stderr); err != nil {
+			// Deleting the execution session or stopping the sandbox closes the
+			// log stream mid-read with an abnormal closure; expected while the
+			// run is being torn down.
+			if ctx.Err() != nil {
+				slog.Debug("[sandbox][daytona] session output stream ended", "err", err, "event_identifier", config.SessionEvent.Identifier)
+				return
+			}
+
 			slog.Error("[sandbox][daytona] failed to stream session output", "err", err, "event_identifier", config.SessionEvent.Identifier)
-			return
 		}
 	}()
 
