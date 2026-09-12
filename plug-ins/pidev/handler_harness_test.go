@@ -484,7 +484,7 @@ func (s *HarnessSuite) TestGetFiles_Mcps() {
 	server, ok := parsed.McpServers["My MCP"]
 	s.Require().True(ok)
 	s.Equal("https://example.com/mcp", server.Url)
-	s.Equal("lazy", server.Lifecycle)
+	s.Equal("keep-alive", server.Lifecycle)
 	s.Equal(
 		map[string]string{"Authorization": "Bearer ${MY_MCP_AUTH_SECRET_ENV_VAR_NAME}"},
 		server.Headers,
