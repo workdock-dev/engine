@@ -21,7 +21,7 @@ SET
     status = CASE
         WHEN status = 'running' THEN 'cancelling'
         ELSE 'cancelled'
-    END,
+    END::job_status,
     cancellation_reason = $2,
     next_attempt_at = null,
     -- The lease of a cancelling job is kept: the heartbeats that renew it
