@@ -66,6 +66,9 @@ type HandlerAgentSession interface {
 	// SendServerInternalError sends a generic server internal error
 	SendServerInternalError(ctx context.Context, sessionId, accessToken string) error
 
+	// SendRetryScheduled notifies the user the failed execution will be retried
+	SendRetryScheduled(ctx context.Context, sessionId, accessToken string) error
+
 	// GetIssueState returns the workflow state metadata of the ticket
 	GetIssueState(ctx context.Context, issueId, accessToken string) (*IssueState, error)
 

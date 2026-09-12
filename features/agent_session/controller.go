@@ -654,7 +654,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	})
 
 	if err != nil {
-		agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
+		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential)
 		return types.EventJobStatus_Failed, err
 	}
 
@@ -667,7 +667,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	})
 
 	if err != nil {
-		agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
+		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential)
 		return types.EventJobStatus_Failed, err
 	}
 
@@ -744,7 +744,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	}()
 
 	if err != nil {
-		agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
+		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential)
 		return types.EventJobStatus_Failed, err
 	}
 
@@ -765,10 +765,35 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 			sessionEvent,
 		)
 	}); err != nil {
+		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential)
 		return types.EventJobStatus_Failed, err
 	}
 
 	return types.EventJobStatus_Succeeded, nil
+}
+
+// reportExecutionError notifies the user about a failed agent session execution.
+// When the job is going to be retried, the user is told the execution will be
+// retried; otherwise a generic server internal error is reported. Jobs whose
+// context was cancelled are not reported because the scheduler handles their
+// cancellation separately and platform calls would fail on a cancelled context.
+func (c *controller) reportExecutionError(
+	ctx context.Context,
+	job *types.EventJob,
+	session *types.Session,
+	agentHandler interfaces.HandlerAgentSession,
+	credential string,
+) {
+	if ctx.Err() != nil {
+		return
+	}
+
+	if job.WillRetry() {
+		agentHandler.SendRetryScheduled(ctx, session.Identifier, credential)
+		return
+	}
+
+	agentHandler.SendServerInternalError(ctx, session.Identifier, credential)
 }
 
 func (c *controller) getHandlers(session *types.Session) (
