@@ -39,9 +39,9 @@ const (
 
 // *--------------------------------------------------------------------------*
 
-// AgentSessionArchiveEvent signals that a ticket reached a done workflow
-// state on its work platform. It carries the fields required to archive the
-// sandboxes of the ticket's agent sessions.
+// AgentSessionArchiveEvent signals that a ticket reached a closed workflow
+// state on its work platform (done, canceled, duplicated, etc.). It carries
+// the fields required to archive the sandboxes of the ticket's agent sessions.
 type AgentSessionArchiveEvent struct {
 	Provider string
 	IssueId  string
