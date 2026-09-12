@@ -84,14 +84,14 @@ func (s *SandboxSuite) TestShouldStopSandbox() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	s.False(handler.shouldStopSandbox(ctx),
-		"a cancelled run (user stop) must leave the shared sandbox running: " +
-			"a new prompt may already be using it")
+	// A cancelled run must not stop the shared sandbox: a new prompt may
+	// already be running on it.
+	s.False(handler.shouldStopSandbox(ctx))
 
 	deadlineCtx, deadlineCancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Minute))
 	defer deadlineCancel()
-	s.False(handler.shouldStopSandbox(deadlineCtx),
-		"an expired run (scheduler requeue) must leave the shared sandbox running")
+	// An expired (requeued) run must not stop the shared sandbox either.
+	s.False(handler.shouldStopSandbox(deadlineCtx))
 }
 
 // ---------------------------------------------------------------------------
