@@ -15,8 +15,9 @@
 package types
 
 type TaskSchedulerConfig struct {
-	Workers     int `yaml:"workers"`
-	MaxAttempts int `yaml:"max_attempts"`
+	Workers     int  `yaml:"workers"`
+	MaxAttempts int  `yaml:"max_attempts"`
+	Disabled    bool `yaml:"disabled"`
 }
 
 type HarnessLivenessProbeConfig struct {

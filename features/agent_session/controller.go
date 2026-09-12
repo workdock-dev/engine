@@ -83,6 +83,9 @@ type controller struct {
 // agent handlers provider to listen for new agent sessions
 // and it will run a task scheduler to work the agent session
 // asynchronously. Calling this function will block the goroutine
+// until the scheduler shuts down. When the task scheduler is disabled
+// through its configuration, it is not run and the function returns as
+// soon as the subscriptions are configured
 func New(
 	ctx context.Context,
 	taskSchedulerConfig types.TaskSchedulerConfig,
@@ -118,6 +121,11 @@ func New(
 
 	if err := r.init(); err != nil {
 		return err
+	}
+
+	if r.taskSchedulerConfig.Disabled {
+		slog.Info("[agent-session] task scheduler disabled, not running it")
+		return nil
 	}
 
 	return r.taskScheduler.Run(ctx)
