@@ -1159,6 +1159,17 @@ func (s *AgentSessionSuite) TestSendServerInternalError() {
 	}, s.client.activities[0])
 }
 
+func (s *AgentSessionSuite) TestSendRetryScheduled() {
+	err := s.handler.SendRetryScheduled(context.Background(), "sess-1", "token-1")
+
+	s.Require().NoError(err)
+	s.Require().Len(s.client.activities, 1)
+	s.Equal(types.CreateAgentActivityInput{
+		AgentSessionID: "sess-1",
+		Content:        types.AgentActivityContent{Type: types.AgentActivityContentType_Error, Body: "Execution failed but will be retried automatically."},
+	}, s.client.activities[0])
+}
+
 func (s *AgentSessionSuite) TestSend_ActivityErrorPropagates() {
 	s.client.activityFn = func(ctx context.Context, accessToken string, input types.CreateAgentActivityInput) error {
 		return fmt.Errorf("api down")

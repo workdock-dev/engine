@@ -198,7 +198,7 @@ func (h *AgentSessionHandler) SendGitConnectionRequest(ctx context.Context, sess
 	})
 }
 
-// reportServerInternalError notifies the user about an unexpected
+// SendServerInternalError notifies the user about an unexpected
 // server-side error via a best-effort Linear activity.
 func (h *AgentSessionHandler) SendServerInternalError(ctx context.Context, sessionId, accessToken string) error {
 	return h.client.CreateAgentActivity(ctx, accessToken, types.CreateAgentActivityInput{
@@ -206,6 +206,18 @@ func (h *AgentSessionHandler) SendServerInternalError(ctx context.Context, sessi
 		Content: types.AgentActivityContent{
 			Type: types.AgentActivityContentType_Error,
 			Body: "Internal Server Error 500",
+		},
+	})
+}
+
+// SendRetryScheduled notifies the user the failed execution will be
+// retried automatically via a best-effort Linear activity.
+func (h *AgentSessionHandler) SendRetryScheduled(ctx context.Context, sessionId, accessToken string) error {
+	return h.client.CreateAgentActivity(ctx, accessToken, types.CreateAgentActivityInput{
+		AgentSessionID: sessionId,
+		Content: types.AgentActivityContent{
+			Type: types.AgentActivityContentType_Error,
+			Body: "Execution failed but will be retried automatically.",
 		},
 	})
 }
