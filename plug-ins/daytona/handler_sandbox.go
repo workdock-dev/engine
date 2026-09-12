@@ -89,6 +89,11 @@ func (h *SandboxHandler) Run(
 	var listening bool
 	var execSessionCreated bool
 
+	// The run context drives the lifecycle of this prompt's job; the teardown
+	// uses it to detect that the run was cancelled (user stop) or requeued
+	// (scheduler shutdown).
+	runCtx := ctx
+
 	shutdown := func(ctx context.Context) string {
 		out := ""
 
@@ -119,7 +124,9 @@ func (h *SandboxHandler) Run(
 				h.deleteExecutionSession(ctx, sandbox, config)
 			}
 
-			h.shutdown(context.Background(), sandbox, config)
+			if h.shouldStopSandbox(runCtx) {
+				h.shutdown(context.Background(), sandbox, config)
+			}
 		}
 
 		for _, id := range secretIds {
@@ -268,14 +275,22 @@ func (h *SandboxHandler) Run(
 		return shutdown, err
 	}
 
+	// Channel are closed internally
+	listening = true
+
 	go func() {
 		slog.Debug("[sandbox][daytona] streaming command logs", "event_identifier", config.SessionEvent.Identifier)
 
-		// Channel are closed internally
-		listening = true
 		if err := h.streamSessionCommandLogs(ctx, sandbox, config, cmdId, stdout, stderr); err != nil {
+			// Deleting the execution session or stopping the sandbox closes the
+			// log stream mid-read with an abnormal closure; expected while the
+			// run is being torn down.
+			if ctx.Err() != nil {
+				slog.Debug("[sandbox][daytona] session output stream ended", "err", err, "event_identifier", config.SessionEvent.Identifier)
+				return
+			}
+
 			slog.Error("[sandbox][daytona] failed to stream session output", "err", err, "event_identifier", config.SessionEvent.Identifier)
-			return
 		}
 	}()
 
@@ -481,6 +496,15 @@ func (h *SandboxHandler) updateExistingSandbox(ctx context.Context, sandbox *day
 	return nil
 }
 
+// shouldStopSandbox reports whether this run's teardown may stop the session
+// sandbox. The sandbox is shared across the session's runs: when the run was
+// cancelled (user stop or scheduler requeue) a new prompt may already be
+// running on it, so the sandbox must not be stopped here — Daytona's
+// auto-stop interval reclaims it once it is no longer used.
+func (h *SandboxHandler) shouldStopSandbox(runCtx context.Context) bool {
+	return runCtx.Err() == nil
+}
+
 func (h *SandboxHandler) shutdown(ctx context.Context, sandbox *daytona.Sandbox, config *agent_session_interfaces.SandboxConfig) error {
 	if err := helpers.RetryRateLimitedVoid(ctx, helpers.ThrottlerSandboxLifecycle, "stop sandbox", func() error {
 		if err := helpers.Preflight(ctx, helpers.ThrottlerSandboxLifecycle, "stop sandbox"); err != nil {
@@ -546,7 +570,10 @@ func (h *SandboxHandler) executeCommand(
 }
 
 func (h *SandboxHandler) createExecutionSession(ctx context.Context, sandbox *daytona.Sandbox, config *agent_session_interfaces.SandboxConfig) error {
-	if err := sandbox.Process.CreateSession(ctx, config.Session.Identifier); err != nil {
+	// The execution session is scoped to the run (session event), not to the
+	// session: every prompt runs its own harness process in its own execution
+	// session, so tearing a run down never touches another run's harness.
+	if err := sandbox.Process.CreateSession(ctx, config.SessionEvent.Identifier); err != nil {
 		slog.Error("[sandbox][daytona] failed to create execution session", "err", err)
 		return err
 	}
@@ -555,7 +582,7 @@ func (h *SandboxHandler) createExecutionSession(ctx context.Context, sandbox *da
 }
 
 func (h *SandboxHandler) deleteExecutionSession(ctx context.Context, sandbox *daytona.Sandbox, config *agent_session_interfaces.SandboxConfig) error {
-	if err := sandbox.Process.DeleteSession(ctx, config.Session.Identifier); err != nil {
+	if err := sandbox.Process.DeleteSession(ctx, config.SessionEvent.Identifier); err != nil {
 		slog.Error("[sandbox][daytona] failed to delete execution session", "err", err, "event_identifier", config.SessionEvent.Identifier)
 		return err
 	}
@@ -568,7 +595,7 @@ func (h *SandboxHandler) executeSessionCommand(
 	sandbox *daytona.Sandbox,
 	config *agent_session_interfaces.SandboxConfig,
 ) (map[string]any, error) {
-	result, err := sandbox.Process.ExecuteSessionCommand(ctx, config.Session.Identifier, strings.ReplaceAll(config.HarnessCommand, USER_PLACEHOLDER, DAYTONA_USER), true, false)
+	result, err := sandbox.Process.ExecuteSessionCommand(ctx, config.SessionEvent.Identifier, strings.ReplaceAll(config.HarnessCommand, USER_PLACEHOLDER, DAYTONA_USER), true, false)
 
 	if err != nil {
 		slog.Error("[sandbox][daytona] failed to execute session command", "err", err, "cmd", config.HarnessCommand, "event_identifier", config.SessionEvent.Identifier)
@@ -586,7 +613,7 @@ func (h *SandboxHandler) streamSessionCommandLogs(
 	stdout chan<- string,
 	stderr chan<- string,
 ) error {
-	return sandbox.Process.GetSessionCommandLogsStream(ctx, config.Session.Identifier, cmdId, stdout, stderr)
+	return sandbox.Process.GetSessionCommandLogsStream(ctx, config.SessionEvent.Identifier, cmdId, stdout, stderr)
 }
 
 func (h *SandboxHandler) deleteSandbox(ctx context.Context, sandbox *daytona.Sandbox, config *agent_session_interfaces.SandboxConfig) error {
