@@ -1,8 +1,8 @@
 {
   "spec": {
     "display": {
-      "name": "OpenCode",
-      "description": "Monitor OpenCode usage, costs, tokens, and productivity metrics"
+      "name": "PiDev",
+      "description": "Monitor pidev usage, costs, tokens, and productivity metrics"
     },
     "variables": [],
     "panels": {
@@ -68,7 +68,7 @@
                           "source": "",
                           "aggregations": [
                             {
-                              "metricName": "opencode.token.usage",
+                              "metricName": "pidev.token.usage",
                               "temporality": "",
                               "timeAggregation": "rate",
                               "spaceAggregation": "sum",
@@ -99,7 +99,7 @@
                           "source": "",
                           "aggregations": [
                             {
-                              "metricName": "opencode.token.usage",
+                              "metricName": "pidev.token.usage",
                               "temporality": "",
                               "timeAggregation": "rate",
                               "spaceAggregation": "sum",
@@ -171,12 +171,7 @@
               "legend": {
                 "position": "bottom",
                 "mode": "list",
-                "customColors": {
-                  "anthropic/claude-sonnet-5": "#8BE495",
-                  "big-pickle": "#CFE48B",
-                  "google/gemini-2.5-pro": "#3088E8",
-                  "openai/gpt-5": "#E55D76"
-                }
+                "customColors": null
               },
               "thresholds": null
             }
@@ -195,7 +190,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.cost.usage",
+                        "metricName": "pidev.cost.usage",
                         "temporality": "",
                         "timeAggregation": "rate",
                         "spaceAggregation": "sum",
@@ -261,7 +256,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.cost.usage",
+                        "metricName": "pidev.cost.usage",
                         "temporality": "",
                         "timeAggregation": "increase",
                         "spaceAggregation": "sum",
@@ -342,7 +337,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.cost.usage",
+                        "metricName": "pidev.cost.usage",
                         "temporality": "",
                         "timeAggregation": "rate",
                         "spaceAggregation": "sum",
@@ -388,12 +383,7 @@
               "legend": {
                 "position": "bottom",
                 "mode": "list",
-                "customColors": {
-                  "anthropic/claude-sonnet-5": "#8BE495",
-                  "big-pickle": "#CFE48B",
-                  "google/gemini-2.5-pro": "#3088E8",
-                  "openai/gpt-5": "#E55D76"
-                }
+                "customColors": null
               }
             }
           },
@@ -411,7 +401,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.model.usage",
+                        "metricName": "pidev.model.usage",
                         "temporality": "",
                         "timeAggregation": "increase",
                         "spaceAggregation": "sum",
@@ -449,7 +439,7 @@
         "spec": {
           "display": {
             "name": "Sessions",
-            "description": "Number of OpenCode sessions"
+            "description": "Number of pidev sessions"
           },
           "plugin": {
             "kind": "signoz/NumberPanel",
@@ -477,7 +467,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.session.count",
+                        "metricName": "pidev.session.count",
                         "temporality": "",
                         "timeAggregation": "increase",
                         "spaceAggregation": "sum",
@@ -530,12 +520,7 @@
               "legend": {
                 "position": "bottom",
                 "mode": "list",
-                "customColors": {
-                  "anthropic/claude-sonnet-5": "#8BE495",
-                  "big-pickle": "#CFE48B",
-                  "google/gemini-2.5-pro": "#3088E8",
-                  "openai/gpt-5": "#E55D76"
-                }
+                "customColors": null
               },
               "thresholds": null
             }
@@ -554,7 +539,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.token.usage",
+                        "metricName": "pidev.token.usage",
                         "temporality": "",
                         "timeAggregation": "rate",
                         "spaceAggregation": "sum",
@@ -615,7 +600,7 @@
                 "position": "bottom",
                 "mode": "list",
                 "customColors": {
-                  "cacheCreation": "#DD5DE5",
+                  "cacheWrite": "#DD5DE5",
                   "cacheRead": "#30E8A8",
                   "input": "#665DE5",
                   "output": "#E4AB8B",
@@ -639,7 +624,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.token.usage",
+                        "metricName": "pidev.token.usage",
                         "temporality": "",
                         "timeAggregation": "rate",
                         "spaceAggregation": "sum",
@@ -727,7 +712,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.token.usage",
+                        "metricName": "pidev.token.usage",
                         "temporality": "",
                         "timeAggregation": "rate",
                         "spaceAggregation": "sum",
@@ -776,10 +761,10 @@
                 "customColors": {
                   "bash": "#5DE599",
                   "edit": "#E84C30",
-                  "glob": "#5DB9E5",
                   "grep": "#CC8BE4",
                   "read": "#8B98E4",
-                  "webfetch": "#42E830",
+                  "find": "#5DB9E5",
+                  "ls": "#42E830",
                   "write": "#E3E830"
                 }
               }
@@ -799,7 +784,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.tool.count",
+                        "metricName": "pidev.tool.count",
                         "temporality": "",
                         "timeAggregation": "increase",
                         "spaceAggregation": "sum",
@@ -865,7 +850,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.tool.count",
+                        "metricName": "pidev.tool.count",
                         "temporality": "",
                         "timeAggregation": "increase",
                         "spaceAggregation": "sum",
@@ -932,7 +917,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.tool.count",
+                        "metricName": "pidev.tool.count",
                         "temporality": "",
                         "timeAggregation": "increase",
                         "spaceAggregation": "sum",
@@ -995,10 +980,10 @@
                 "customColors": {
                   "bash": "#5DE599",
                   "edit": "#E84C30",
-                  "glob": "#5DB9E5",
                   "grep": "#CC8BE4",
                   "read": "#8B98E4",
-                  "webfetch": "#42E830",
+                  "find": "#5DB9E5",
+                  "ls": "#42E830",
                   "write": "#E3E830"
                 }
               },
@@ -1019,7 +1004,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.tool.count",
+                        "metricName": "pidev.tool.count",
                         "temporality": "",
                         "timeAggregation": "rate",
                         "spaceAggregation": "sum",
@@ -1085,7 +1070,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.token.usage",
+                        "metricName": "pidev.token.usage",
                         "temporality": "",
                         "timeAggregation": "increase",
                         "spaceAggregation": "sum",
@@ -1173,7 +1158,7 @@
                           "source": "",
                           "aggregations": [
                             {
-                              "metricName": "opencode.tool.duration.bucket",
+                              "metricName": "pidev.tool.duration.bucket",
                               "temporality": "",
                               "timeAggregation": "sum",
                               "spaceAggregation": "p90",
@@ -1204,7 +1189,7 @@
                           "source": "",
                           "aggregations": [
                             {
-                              "metricName": "opencode.tool.duration.bucket",
+                              "metricName": "pidev.tool.duration.bucket",
                               "temporality": "",
                               "timeAggregation": "sum",
                               "spaceAggregation": "p50",
@@ -1235,7 +1220,7 @@
                           "source": "",
                           "aggregations": [
                             {
-                              "metricName": "opencode.tool.duration.bucket",
+                              "metricName": "pidev.tool.duration.bucket",
                               "temporality": "",
                               "timeAggregation": "sum",
                               "spaceAggregation": "p99",
@@ -1271,7 +1256,7 @@
         "spec": {
           "display": {
             "name": "Session Duration (P90 / Median / P99)",
-            "description": "P90, median, and P99 duration of OpenCode sessions"
+            "description": "P90, median, and P99 duration of pidev sessions"
           },
           "plugin": {
             "kind": "signoz/TimeSeriesPanel",
@@ -1328,7 +1313,7 @@
                           "source": "",
                           "aggregations": [
                             {
-                              "metricName": "opencode.session.duration.bucket",
+                              "metricName": "pidev.session.duration.bucket",
                               "temporality": "",
                               "timeAggregation": "sum",
                               "spaceAggregation": "p90",
@@ -1359,7 +1344,7 @@
                           "source": "",
                           "aggregations": [
                             {
-                              "metricName": "opencode.session.duration.bucket",
+                              "metricName": "pidev.session.duration.bucket",
                               "temporality": "",
                               "timeAggregation": "sum",
                               "spaceAggregation": "p50",
@@ -1390,7 +1375,7 @@
                           "source": "",
                           "aggregations": [
                             {
-                              "metricName": "opencode.session.duration.bucket",
+                              "metricName": "pidev.session.duration.bucket",
                               "temporality": "",
                               "timeAggregation": "sum",
                               "spaceAggregation": "p99",
@@ -1483,7 +1468,7 @@
                           "source": "",
                           "aggregations": [
                             {
-                              "metricName": "opencode.session.token.total.bucket",
+                              "metricName": "pidev.session.token.total.bucket",
                               "temporality": "",
                               "timeAggregation": "sum",
                               "spaceAggregation": "p90",
@@ -1514,7 +1499,7 @@
                           "source": "",
                           "aggregations": [
                             {
-                              "metricName": "opencode.session.token.total.bucket",
+                              "metricName": "pidev.session.token.total.bucket",
                               "temporality": "",
                               "timeAggregation": "sum",
                               "spaceAggregation": "p50",
@@ -1545,7 +1530,7 @@
                           "source": "",
                           "aggregations": [
                             {
-                              "metricName": "opencode.session.token.total.bucket",
+                              "metricName": "pidev.session.token.total.bucket",
                               "temporality": "",
                               "timeAggregation": "sum",
                               "spaceAggregation": "p99",
@@ -1638,7 +1623,7 @@
                           "source": "",
                           "aggregations": [
                             {
-                              "metricName": "opencode.session.cost.total.bucket",
+                              "metricName": "pidev.session.cost.total.bucket",
                               "temporality": "",
                               "timeAggregation": "sum",
                               "spaceAggregation": "p90",
@@ -1669,7 +1654,7 @@
                           "source": "",
                           "aggregations": [
                             {
-                              "metricName": "opencode.session.cost.total.bucket",
+                              "metricName": "pidev.session.cost.total.bucket",
                               "temporality": "",
                               "timeAggregation": "sum",
                               "spaceAggregation": "p50",
@@ -1700,7 +1685,7 @@
                           "source": "",
                           "aggregations": [
                             {
-                              "metricName": "opencode.session.cost.total.bucket",
+                              "metricName": "pidev.session.cost.total.bucket",
                               "temporality": "",
                               "timeAggregation": "sum",
                               "spaceAggregation": "p99",
@@ -1764,7 +1749,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.message.count",
+                        "metricName": "pidev.message.count",
                         "temporality": "",
                         "timeAggregation": "increase",
                         "spaceAggregation": "sum",
@@ -1823,7 +1808,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.retry.count",
+                        "metricName": "pidev.retry.count",
                         "temporality": "",
                         "timeAggregation": "increase",
                         "spaceAggregation": "sum",
@@ -1854,7 +1839,7 @@
         "spec": {
           "display": {
             "name": "Cache Operations",
-            "description": "Cache read and creation operations"
+            "description": "Cache read and write operations"
           },
           "plugin": {
             "kind": "signoz/PieChartPanel",
@@ -1871,7 +1856,7 @@
                 "mode": "list",
                 "customColors": {
                   "cacheRead": "#30E8A8",
-                  "cacheCreation": "#DD5DE5"
+                  "cacheWrite": "#DD5DE5"
                 }
               }
             }
@@ -1890,7 +1875,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.cache.count",
+                        "metricName": "pidev.cache.count",
                         "temporality": "",
                         "timeAggregation": "increase",
                         "spaceAggregation": "sum",
@@ -1956,7 +1941,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.token.usage",
+                        "metricName": "pidev.token.usage",
                         "temporality": "",
                         "timeAggregation": "increase",
                         "spaceAggregation": "sum",
@@ -2015,7 +2000,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.token.usage",
+                        "metricName": "pidev.token.usage",
                         "temporality": "",
                         "timeAggregation": "increase",
                         "spaceAggregation": "sum",
@@ -2074,7 +2059,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.token.usage",
+                        "metricName": "pidev.token.usage",
                         "temporality": "",
                         "timeAggregation": "increase",
                         "spaceAggregation": "sum",
@@ -2105,7 +2090,7 @@
         "spec": {
           "display": {
             "name": "Cache Tokens",
-            "description": "Cache read and creation tokens in the selected window"
+            "description": "Cache read and write tokens in the selected window"
           },
           "plugin": {
             "kind": "signoz/NumberPanel",
@@ -2133,7 +2118,7 @@
                     "source": "",
                     "aggregations": [
                       {
-                        "metricName": "opencode.token.usage",
+                        "metricName": "pidev.token.usage",
                         "temporality": "",
                         "timeAggregation": "increase",
                         "spaceAggregation": "sum",
@@ -2142,7 +2127,7 @@
                     ],
                     "disabled": false,
                     "filter": {
-                      "expression": "type = 'cacheRead' || type = 'cacheCreation'"
+                      "expression": "type = 'cacheRead' || type = 'cacheWrite'"
                     },
                     "groupBy": [],
                     "order": [],
@@ -2409,7 +2394,7 @@
     },
     {
       "key": "tag",
-      "value": "opencode"
+      "value": "pidev"
     }
   ],
   "image": "/assets/Icons/eight-ball"
