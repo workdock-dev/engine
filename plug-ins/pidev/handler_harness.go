@@ -182,12 +182,15 @@ func (h *HarnessHandler) mcpJson(mcps []agent_session_interfaces.MCPConfig) ([]b
 	servers := make(map[string]any, len(mcps))
 
 	for _, mcp := range mcps {
+		// keep-alive connects at startup and reconnects when the remote HTTP
+		// session expires, so agents never have to reconnect manually; eager
+		// would leave the server disconnected after a session expiry
 		servers[mcp.Name] = map[string]any{
 			"url": mcp.Url,
 			"headers": map[string]string{
 				"Authorization": fmt.Sprintf("Bearer ${%s}", mcp.AuthKey),
 			},
-			"lifecycle": "lazy",
+			"lifecycle": "keep-alive",
 		}
 	}
 
