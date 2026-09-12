@@ -563,6 +563,39 @@ func (s *WebhookSuite) TestConsume_Issue_Success() {
 	s.Equal("issue-1", event.IssueId)
 }
 
+func (s *WebhookSuite) TestConsume_Issue_CanceledState_ArchivesSandboxes() {
+	payload := fmt.Sprintf(`{
+		"action": "update",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d,
+		"data": {"id": "issue-1", "title": "Title", "identifier": "ENG-1"},
+		"updatedFrom": {"stateName": "In Review"}
+	}`, time.Now().UnixMilli())
+
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		s.Equal("org-access-token", accessToken)
+		s.Equal("issue-1", issueId)
+		return &types.IssueStateResult{
+			ID:        issueId,
+			TeamID:    "team-1",
+			StateName: "Canceled",
+			StateType: types.IssueStateType_Canceled,
+		}, nil
+	}
+
+	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_Issue,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err)
+	s.Require().Len(s.recorder.archiveEvents, 1, "closed issues must emit the agent session archive event")
+
+	event := s.recorder.archiveEvents[0]
+	s.Equal(string(shared.PlatformProvider_Linear), event.Provider)
+	s.Equal("issue-1", event.IssueId)
+}
+
 func (s *WebhookSuite) TestConsume_Issue_NotCompletedState_NoEvent() {
 	payload := fmt.Sprintf(`{
 		"action": "update",

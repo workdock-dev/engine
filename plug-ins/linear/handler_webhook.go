@@ -253,8 +253,9 @@ func (c *WEventConsumer) Consume(_ context.Context, event *webhook.VerifiedWEven
 }
 
 // consumeIssueEvent verifies whether an issue update event moved the issue
-// into a done workflow state and, only when it did, publishes the
-// AgentSessionArchiveEvent to archive the issue's sandboxes.
+// into a closed workflow state (done, canceled, duplicated, etc.) and, only
+// when it did, publishes the AgentSessionArchiveEvent to archive the issue's
+// sandboxes.
 //
 // The webhook payload only carries the state's display name, not its type, so
 // the current issue state is re-checked against Linear. Verification errors
@@ -276,8 +277,8 @@ func (c *WEventConsumer) consumeIssueEvent(payload types.IssueStatusChangePayloa
 		return err
 	}
 
-	if issue.StateType != types.IssueStateType_Completed {
-		slog.Debug("[webhook][linear] issue state is not done, skipping archive event", "issue_id", payload.Data.ID, "state_type", issue.StateType)
+	if issue.StateType != types.IssueStateType_Completed && issue.StateType != types.IssueStateType_Canceled {
+		slog.Debug("[webhook][linear] issue state is not closed, skipping archive event", "issue_id", payload.Data.ID, "state_type", issue.StateType)
 		return nil
 	}
 
