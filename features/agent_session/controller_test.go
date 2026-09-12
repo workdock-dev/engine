@@ -2523,6 +2523,106 @@ func (s *ControllerSuite) TestHarness_UnhealthyForwardsStderrToUser() {
 	}
 }
 
+func (s *ControllerSuite) TestHarness_LivenessMissesAccumulateAcrossOutput() {
+	// WOR-88: a harness that dribbles output between silent stretches must
+	// still be killed once max_misses checks have been missed in total;
+	// intermittent output must not reset the accumulated misses.
+	s.c.livenessProbeConfig = types.HarnessLivenessProbeConfig{MaxMisses: 3, PeriodSeconds: 1}
+
+	stdout := make(chan string, 10)
+	stderr := make(chan string, 10)
+
+	// The stream stays open and emits a keep-alive every 1.5s: each chunk
+	// proves liveness for the check that follows it, so at most every other
+	// check finds recent output while the missed checks keep accumulating.
+	streaming := make(chan struct{})
+	defer close(streaming)
+	go func() {
+		for {
+			select {
+			case stdout <- "{\"type\":\"agent_settled\"}\n":
+			case <-streaming:
+				return
+			}
+
+			select {
+			case <-time.After(1500 * time.Millisecond):
+			case <-streaming:
+				return
+			}
+		}
+	}()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- s.c.harness(context.Background(), nil, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
+	}()
+
+	select {
+	case err := <-done:
+		s.ErrorIs(err, shared.ErrHarnessUnhealthy)
+	case <-time.After(20 * time.Second):
+		s.Fail("harness was not declared unhealthy despite accumulating missed checks")
+	}
+}
+
+func (s *ControllerSuite) TestHarness_LivenessHealthyOutputDoesNotTrip() {
+	// A harness whose output arrives well within every check period never
+	// misses a check and must not be declared unhealthy.
+	s.c.livenessProbeConfig = types.HarnessLivenessProbeConfig{MaxMisses: 3, PeriodSeconds: 1}
+
+	stdout := make(chan string, 10)
+	stderr := make(chan string, 10)
+
+	stop := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case stdout <- "{\"type\":\"message_update\"}\n":
+			case <-stop:
+				return
+			}
+
+			select {
+			case <-ticker.C:
+			case <-stop:
+				return
+			}
+		}
+	}()
+	defer close(stop)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- s.c.harness(ctx, nil, stdout, stderr, s.agentHdl, "token", s.harnessHdl, newTestSession(), testSessionEvent)
+	}()
+
+	// Run for several probe periods; the harness must stay alive throughout.
+	time.Sleep(4 * time.Second)
+
+	select {
+	case err := <-done:
+		s.FailNowf("harness returned while streaming healthy output", "err: %v", err)
+	default:
+	}
+
+	cancel()
+
+	select {
+	case err := <-done:
+		s.Error(err)
+		s.ErrorContains(err, "context canceled")
+	case <-time.After(3 * time.Second):
+		s.Fail("harness did not return after context cancellation")
+	}
+}
+
 func (s *ControllerSuite) TestHarness_LivenessProbeStopsOnContextCancel() {
 	s.c.livenessProbeConfig = types.HarnessLivenessProbeConfig{MaxMisses: 100, PeriodSeconds: 1}
 
