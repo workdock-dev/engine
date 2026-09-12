@@ -1097,14 +1097,15 @@ func (c *controller) harness(
 	var out []byte
 	var stdErrBuilder strings.Builder
 	var missed atomic.Int64
+	var lastOutput atomic.Int64
 
 	wg, ctx := errgroup.WithContext(ctx)
-	missed.Store(-1)
+	lastOutput.Store(time.Now().UnixNano())
 	part := make(chan []byte, 100)
 	done := make(chan struct{})
 
 	heartbeat := func() {
-		missed.Store(-1)
+		lastOutput.Store(time.Now().UnixNano())
 	}
 
 	// *-------------------------------------------------------------------------*
@@ -1113,7 +1114,8 @@ func (c *controller) harness(
 
 	if c.livenessProbeConfig.MaxMisses > 0 && c.livenessProbeConfig.PeriodSeconds > 0 {
 		wg.Go(func() error {
-			ticker := time.NewTicker(time.Second * time.Duration(c.livenessProbeConfig.PeriodSeconds))
+			period := time.Second * time.Duration(c.livenessProbeConfig.PeriodSeconds)
+			ticker := time.NewTicker(period)
 			defer ticker.Stop()
 
 			for {
@@ -1129,16 +1131,24 @@ func (c *controller) harness(
 						return err
 					}
 
-					m := missed.Add(1)
+					idle := time.Since(time.Unix(0, lastOutput.Load()))
 
-					if m == 0 {
+					if idle < period {
 						continue
 					}
+
+					// Misses accumulate across the run; output between checks
+					// proves the stream is alive but must not erase previously
+					// missed checks, otherwise a harness dribbling periodic
+					// bookkeeping events while making no progress never reaches
+					// the miss limit and the sandbox is never killed.
+					m := missed.Add(1)
 
 					slog.Warn("harness health check missed",
 						"event_identifier", sessionEvent.Identifier,
 						"missed", m,
 						"max", c.livenessProbeConfig.MaxMisses,
+						"idle_for", idle.Round(time.Second),
 					)
 
 					if m >= c.livenessProbeConfig.MaxMisses {
