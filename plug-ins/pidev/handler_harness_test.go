@@ -462,14 +462,14 @@ func (s *HarnessSuite) TestGetFiles_Mcps() {
 	config := agent_session_interfaces.HarnessConfig{
 		Mcps: []agent_session_interfaces.MCPConfig{
 			{
-				Name:    "My MCP",
-				Url:     "https://example.com/mcp",
-				AuthKey: "MY_MCP_AUTH_SECRET_ENV_VAR_NAME",
+				Name:            "My MCP",
+				Url:             "https://example.com/mcp",
+				AuthHeaderValue: "MY_MCP_AUTH_SECRET_ENV_VAR_NAME",
 			},
 			{
-				Name:    "Other MCP",
-				Url:     "https://other.example.com/mcp",
-				AuthKey: "OTHER_ENV_VAR",
+				Name:            "Other MCP",
+				Url:             "https://other.example.com/mcp",
+				AuthHeaderValue: "OTHER_ENV_VAR",
 			},
 		},
 	}
@@ -486,7 +486,7 @@ func (s *HarnessSuite) TestGetFiles_Mcps() {
 	s.Equal("https://example.com/mcp", server.Url)
 	s.Equal("keep-alive", server.Lifecycle)
 	s.Equal(
-		map[string]string{"Authorization": "Bearer ${MY_MCP_AUTH_SECRET_ENV_VAR_NAME}"},
+		map[string]string{"Authorization": "${MY_MCP_AUTH_SECRET_ENV_VAR_NAME}"},
 		server.Headers,
 	)
 
@@ -494,7 +494,7 @@ func (s *HarnessSuite) TestGetFiles_Mcps() {
 	s.Require().True(ok)
 	s.Equal("https://other.example.com/mcp", other.Url)
 	s.Equal(
-		map[string]string{"Authorization": "Bearer ${OTHER_ENV_VAR}"},
+		map[string]string{"Authorization": "${OTHER_ENV_VAR}"},
 		other.Headers,
 	)
 }
@@ -503,10 +503,10 @@ func (s *HarnessSuite) TestGetFiles_McpsCustomAuthHeader() {
 	config := agent_session_interfaces.HarnessConfig{
 		Mcps: []agent_session_interfaces.MCPConfig{
 			{
-				Name:       "My MCP",
-				Url:        "https://example.com/mcp",
-				AuthKey:    "MY_MCP_AUTH_SECRET_ENV_VAR_NAME",
-				AuthHeader: "X-Api-Key",
+				Name:            "My MCP",
+				Url:             "https://example.com/mcp",
+				AuthHeaderValue: "MY_MCP_AUTH_SECRET_ENV_VAR_NAME",
+				AuthHeaderKey:   "X-Api-Key",
 			},
 		},
 	}
@@ -522,7 +522,7 @@ func (s *HarnessSuite) TestGetFiles_McpsCustomAuthHeader() {
 	s.Require().True(ok)
 	s.Equal("https://example.com/mcp", server.Url)
 	s.Equal(
-		map[string]string{"X-Api-Key": "Bearer ${MY_MCP_AUTH_SECRET_ENV_VAR_NAME}"},
+		map[string]string{"X-Api-Key": "${MY_MCP_AUTH_SECRET_ENV_VAR_NAME}"},
 		server.Headers,
 	)
 }
@@ -540,7 +540,7 @@ func (s *HarnessSuite) TestGetFiles_ProviderAndMcps() {
 
 	config := agent_session_interfaces.HarnessConfig{
 		Mcps: []agent_session_interfaces.MCPConfig{
-			{Name: "My MCP", Url: "https://example.com/mcp", AuthKey: "ENV_VAR"},
+			{Name: "My MCP", Url: "https://example.com/mcp", AuthHeaderValue: "ENV_VAR"},
 		},
 	}
 

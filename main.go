@@ -62,12 +62,12 @@ type PostgresConfig struct {
 }
 
 type MCPConfig struct {
-	Name       string   `yaml:"name"`
-	Url        string   `yaml:"url"`
-	AuthKey    string   `yaml:"auth_key"`
-	AuthSecret string   `yaml:"auth_secret"`
-	AuthHeader string   `yaml:"auth_header"`
-	Hosts      []string `yaml:"hosts"`
+	Name            string   `yaml:"name"`
+	Url             string   `yaml:"url"`
+	AuthHeaderValue string   `yaml:"auth_header_value"`
+	AuthSecret      string   `yaml:"auth_secret"`
+	AuthHeaderKey   string   `yaml:"auth_header_key"`
+	Hosts           []string `yaml:"hosts"`
 }
 
 type Config struct {
@@ -105,12 +105,12 @@ func (m *MCPFromConfigFile) GetMCPList() []agent_session_interfaces.MCPConfig {
 
 	for i, mcp := range m.config.MCPs {
 		list[i] = agent_session_interfaces.MCPConfig{
-			Name:       mcp.Name,
-			Url:        mcp.Url,
-			AuthKey:    mcp.AuthKey,
-			AuthSecret: mcp.AuthSecret,
-			AuthHeader: mcp.AuthHeader,
-			Hosts:      mcp.Hosts,
+			Name:            mcp.Name,
+			Url:             mcp.Url,
+			AuthHeaderValue: mcp.AuthHeaderValue,
+			AuthSecret:      mcp.AuthSecret,
+			AuthHeaderKey:   mcp.AuthHeaderKey,
+			Hosts:           mcp.Hosts,
 		}
 	}
 

@@ -15,12 +15,12 @@
 package interfaces
 
 type MCPConfig struct {
-	Name       string
-	Url        string
-	AuthKey    string
-	AuthSecret string
-	AuthHeader string
-	Hosts      []string
+	Name            string
+	Url             string
+	AuthHeaderValue string
+	AuthSecret      string
+	AuthHeaderKey   string
+	Hosts           []string
 }
 
 type HandlerMCP interface {
