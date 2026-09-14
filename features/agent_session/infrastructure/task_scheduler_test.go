@@ -521,7 +521,9 @@ func (s *TaskSchedulerSuite) TestRun_ShutdownCancelsRunningJobs() {
 
 	select {
 	case err := <-done:
-		s.NoError(err)
+		// Closing the queue channels while the context is live means the queue
+		// listener stopped, so the scheduler must exit with an error.
+		s.ErrorIs(err, errQueueListenerStopped)
 	case <-time.After(2 * time.Second):
 		s.Fail("Run did not return in time")
 	}
@@ -551,7 +553,7 @@ func (s *TaskSchedulerSuite) TestRun_RunnableChannelClosed() {
 
 	select {
 	case err := <-done:
-		s.NoError(err)
+		s.ErrorIs(err, errQueueListenerStopped)
 	case <-time.After(2 * time.Second):
 		s.Fail("Run did not return in time")
 	}
@@ -585,6 +587,43 @@ func (s *TaskSchedulerSuite) TestRun_CancellableChannelClosed() {
 
 	select {
 	case err := <-done:
+		s.ErrorIs(err, errQueueListenerStopped)
+	case <-time.After(2 * time.Second):
+		s.Fail("Run did not return in time")
+	}
+}
+
+func (s *TaskSchedulerSuite) TestRun_QueueChannelsClosedAfterContextCancelled() {
+	runnable := make(chan struct{})
+	cancellable := make(chan string)
+	q := &mockQueue{
+		runnable:    runnable,
+		cancellable: cancellable,
+	}
+
+	handler := func(ctx context.Context, job *types.EventJob) (types.EventJobStatus, error) {
+		return types.EventJobStatus_Succeeded, nil
+	}
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1}, handler)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- sched.Run(ctx)
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	close(runnable)
+	close(cancellable)
+
+	select {
+	case err := <-done:
+		// The channels were closed after the context was cancelled: the
+		// shutdown must be graceful regardless of which closure the scheduler
+		// observes first.
 		s.NoError(err)
 	case <-time.After(2 * time.Second):
 		s.Fail("Run did not return in time")

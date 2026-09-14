@@ -44,8 +44,9 @@ const (
 var DefaultHeartbeatInterval = time.Minute
 
 var (
-	errShutdownRequeue    = errors.New("scheduler shutdown")
-	errJobCancelledByUser = errors.New("cancelled by user")
+	errShutdownRequeue      = errors.New("scheduler shutdown")
+	errJobCancelledByUser   = errors.New("cancelled by user")
+	errQueueListenerStopped = errors.New("event queue listener stopped unexpectedly")
 )
 
 type TaskScheduler struct {
@@ -104,6 +105,9 @@ func NewTaskScheduler(queue interfaces.Queue, config types.TaskSchedulerConfig, 
 
 // Run starts the scheduler, listens for queue notifications, wakes workers
 // when new work may be available, and blocks until the scheduler shuts down.
+// It returns an error when the queue listener stops while the context is still
+// live, which happens when the queue gave up reconnecting to the database, so
+// the service can exit with an error instead of idling without the queue.
 func (s *TaskScheduler) Run(ctx context.Context) error {
 	runnable, cancellable, err := s.extQueue.Listen(ctx)
 	slog.Debug("[task-scheduler] listening to queue")
@@ -114,6 +118,7 @@ func (s *TaskScheduler) Run(ctx context.Context) error {
 	}
 
 	var wg sync.WaitGroup
+	var runErr error
 
 	shutdown := func() {
 		s.cond.L.Lock()
@@ -139,6 +144,15 @@ func (s *TaskScheduler) Run(ctx context.Context) error {
 				return
 			case sessionEventIdentifier, ok := <-cancellable:
 				if !ok {
+					// The queue listener closes its channels when it stops, and
+					// with a live context that only happens after it gave up
+					// reconnecting to the database. The scheduler cannot receive
+					// queue updates anymore, so it must exit with an error
+					// instead of idling forever.
+					if ctx.Err() == nil {
+						runErr = errQueueListenerStopped
+					}
+
 					shutdown()
 					return
 				}
@@ -150,6 +164,10 @@ func (s *TaskScheduler) Run(ctx context.Context) error {
 
 			case _, ok := <-runnable:
 				if !ok {
+					if ctx.Err() == nil {
+						runErr = errQueueListenerStopped
+					}
+
 					shutdown()
 					return
 				}
@@ -171,7 +189,7 @@ func (s *TaskScheduler) Run(ctx context.Context) error {
 	slog.Info("[task-scheduler] worker pool started", "capacity", s.config.Workers)
 	wg.Wait()
 
-	return nil
+	return runErr
 }
 
 // worker waits for notifications that new work may be available, attempts to

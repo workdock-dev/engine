@@ -32,5 +32,10 @@ type Queue interface {
 	Complete(ctx context.Context, id string, status types.EventJobStatus) error
 	Retry(ctx context.Context, id string, cause error, retryGracePeriod time.Duration) error
 	Fail(ctx context.Context, id string, cause error) error
+	// Listen subscribes to queue changes and returns two channels: one for jobs
+	// ready to run and another for jobs marked for cancellation. Both channels
+	// are closed when the listener stops or the context is cancelled. Closing
+	// them while the context is still live tells the scheduler the queue
+	// connection is unrecoverable and it must exit with an error.
 	Listen(ctx context.Context) (<-chan struct{}, <-chan string, error)
 }
