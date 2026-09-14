@@ -302,6 +302,35 @@ func (s *HarnessSuite) TestGetConfigFile_Mcps() {
 	s.True(ok)
 }
 
+func (s *HarnessSuite) TestGetConfigFile_McpsCustomAuthHeader() {
+	config := agent_session_interfaces.HarnessConfig{
+		Mcps: []agent_session_interfaces.MCPConfig{
+			{
+				Name:       "linear",
+				Url:        "https://mcp.linear.app/sse",
+				AuthKey:    "LINEAR_TOKEN",
+				AuthHeader: "X-Api-Key",
+			},
+		},
+	}
+
+	parsed := s.unmarshalConfig(config)
+
+	var mcps map[string]any
+	s.Require().NoError(json.Unmarshal(parsed.Mcp, &mcps))
+	s.Len(mcps, 1)
+
+	linear, ok := mcps["linear"].(map[string]any)
+	s.Require().True(ok)
+
+	headers, ok := linear["headers"].(map[string]any)
+	s.Require().True(ok)
+	s.Equal("Bearer {env:LINEAR_TOKEN}", headers["X-Api-Key"])
+
+	_, ok = headers["Authorization"]
+	s.False(ok)
+}
+
 func (s *HarnessSuite) TestGetConfigFile_ParamPermissionsOverride() {
 	config := agent_session_interfaces.HarnessConfig{
 		Permissions: map[string]any{"edit": "ask"},

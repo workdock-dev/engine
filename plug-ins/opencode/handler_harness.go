@@ -133,13 +133,21 @@ func (h *HarnessHandler) GetConfigFile(config *agent_session_interfaces.HarnessC
 		mcp := make(map[string]any)
 
 		for _, value := range config.Mcps {
+			// empty auth header keeps the previous behavior of sending the token
+			// through the Authorization header
+			header := value.AuthHeader
+
+			if header == "" {
+				header = "Authorization"
+			}
+
 			mcp[value.Name] = map[string]any{
 				"type":    "remote",
 				"url":     value.Url,
 				"enabled": true,
 				"oauth":   false,
 				"headers": map[string]string{
-					"Authorization": fmt.Sprintf("Bearer {env:%s}", value.AuthKey),
+					header: fmt.Sprintf("Bearer {env:%s}", value.AuthKey),
 				},
 			}
 		}

@@ -66,6 +66,7 @@ type MCPConfig struct {
 	Url        string   `yaml:"url"`
 	AuthKey    string   `yaml:"auth_key"`
 	AuthSecret string   `yaml:"auth_secret"`
+	AuthHeader string   `yaml:"auth_header"`
 	Hosts      []string `yaml:"hosts"`
 }
 
@@ -108,6 +109,7 @@ func (m *MCPFromConfigFile) GetMCPList() []agent_session_interfaces.MCPConfig {
 			Url:        mcp.Url,
 			AuthKey:    mcp.AuthKey,
 			AuthSecret: mcp.AuthSecret,
+			AuthHeader: mcp.AuthHeader,
 			Hosts:      mcp.Hosts,
 		}
 	}
