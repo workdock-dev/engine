@@ -40,6 +40,8 @@ mcps:
     url: "https://example.com"
     auth_key: "MY_MCP_AUTH_SECRET_ENV_VAR_NAME"
     auth_secret: "your-mcp-api-key"
+    # Optional: header that carries the auth token; defaults to "Authorization".
+    # auth_header: "X-Api-Key"
     hosts: ["example.com"]
 
 # *---------------------------------------------------------------------------*

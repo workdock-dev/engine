@@ -19,6 +19,7 @@ type MCPConfig struct {
 	Url        string
 	AuthKey    string
 	AuthSecret string
+	AuthHeader string
 	Hosts      []string
 }
 

@@ -499,6 +499,34 @@ func (s *HarnessSuite) TestGetFiles_Mcps() {
 	)
 }
 
+func (s *HarnessSuite) TestGetFiles_McpsCustomAuthHeader() {
+	config := agent_session_interfaces.HarnessConfig{
+		Mcps: []agent_session_interfaces.MCPConfig{
+			{
+				Name:       "My MCP",
+				Url:        "https://example.com/mcp",
+				AuthKey:    "MY_MCP_AUTH_SECRET_ENV_VAR_NAME",
+				AuthHeader: "X-Api-Key",
+			},
+		},
+	}
+
+	files, err := s.handler.GetFiles(&config)
+	s.Require().NoError(err)
+	s.Len(files, 1)
+
+	parsed := s.unmarshalMcpFromFiles(files)
+	s.Require().Len(parsed.McpServers, 1)
+
+	server, ok := parsed.McpServers["My MCP"]
+	s.Require().True(ok)
+	s.Equal("https://example.com/mcp", server.Url)
+	s.Equal(
+		map[string]string{"X-Api-Key": "Bearer ${MY_MCP_AUTH_SECRET_ENV_VAR_NAME}"},
+		server.Headers,
+	)
+}
+
 func (s *HarnessSuite) TestGetFiles_ProviderAndMcps() {
 	s.handler.config = types.Config{
 		Provider: &types.ProviderConfig{
