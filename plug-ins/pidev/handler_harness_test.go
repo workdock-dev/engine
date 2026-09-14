@@ -540,7 +540,7 @@ func (s *HarnessSuite) TestGetFiles_ProviderAndMcps() {
 
 	config := agent_session_interfaces.HarnessConfig{
 		Mcps: []agent_session_interfaces.MCPConfig{
-			{Name: "My MCP", Url: "https://example.com/mcp", AuthHeaderValue: "ENV_VAR"},
+			{Name: "My MCP", Url: "https://example.com/mcp", AuthSecretEnvVar: "ENV_VAR"},
 		},
 	}
 

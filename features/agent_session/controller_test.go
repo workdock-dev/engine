@@ -1796,7 +1796,7 @@ func (s *ControllerSuite) TestSandbox_WithGitAccess_RunsGitCommands() {
 func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
 	s.mcpHdl.getMCPListFn = func() []interfaces.MCPConfig {
 		return []interfaces.MCPConfig{
-			{Name: "linear", AuthHeaderValue: "LINEAR_KEY", AuthSecret: "linear-secret", Hosts: []string{"api.linear.app"}},
+			{Name: "linear", AuthSecretEnvVar: "LINEAR_KEY", AuthSecret: "linear-secret", Hosts: []string{"api.linear.app"}},
 		}
 	}
 	gitAccess := &interfaces.GitAccess{

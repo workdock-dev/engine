@@ -276,8 +276,8 @@ func (s *HarnessSuite) TestGetConfigFile_ParamProviderOverridesModel() {
 func (s *HarnessSuite) TestGetConfigFile_Mcps() {
 	config := agent_session_interfaces.HarnessConfig{
 		Mcps: []agent_session_interfaces.MCPConfig{
-			{Name: "linear", Url: "https://mcp.linear.app/sse", AuthHeaderValue: "LINEAR_TOKEN"},
-			{Name: "github", Url: "https://mcp.github.dev", AuthHeaderValue: "GITHUB_TOKEN"},
+			{Name: "linear", Url: "https://mcp.linear.app/sse", AuthSecretEnvVar: "LINEAR_TOKEN", AuthHeaderValue: "Bearer {env:LINEAR_TOKEN}"},
+			{Name: "github", Url: "https://mcp.github.dev", AuthSecretEnvVar: "GITHUB_TOKEN", AuthHeaderValue: "Bearer {env:GITHUB_TOKEN}"},
 		},
 	}
 
@@ -296,7 +296,7 @@ func (s *HarnessSuite) TestGetConfigFile_Mcps() {
 
 	headers, ok := linear["headers"].(map[string]any)
 	s.Require().True(ok)
-	s.Equal("LINEAR_TOKEN", headers["Authorization"])
+	s.Equal("Bearer {env:LINEAR_TOKEN}", headers["Authorization"])
 
 	_, ok = mcps["github"]
 	s.True(ok)

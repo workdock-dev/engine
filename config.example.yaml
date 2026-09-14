@@ -38,12 +38,14 @@ harness_liveness_probe:
 mcps:
   - name: "My MCP"
     url: "https://example.com"
-    # Value of the auth header sent to the MCP server. Must contain the full
-    # header value, e.g. "Bearer your-mcp-api-key" or a raw API key.
-    auth_header_value: "Bearer your-mcp-api-key"
-    auth_secret: "Bearer your-mcp-api-key"
-    # Optional: name of the header that carries the auth value; defaults to "Authorization".
-    # auth_header_key: "X-Api-Key"
+    # Defines the http auth header key e.g. Authorization, X-Api-Key
+    auth_header_key: "Authorization" # Defaults to Authorization
+    # Defines the http auth header value e.g. Bearer {env:SOME_SCRET_VAR}, SOME_SECRET_VAR, this will always point to an env var
+    auth_header_value: "Bearer {env:SOME_SECRET_VAR}"
+    # Defines the env var where the secret is e.g. SOME_SECRET_VAR
+    auth_secret_env_var: "SOME_SECRET_VAR"
+    # The secret itself that will be assign or shadow-assign to the SOME_SECRET_VAR
+    auth_secret: "your-mcp-api-key"
     hosts: ["example.com"]
 
 # *---------------------------------------------------------------------------*

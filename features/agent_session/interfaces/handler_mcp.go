@@ -15,12 +15,13 @@
 package interfaces
 
 type MCPConfig struct {
-	Name            string
-	Url             string
-	AuthHeaderValue string
-	AuthSecret      string
-	AuthHeaderKey   string
-	Hosts           []string
+	Name             string
+	Url              string
+	AuthHeaderKey    string // Defines the http auth header key e.g. Authorization, X-Api-Key
+	AuthHeaderValue  string // Defines the http auth header value e.g. Bearer {env:SOME_SCRET_VAR}, SOME_SECRET_VAR, this will always point to an env var
+	AuthSecretEnvVar string // Defines the env var where the secret is e.g. SOME_SECRET_VAR
+	AuthSecret       string // The secret itself that will be assign or shadow-assign to the SOME_SECRET_VAR
+	Hosts            []string
 }
 
 type HandlerMCP interface {
