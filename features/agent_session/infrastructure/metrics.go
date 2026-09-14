@@ -154,6 +154,7 @@ func errorType(err error) string {
 		{"ErrGitHubInstallationUnavailable", shared.ErrGitHubInstallationUnavailable},
 		{"ErrGitHubConnectionReRequested", shared.ErrGitConnectionReRequested},
 		{"ErrHarnessUnhealthy", shared.ErrHarnessUnhealthy},
+		{"ErrSandboxCannotStart", interfaces.ErrSandboxCannotStart},
 		{"ErrJobNotRunnable", interfaces.ErrJobNotRunnable},
 	}
 

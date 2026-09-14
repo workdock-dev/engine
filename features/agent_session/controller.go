@@ -662,7 +662,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	})
 
 	if err != nil {
-		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential)
+		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential, err)
 		return types.EventJobStatus_Failed, err
 	}
 
@@ -675,7 +675,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	})
 
 	if err != nil {
-		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential)
+		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential, err)
 		return types.EventJobStatus_Failed, err
 	}
 
@@ -752,7 +752,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	}()
 
 	if err != nil {
-		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential)
+		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential, err)
 		return types.EventJobStatus_Failed, err
 	}
 
@@ -773,7 +773,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 			sessionEvent,
 		)
 	}); err != nil {
-		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential)
+		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential, err)
 		return types.EventJobStatus_Failed, err
 	}
 
@@ -782,7 +782,10 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 
 // reportExecutionError notifies the user about a failed agent session execution.
 // When the job is going to be retried, the user is told the execution will be
-// retried; otherwise a generic server internal error is reported. Jobs whose
+// retried; otherwise a generic server internal error is reported. When the
+// sandbox is in a state that cannot start, the user is told the issue is on
+// the sandbox provider's side and whether the execution will be retried
+// automatically or should be retried manually in a few minutes. Jobs whose
 // context was cancelled are not reported because the scheduler handles their
 // cancellation separately and platform calls would fail on a cancelled context.
 func (c *controller) reportExecutionError(
@@ -791,8 +794,18 @@ func (c *controller) reportExecutionError(
 	session *types.Session,
 	agentHandler interfaces.HandlerAgentSession,
 	credential string,
+	err error,
 ) {
 	if ctx.Err() != nil {
+		return
+	}
+
+	// A sandbox in a state that cannot start is a provider-side issue, not
+	// an engine failure, so the user is told the issue is on the sandbox
+	// provider and whether the execution will be retried automatically or
+	// must be retried manually in a few minutes.
+	if errors.Is(err, interfaces.ErrSandboxCannotStart) {
+		agentHandler.SendSandboxCannotStartError(ctx, session.Identifier, credential, job.WillRetry())
 		return
 	}
 
