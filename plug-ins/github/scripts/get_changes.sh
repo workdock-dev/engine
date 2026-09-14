@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-repo=$(find /home/${USER}/workspace -type d -name .git -print -quit)
+repo=$(find /home/${USER}/workspace -type d -name .git -print -quit 2>/dev/null)
 
 [ -n "$repo" ] || exit 0
 

@@ -1039,26 +1039,33 @@ func (c *controller) sandbox(
 		maps.Copy(fileUploads, file)
 	}
 
+	// Git commands and the pull request exit command only apply when git
+	// access was granted. Sessions without a repository get no GH_TOKEN, so
+	// running git-specific commands would fail the run.
+	commandsWhenCreated := harnessHandler.GetConfigurationCommands()
+	commands := harnessHandler.GetCommands()
+	exitCommand := ""
+
+	if gitAccess != nil && gitAccess.Granted {
+		commandsWhenCreated = slices.Concat(gitHandler.GetConfigurationCommands(), commandsWhenCreated)
+		commands = slices.Concat(gitHandler.GetCommands(), commands)
+		exitCommand = gitHandler.GetLatestChangesCommand()
+	}
+
 	shutdown, err := sandboxHandler.Run(
 		ctx,
 		&interfaces.SandboxConfig{
-			AutoStopInterval: 5, // 5 minutes
-			Session:          session,
-			SessionEvent:     sessionEvent,
-			CommandsWhenCreated: slices.Concat(
-				gitHandler.GetConfigurationCommands(),
-				harnessHandler.GetConfigurationCommands(),
-			),
-			Commands: slices.Concat(
-				gitHandler.GetCommands(),
-				harnessHandler.GetCommands(),
-			),
-			ExitCommand:    gitHandler.GetLatestChangesCommand(),
-			FileUploads:    fileUploads,
-			Secrets:        secrets,
-			GitName:        "workdock[bot]",
-			GitEmail:       "no-reply@workdock.dev",
-			HarnessCommand: harnessHandler.RunCommand(),
+			AutoStopInterval:    5, // 5 minutes
+			Session:             session,
+			SessionEvent:        sessionEvent,
+			CommandsWhenCreated: commandsWhenCreated,
+			Commands:            commands,
+			ExitCommand:         exitCommand,
+			FileUploads:         fileUploads,
+			Secrets:             secrets,
+			GitName:             "workdock[bot]",
+			GitEmail:            "no-reply@workdock.dev",
+			HarnessCommand:      harnessHandler.RunCommand(),
 		},
 		stdout,
 		stderr,
