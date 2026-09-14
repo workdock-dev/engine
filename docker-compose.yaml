@@ -27,6 +27,9 @@ services:
       POSTGRES_USER: workdock
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-workdock}
       POSTGRES_DB: workdock
+      # postgres:18 images changed the default PGDATA to /var/lib/postgresql/18/docker;
+      # pin it so the postgres-data volume keeps holding the cluster as before.
+      PGDATA: /var/lib/postgresql/data
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -36,7 +39,7 @@ services:
       retries: 20
 
   postgres-init:
-    image: postgres:16-bookworm
+    image: postgres:18-bookworm
     depends_on:
       postgres: { condition: service_healthy }
     environment:

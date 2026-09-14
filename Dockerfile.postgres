@@ -1,16 +1,17 @@
 # syntax=docker/dockerfile:1
-FROM postgres:16-bookworm AS pg-cron-build
-ARG PG_CRON_VERSION=1.6.2
+FROM postgres:18-bookworm AS pg-cron-build
+# 1.6.8 is the first pg_cron line with PostgreSQL 18 support (added in 1.6.6).
+ARG PG_CRON_VERSION=1.6.8
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential ca-certificates git postgresql-server-dev-16 \
+    && apt-get install -y --no-install-recommends build-essential ca-certificates git postgresql-server-dev-18 \
     && git clone --depth 1 --branch "v${PG_CRON_VERSION}" https://github.com/citusdata/pg_cron.git /tmp/pg_cron \
     && make -C /tmp/pg_cron \
     && make -C /tmp/pg_cron install \
     && rm -rf /var/lib/apt/lists/* /tmp/pg_cron
 
-FROM postgres:16-bookworm
-COPY --from=pg-cron-build /usr/lib/postgresql/16/lib/pg_cron.so /usr/lib/postgresql/16/lib/pg_cron.so
-COPY --from=pg-cron-build /usr/share/postgresql/16/extension/pg_cron* /usr/share/postgresql/16/extension/
+FROM postgres:18-bookworm
+COPY --from=pg-cron-build /usr/lib/postgresql/18/lib/pg_cron.so /usr/lib/postgresql/18/lib/pg_cron.so
+COPY --from=pg-cron-build /usr/share/postgresql/18/extension/pg_cron* /usr/share/postgresql/18/extension/
 # pg_cron must load before the engine migration creates its extension.
 # The pg_cron extension itself is created by docker/postgres/init-pg.sh.
 CMD ["postgres", "-c", "shared_preload_libraries=pg_cron", "-c", "cron.database_name=workdock"]
