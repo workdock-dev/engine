@@ -98,16 +98,20 @@ func (h *SandboxHandler) Run(
 			// * Run the provided exit command
 			// *-------------------------------------------------------------------------*
 
-			_, result, _ := h.executeCommand(
-				ctx,
-				sandbox,
-				config,
-				config.ExitCommand,
-				time.Minute*2,
-			)
+			// The exit command is only set when the session was granted git access;
+			// repo-less sessions have no pull request metadata to collect
+			if config.ExitCommand != "" {
+				_, result, _ := h.executeCommand(
+					ctx,
+					sandbox,
+					config,
+					config.ExitCommand,
+					time.Minute*2,
+				)
 
-			if result != "" {
-				out = result
+				if result != "" {
+					out = result
+				}
 			}
 
 			if !listening {

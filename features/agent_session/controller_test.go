@@ -1749,6 +1749,50 @@ func (s *ControllerSuite) TestSandbox_NoMcpNoGitAccess() {
 	s.Len(config.FileUploads, 2)
 }
 
+// TestSandbox_NoGitAccess_SkipsGitCommands ensures repo-less sessions run no
+// git-specific sandbox commands; without a repository there is no GH_TOKEN in
+// the sandbox and commands like the git setup would fail the run.
+func (s *ControllerSuite) TestSandbox_NoGitAccess_SkipsGitCommands() {
+	s.gitHdl.getConfigCommandsFn = func() []string { return []string{"git-config-cmd"} }
+	s.gitHdl.getCommandsFn = func() []string { return []string{"git-cmd"} }
+	s.gitHdl.getLatestChangesCmdFn = func() string { return "latest-changes-cmd" }
+
+	_, _, _, _, err := s.c.sandbox(
+		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		nil, "prompt", newTestSession(), testSessionEvent,
+	)
+
+	s.Require().NoError(err)
+	config := s.sandboxHdl.runConfig
+	s.Require().NotNil(config)
+	s.Equal([]string{"harness-config-cmd"}, config.CommandsWhenCreated)
+	s.Equal([]string{"harness-cmd"}, config.Commands)
+	s.Empty(config.ExitCommand)
+}
+
+// TestSandbox_WithGitAccess_RunsGitCommands ensures sessions with granted git
+// access keep running the git configuration, setup commands and the pull
+// request exit command.
+func (s *ControllerSuite) TestSandbox_WithGitAccess_RunsGitCommands() {
+	s.gitHdl.getConfigCommandsFn = func() []string { return []string{"git-config-cmd"} }
+	s.gitHdl.getCommandsFn = func() []string { return []string{"git-cmd"} }
+	s.gitHdl.getLatestChangesCmdFn = func() string { return "latest-changes-cmd" }
+
+	gitAccess := &interfaces.GitAccess{Granted: true}
+
+	_, _, _, _, err := s.c.sandbox(
+		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		gitAccess, "prompt", newTestSession(), testSessionEvent,
+	)
+
+	s.Require().NoError(err)
+	config := s.sandboxHdl.runConfig
+	s.Require().NotNil(config)
+	s.Equal([]string{"git-config-cmd", "harness-config-cmd"}, config.CommandsWhenCreated)
+	s.Equal([]string{"git-cmd", "harness-cmd"}, config.Commands)
+	s.Equal("latest-changes-cmd", config.ExitCommand)
+}
+
 func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
 	s.mcpHdl.getMCPListFn = func() []interfaces.MCPConfig {
 		return []interfaces.MCPConfig{
