@@ -2088,6 +2088,41 @@ func (s *ControllerSuite) TestExecute_SandboxError() {
 	s.Zero(s.agentHdl.retryScheduled)
 }
 
+func (s *ControllerSuite) TestExecute_SandboxCannotStart_Retriable() {
+	s.prepareExecutable()
+	s.sandboxHdl.runFn = func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
+		return nil, fmt.Errorf("start failed: %w", interfaces.ErrSandboxCannotStart)
+	}
+
+	job := &types.EventJob{SessionEventIdentifier: "evt-1", Attempts: 1}
+	job.SetMaxAttempts(2)
+
+	status, err := s.c.execute(context.Background(), job)
+
+	s.Error(err)
+	s.ErrorIs(err, interfaces.ErrSandboxCannotStart)
+	s.Equal(types.EventJobStatus_Failed, status)
+	s.Equal([]bool{true}, s.agentHdl.sandboxCannotStart, "the user must be told the sandbox cannot start and it will be retried")
+	s.Zero(s.agentHdl.internalErrors, "the sandbox provider issue must not be reported as an internal server error")
+	s.Zero(s.agentHdl.retryScheduled)
+}
+
+func (s *ControllerSuite) TestExecute_SandboxCannotStart_NotRetriable() {
+	s.prepareExecutable()
+	s.sandboxHdl.runFn = func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
+		return nil, fmt.Errorf("start failed: %w", interfaces.ErrSandboxCannotStart)
+	}
+
+	status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
+
+	s.Error(err)
+	s.ErrorIs(err, interfaces.ErrSandboxCannotStart)
+	s.Equal(types.EventJobStatus_Failed, status)
+	s.Equal([]bool{false}, s.agentHdl.sandboxCannotStart, "the user must be told to retry in a few minutes")
+	s.Zero(s.agentHdl.internalErrors, "the sandbox provider issue must not be reported as an internal server error")
+	s.Zero(s.agentHdl.retryScheduled)
+}
+
 func (s *ControllerSuite) TestExecute_HarnessError() {
 	s.prepareExecutable()
 	s.harnessHdl.parseFn = func(

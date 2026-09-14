@@ -345,6 +345,7 @@ func (s *MetricsSuite) TestErrorType_KnownSentinels() {
 		{name: "git connection re-requested", err: shared.ErrGitConnectionReRequested, expected: "ErrGitHubConnectionReRequested"},
 		{name: "harness unhealthy", err: shared.ErrHarnessUnhealthy, expected: "ErrHarnessUnhealthy"},
 		{name: "job not runnable", err: interfaces.ErrJobNotRunnable, expected: "ErrJobNotRunnable"},
+		{name: "sandbox cannot start", err: interfaces.ErrSandboxCannotStart, expected: "ErrSandboxCannotStart"},
 	}
 
 	for _, tt := range tests {

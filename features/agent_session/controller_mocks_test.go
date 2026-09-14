@@ -37,6 +37,7 @@ type mockAgentHandler struct {
 	sendGitConnectionRqFn func(ctx context.Context, sessionId, accessToken, gitProvider, gitInstallURL string) error
 	sendInternalErrFn     func(ctx context.Context, sessionId, accessToken string) error
 	sendRetryScheduledFn  func(ctx context.Context, sessionId, accessToken string) error
+	sendSandboxErrFn      func(ctx context.Context, sessionId, accessToken string, retriable bool) error
 	getIssueStateFn       func(ctx context.Context, issueId, accessToken string) (*interfaces.IssueState, error)
 	transitionStartedFn   func(ctx context.Context, issueId, accessToken string) error
 	transitionInReviewFn  func(ctx context.Context, issueId, accessToken string) error
@@ -48,6 +49,7 @@ type mockAgentHandler struct {
 	elicitations         []types.AgentElicitation
 	internalErrors       int
 	retryScheduled       int
+	sandboxCannotStart   []bool
 	transitionStarted    []string
 	transitionedInReview []string
 }
@@ -147,6 +149,14 @@ func (m *mockAgentHandler) SendRetryScheduled(ctx context.Context, sessionId, ac
 	m.retryScheduled++
 	if m.sendRetryScheduledFn != nil {
 		return m.sendRetryScheduledFn(ctx, sessionId, accessToken)
+	}
+	return nil
+}
+
+func (m *mockAgentHandler) SendSandboxCannotStartError(ctx context.Context, sessionId, accessToken string, retriable bool) error {
+	m.sandboxCannotStart = append(m.sandboxCannotStart, retriable)
+	if m.sendSandboxErrFn != nil {
+		return m.sendSandboxErrFn(ctx, sessionId, accessToken, retriable)
 	}
 	return nil
 }

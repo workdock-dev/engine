@@ -37,6 +37,27 @@ const (
 	DAYTONA_USER     = "daytona"
 )
 
+// isUnstartableSandboxState reports whether the given sandbox state is a
+// provider-side state from which the sandbox cannot start (e.g. an error or
+// a failed build). These states are caused by the sandbox provider, not by
+// the engine.
+func isUnstartableSandboxState(state daytona.SandboxState) bool {
+	return state == daytona.SandboxStateError || state == daytona.SandboxStateBuildFailed
+}
+
+// startError classifies a failed sandbox start. When the sandbox is in a
+// provider-side state that cannot start, the error is wrapped with
+// ErrSandboxCannotStart so the engine can tell the user the issue is on the
+// sandbox provider's side, not WorkDock's. The original error stays in the
+// chain so its detail is preserved in recorded failure causes.
+func startError(err error, state daytona.SandboxState) error {
+	if isUnstartableSandboxState(state) {
+		return fmt.Errorf("%w: sandbox is in state %s because of the sandbox provider (%w)", agent_session_interfaces.ErrSandboxCannotStart, state, err)
+	}
+
+	return err
+}
+
 type SandboxHandler struct {
 	config types.Config
 }
@@ -457,7 +478,8 @@ func (h *SandboxHandler) start(ctx context.Context, sandbox *daytona.Sandbox, co
 		}
 
 		slog.Error("[sandbox][daytona] failed to start", "err", err, "event_identifier", config.SessionEvent.Identifier)
-		return err
+
+		return startError(err, sandbox.State)
 	}
 
 	return nil

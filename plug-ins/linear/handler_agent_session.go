@@ -222,6 +222,27 @@ func (h *AgentSessionHandler) SendRetryScheduled(ctx context.Context, sessionId,
 	})
 }
 
+// SendSandboxCannotStartError notifies the user the sandbox is in a state
+// that cannot start because of an issue on the sandbox provider's side,
+// not on WorkDock's, via a best-effort Linear activity. When the execution
+// will be retried the user is told so; otherwise the user is asked to
+// retry in a few minutes.
+func (h *AgentSessionHandler) SendSandboxCannotStartError(ctx context.Context, sessionId, accessToken string, retriable bool) error {
+	body := "The sandbox is in a state that cannot start. This issue is caused by the sandbox provider, not WorkDock. Please try again in a few minutes."
+
+	if retriable {
+		body = "The sandbox is in a state that cannot start. This issue is caused by the sandbox provider, not WorkDock. The execution will be retried automatically."
+	}
+
+	return h.client.CreateAgentActivity(ctx, accessToken, types.CreateAgentActivityInput{
+		AgentSessionID: sessionId,
+		Content: types.AgentActivityContent{
+			Type: types.AgentActivityContentType_Error,
+			Body: body,
+		},
+	})
+}
+
 // GetIssueState returns the workflow state metadata of a Linear issue.
 func (h *AgentSessionHandler) GetIssueState(ctx context.Context, issueId, accessToken string) (*agent_session_interfaces.IssueState, error) {
 	issue, err := h.client.GetIssue(ctx, accessToken, issueId)

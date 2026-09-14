@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/daytona/clients/sdk-go/pkg/daytona"
 	"github.com/stretchr/testify/suite"
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
 	"github.com/workdock-dev/engine/plug-ins/daytona/types"
@@ -67,6 +68,71 @@ func (s *SandboxSuite) TestIsContextCanceledOrDeadlineExceeded() {
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			s.Equal(tt.want, handler.isContextCanceledOrDeadlineExceeded(tt.err))
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// isUnstartableSandboxState
+// ---------------------------------------------------------------------------
+
+func (s *SandboxSuite) TestIsUnstartableSandboxState() {
+	tests := []struct {
+		name  string
+		state daytona.SandboxState
+		want  bool
+	}{
+		{name: "error", state: daytona.SandboxStateError, want: true},
+		{name: "build failed", state: daytona.SandboxStateBuildFailed, want: true},
+		{name: "stopped", state: daytona.SandboxStateStopped, want: false},
+		{name: "stopping", state: daytona.SandboxStateStopping, want: false},
+		{name: "started", state: daytona.SandboxStateStarted, want: false},
+		{name: "creating", state: daytona.SandboxStateCreating, want: false},
+		{name: "starting", state: daytona.SandboxStateStarting, want: false},
+		{name: "archived", state: daytona.SandboxStateArchived, want: false},
+		{name: "destroyed", state: daytona.SandboxStateDestroyed, want: false},
+		{name: "empty", state: "", want: false},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			s.Equal(tt.want, isUnstartableSandboxState(tt.state))
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// startError
+// ---------------------------------------------------------------------------
+
+func (s *SandboxSuite) TestStartError() {
+	startFailed := errors.New("start failed")
+
+	tests := []struct {
+		name        string
+		state       daytona.SandboxState
+		err         error
+		unstartable bool
+	}{
+		{name: "error state", state: daytona.SandboxStateError, err: startFailed, unstartable: true},
+		{name: "build failed state", state: daytona.SandboxStateBuildFailed, err: startFailed, unstartable: true},
+		{name: "stopped state", state: daytona.SandboxStateStopped, err: startFailed, unstartable: false},
+		{name: "starting state", state: daytona.SandboxStateStarting, err: startFailed, unstartable: false},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			wrapped := startError(tt.err, tt.state)
+
+			if !tt.unstartable {
+				s.Equal(tt.err, wrapped, "a state that can start must keep the original error")
+				return
+			}
+
+			s.ErrorIs(wrapped, agent_session_interfaces.ErrSandboxCannotStart, "an unstartable state must wrap the sandbox cannot start sentinel")
+			s.ErrorIs(wrapped, tt.err, "the original error must still be matchable")
+			s.ErrorContains(wrapped, string(tt.state))
+			s.ErrorContains(wrapped, tt.err.Error(), "the original error detail must be preserved in the message")
 		})
 	}
 }

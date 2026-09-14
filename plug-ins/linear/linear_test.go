@@ -1170,6 +1170,34 @@ func (s *AgentSessionSuite) TestSendRetryScheduled() {
 	}, s.client.activities[0])
 }
 
+func (s *AgentSessionSuite) TestSendSandboxCannotStartError_Retriable() {
+	err := s.handler.SendSandboxCannotStartError(context.Background(), "sess-1", "token-1", true)
+
+	s.Require().NoError(err)
+	s.Require().Len(s.client.activities, 1)
+	s.Equal(types.CreateAgentActivityInput{
+		AgentSessionID: "sess-1",
+		Content: types.AgentActivityContent{
+			Type: types.AgentActivityContentType_Error,
+			Body: "The sandbox is in a state that cannot start. This issue is caused by the sandbox provider, not WorkDock. The execution will be retried automatically.",
+		},
+	}, s.client.activities[0])
+}
+
+func (s *AgentSessionSuite) TestSendSandboxCannotStartError_NotRetriable() {
+	err := s.handler.SendSandboxCannotStartError(context.Background(), "sess-1", "token-1", false)
+
+	s.Require().NoError(err)
+	s.Require().Len(s.client.activities, 1)
+	s.Equal(types.CreateAgentActivityInput{
+		AgentSessionID: "sess-1",
+		Content: types.AgentActivityContent{
+			Type: types.AgentActivityContentType_Error,
+			Body: "The sandbox is in a state that cannot start. This issue is caused by the sandbox provider, not WorkDock. Please try again in a few minutes.",
+		},
+	}, s.client.activities[0])
+}
+
 func (s *AgentSessionSuite) TestSend_ActivityErrorPropagates() {
 	s.client.activityFn = func(ctx context.Context, accessToken string, input types.CreateAgentActivityInput) error {
 		return fmt.Errorf("api down")
