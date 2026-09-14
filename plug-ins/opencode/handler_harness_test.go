@@ -276,8 +276,8 @@ func (s *HarnessSuite) TestGetConfigFile_ParamProviderOverridesModel() {
 func (s *HarnessSuite) TestGetConfigFile_Mcps() {
 	config := agent_session_interfaces.HarnessConfig{
 		Mcps: []agent_session_interfaces.MCPConfig{
-			{Name: "linear", Url: "https://mcp.linear.app/sse", AuthKey: "LINEAR_TOKEN"},
-			{Name: "github", Url: "https://mcp.github.dev", AuthKey: "GITHUB_TOKEN"},
+			{Name: "linear", Url: "https://mcp.linear.app/sse", AuthHeaderValue: "LINEAR_TOKEN"},
+			{Name: "github", Url: "https://mcp.github.dev", AuthHeaderValue: "GITHUB_TOKEN"},
 		},
 	}
 
@@ -296,7 +296,7 @@ func (s *HarnessSuite) TestGetConfigFile_Mcps() {
 
 	headers, ok := linear["headers"].(map[string]any)
 	s.Require().True(ok)
-	s.Equal("Bearer {env:LINEAR_TOKEN}", headers["Authorization"])
+	s.Equal("LINEAR_TOKEN", headers["Authorization"])
 
 	_, ok = mcps["github"]
 	s.True(ok)
@@ -306,10 +306,10 @@ func (s *HarnessSuite) TestGetConfigFile_McpsCustomAuthHeader() {
 	config := agent_session_interfaces.HarnessConfig{
 		Mcps: []agent_session_interfaces.MCPConfig{
 			{
-				Name:       "linear",
-				Url:        "https://mcp.linear.app/sse",
-				AuthKey:    "LINEAR_TOKEN",
-				AuthHeader: "X-Api-Key",
+				Name:            "linear",
+				Url:             "https://mcp.linear.app/sse",
+				AuthHeaderValue: "LINEAR_TOKEN",
+				AuthHeaderKey:   "X-Api-Key",
 			},
 		},
 	}
@@ -325,7 +325,7 @@ func (s *HarnessSuite) TestGetConfigFile_McpsCustomAuthHeader() {
 
 	headers, ok := linear["headers"].(map[string]any)
 	s.Require().True(ok)
-	s.Equal("Bearer {env:LINEAR_TOKEN}", headers["X-Api-Key"])
+	s.Equal("LINEAR_TOKEN", headers["X-Api-Key"])
 
 	_, ok = headers["Authorization"]
 	s.False(ok)

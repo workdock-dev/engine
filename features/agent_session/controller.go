@@ -1002,7 +1002,7 @@ func (c *controller) sandbox(
 
 		for _, mcp := range harnessConfig.Mcps {
 			secrets = append(secrets, interfaces.SandboxSecret{
-				Name:  mcp.AuthKey,
+				Name:  mcp.AuthHeaderValue,
 				Value: mcp.AuthSecret,
 				Hosts: mcp.Hosts,
 			})
