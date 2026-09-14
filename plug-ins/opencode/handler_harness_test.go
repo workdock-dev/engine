@@ -296,7 +296,7 @@ func (s *HarnessSuite) TestGetConfigFile_Mcps() {
 
 	headers, ok := linear["headers"].(map[string]any)
 	s.Require().True(ok)
-	s.Equal("{env:LINEAR_TOKEN}", headers["Authorization"])
+	s.Equal("LINEAR_TOKEN", headers["Authorization"])
 
 	_, ok = mcps["github"]
 	s.True(ok)
@@ -325,7 +325,7 @@ func (s *HarnessSuite) TestGetConfigFile_McpsCustomAuthHeader() {
 
 	headers, ok := linear["headers"].(map[string]any)
 	s.Require().True(ok)
-	s.Equal("{env:LINEAR_TOKEN}", headers["X-Api-Key"])
+	s.Equal("LINEAR_TOKEN", headers["X-Api-Key"])
 
 	_, ok = headers["Authorization"]
 	s.False(ok)

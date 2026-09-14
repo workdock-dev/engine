@@ -196,7 +196,7 @@ func (h *HarnessHandler) mcpJson(mcps []agent_session_interfaces.MCPConfig) ([]b
 		servers[mcp.Name] = map[string]any{
 			"url": mcp.Url,
 			"headers": map[string]string{
-				header: fmt.Sprintf("${%s}", mcp.AuthHeaderValue),
+				header: mcp.AuthHeaderValue,
 			},
 			"lifecycle": "keep-alive",
 		}

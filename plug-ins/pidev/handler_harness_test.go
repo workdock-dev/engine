@@ -486,7 +486,7 @@ func (s *HarnessSuite) TestGetFiles_Mcps() {
 	s.Equal("https://example.com/mcp", server.Url)
 	s.Equal("keep-alive", server.Lifecycle)
 	s.Equal(
-		map[string]string{"Authorization": "${MY_MCP_AUTH_SECRET_ENV_VAR_NAME}"},
+		map[string]string{"Authorization": "MY_MCP_AUTH_SECRET_ENV_VAR_NAME"},
 		server.Headers,
 	)
 
@@ -494,7 +494,7 @@ func (s *HarnessSuite) TestGetFiles_Mcps() {
 	s.Require().True(ok)
 	s.Equal("https://other.example.com/mcp", other.Url)
 	s.Equal(
-		map[string]string{"Authorization": "${OTHER_ENV_VAR}"},
+		map[string]string{"Authorization": "OTHER_ENV_VAR"},
 		other.Headers,
 	)
 }
@@ -522,7 +522,7 @@ func (s *HarnessSuite) TestGetFiles_McpsCustomAuthHeader() {
 	s.Require().True(ok)
 	s.Equal("https://example.com/mcp", server.Url)
 	s.Equal(
-		map[string]string{"X-Api-Key": "${MY_MCP_AUTH_SECRET_ENV_VAR_NAME}"},
+		map[string]string{"X-Api-Key": "MY_MCP_AUTH_SECRET_ENV_VAR_NAME"},
 		server.Headers,
 	)
 }

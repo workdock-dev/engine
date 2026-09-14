@@ -147,7 +147,7 @@ func (h *HarnessHandler) GetConfigFile(config *agent_session_interfaces.HarnessC
 				"enabled": true,
 				"oauth":   false,
 				"headers": map[string]string{
-					header: fmt.Sprintf("{env:%s}", value.AuthHeaderValue),
+					header: value.AuthHeaderValue,
 				},
 			}
 		}
