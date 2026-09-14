@@ -48,10 +48,11 @@ func isUnstartableSandboxState(state daytona.SandboxState) bool {
 // startError classifies a failed sandbox start. When the sandbox is in a
 // provider-side state that cannot start, the error is wrapped with
 // ErrSandboxCannotStart so the engine can tell the user the issue is on the
-// sandbox provider's side, not WorkDock's.
+// sandbox provider's side, not WorkDock's. The original error stays in the
+// chain so its detail is preserved in recorded failure causes.
 func startError(err error, state daytona.SandboxState) error {
 	if isUnstartableSandboxState(state) {
-		return fmt.Errorf("%w: sandbox is in state %s because of the sandbox provider", agent_session_interfaces.ErrSandboxCannotStart, state)
+		return fmt.Errorf("%w: sandbox is in state %s because of the sandbox provider (%w)", agent_session_interfaces.ErrSandboxCannotStart, state, err)
 	}
 
 	return err

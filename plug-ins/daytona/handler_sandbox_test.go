@@ -132,6 +132,7 @@ func (s *SandboxSuite) TestStartError() {
 			s.ErrorIs(wrapped, agent_session_interfaces.ErrSandboxCannotStart, "an unstartable state must wrap the sandbox cannot start sentinel")
 			s.ErrorIs(wrapped, tt.err, "the original error must still be matchable")
 			s.ErrorContains(wrapped, string(tt.state))
+			s.ErrorContains(wrapped, tt.err.Error(), "the original error detail must be preserved in the message")
 		})
 	}
 }
