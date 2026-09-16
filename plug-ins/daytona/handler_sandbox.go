@@ -199,12 +199,15 @@ func (h *SandboxHandler) Run(
 
 	// *-------------------------------------------------------------------------*
 	// * If this sandbox was just created, install any additional dependency     *
+	// *                                                                         *
+	// * Installers retry through transient mirror outages, so they get a longer *
+	// * timeout than the per-session commands below                             *
 	// *-------------------------------------------------------------------------*
 
 	if created {
 		slog.Debug("[sandbox][daytona] installing dependencies")
 		for _, cmd := range config.CommandsWhenCreated {
-			if _, _, err := h.executeCommand(ctx, sandbox, config, cmd, time.Minute*1); err != nil {
+			if _, _, err := h.executeCommand(ctx, sandbox, config, cmd, time.Minute*5); err != nil {
 				deleting = true
 				h.deleteSandbox(context.Background(), sandbox, config)
 				return shutdown, err
