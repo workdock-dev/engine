@@ -48,6 +48,12 @@ var (
 
 	//go:embed prompts/prompt_templ_pr_review.txt
 	PromptTemplate_PullRequestChecksFailed string
+
+	// Message errors whose text is sent to the user by reportExecutionError.
+	errServerInternal              = errors.New("Internal Server Error 500")
+	errExecutionRetried            = errors.New("Execution failed but will be retried automatically.")
+	errSandboxCannotStartRetried   = errors.New("The sandbox is in a state that cannot start. This issue is caused by the sandbox provider, not WorkDock. The execution will be retried automatically.")
+	errSandboxCannotStartRetrySoon = errors.New("The sandbox is in a state that cannot start. This issue is caused by the sandbox provider, not WorkDock. Please try again in a few minutes.")
 )
 
 type AgentHandlerRegistry map[string]interfaces.HandlerAgentSession
@@ -779,14 +785,6 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 
 	return types.EventJobStatus_Succeeded, nil
 }
-
-// Message errors whose text is sent to the user by reportExecutionError.
-var (
-	errServerInternal              = errors.New("Internal Server Error 500")
-	errExecutionRetried            = errors.New("Execution failed but will be retried automatically.")
-	errSandboxCannotStartRetried   = errors.New("The sandbox is in a state that cannot start. This issue is caused by the sandbox provider, not WorkDock. The execution will be retried automatically.")
-	errSandboxCannotStartRetrySoon = errors.New("The sandbox is in a state that cannot start. This issue is caused by the sandbox provider, not WorkDock. Please try again in a few minutes.")
-)
 
 // reportExecutionError notifies the user about a failed agent session execution.
 // When the sandbox is in a state that cannot start, the user is told the issue
