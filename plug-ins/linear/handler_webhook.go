@@ -252,15 +252,18 @@ func (c *WEventConsumer) Consume(_ context.Context, event *webhook.VerifiedWEven
 	return webhook.ErrWBadRequest
 }
 
-// consumeIssueEvent verifies whether an issue update event moved the issue
-// into a closed workflow state (done, canceled, duplicated, etc.) and, only
-// when it did, publishes the AgentSessionArchiveEvent to archive the issue's
-// sandboxes.
+// consumeIssueEvent processes a verified issue webhook payload. It emits the
+// TicketChangedEvent domain event for the issue change, and verifies whether
+// an issue update event moved the issue into a closed workflow state (done,
+// canceled, duplicated, etc.); only when it did, it publishes the
+// AgentSessionArchiveEvent to archive the issue's sandboxes.
 //
 // The webhook payload only carries the state's display name, not its type, so
 // the current issue state is re-checked against Linear. Verification errors
 // are logged upstream and never fail webhook ingestion.
 func (c *WEventConsumer) consumeIssueEvent(payload types.IssueStatusChangePayload) error {
+	c.publishTicketChanged(payload)
+
 	if payload.Action != "update" {
 		return nil
 	}
@@ -288,6 +291,38 @@ func (c *WEventConsumer) consumeIssueEvent(payload types.IssueStatusChangePayloa
 	})
 
 	return nil
+}
+
+// publishTicketChanged emits the TicketChangedEvent for a verified issue
+// webhook payload. The change type is mapped from the webhook action; unknown
+// actions are not emitted.
+func (c *WEventConsumer) publishTicketChanged(payload types.IssueStatusChangePayload) {
+	var changeType shared.TicketChangeType
+
+	switch payload.Action {
+	case "create":
+		changeType = shared.TicketChange_Created
+	case "update":
+		changeType = shared.TicketChange_Updated
+	case "remove":
+		changeType = shared.TicketChange_Removed
+	default:
+		slog.Debug("[webhook][linear] unhandled issue action, skipping ticket changed event", "action", payload.Action)
+		return
+	}
+
+	c.eventBus.Publish(context.Background(), shared.TicketChangedEvent{
+		Provider:        string(shared.PlatformProvider_Linear),
+		ChangeType:      changeType,
+		IssueId:         payload.Data.ID,
+		IssueIdentifier: payload.Data.Identifier,
+		TeamId:          payload.Data.TeamID,
+		Title:           payload.Data.Title,
+		Url:             payload.Data.URL,
+		PreviousState:   payload.UpdatedFrom.StateName,
+		NewState:        payload.Data.StateName,
+		OccurredAt:      time.UnixMilli(payload.WebhookTimestamp),
+	})
 }
 
 // acknowledgeNewAgentSession emits the first thought activity for a newly

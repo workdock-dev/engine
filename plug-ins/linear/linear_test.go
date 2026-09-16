@@ -195,6 +195,7 @@ type eventRecorder struct {
 	archiveEvents []shared.AgentSessionArchiveEvent
 	prompt        []shared.AgentSessionPromptEvent
 	stop          []shared.AgentSessionStopEvent
+	ticketChanged []shared.TicketChangedEvent
 }
 
 func newRecordingEventBus(rec *eventRecorder) *shared.EventBus {
@@ -207,12 +208,15 @@ func newRecordingEventBus(rec *eventRecorder) *shared.EventBus {
 			rec.prompt = append(rec.prompt, e)
 		case shared.AgentSessionStopEvent:
 			rec.stop = append(rec.stop, e)
+		case shared.TicketChangedEvent:
+			rec.ticketChanged = append(rec.ticketChanged, e)
 		}
 		return nil
 	}
 	bus.Subscribe(shared.EventType_AgentSessionArchive, handle)
 	bus.Subscribe(shared.EventType_AgentSessionPrompt, handle)
 	bus.Subscribe(shared.EventType_AgentSessionStop, handle)
+	bus.Subscribe(shared.EventType_TicketChanged, handle)
 	return bus
 }
 
@@ -682,6 +686,149 @@ func (s *WebhookSuite) TestConsume_Issue_GetIssueError_NoEvent() {
 
 	s.Require().NoError(err, "issue verification failures must not fail webhook ingestion")
 	s.Empty(s.recorder.archiveEvents)
+}
+
+// ---------------------------------------------------------------------------
+// Consume — TicketChangedEvent
+// ---------------------------------------------------------------------------
+
+func (s *WebhookSuite) TestConsume_Issue_CreateAction_PublishesTicketChanged() {
+	timestamp := time.Now().UnixMilli()
+	payload := fmt.Sprintf(`{
+		"action": "create",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d,
+		"data": {"id": "issue-1", "identifier": "ENG-1", "title": "New issue", "teamId": "team-1", "url": "https://linear.app/issue/1", "stateName": "Todo"}
+	}`, timestamp)
+
+	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_Issue,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err)
+	s.Require().Len(s.recorder.ticketChanged, 1)
+	s.Empty(s.recorder.archiveEvents, "creation events must not emit the agent session archive event")
+	s.Empty(s.client.issueCalls, "creation events must not query the issue state")
+
+	event := s.recorder.ticketChanged[0]
+	s.Equal(string(shared.PlatformProvider_Linear), event.Provider)
+	s.Equal(shared.TicketChange_Created, event.ChangeType)
+	s.Equal("issue-1", event.IssueId)
+	s.Equal("ENG-1", event.IssueIdentifier)
+	s.Equal("team-1", event.TeamId)
+	s.Equal("New issue", event.Title)
+	s.Equal("https://linear.app/issue/1", event.Url)
+	s.Empty(event.PreviousState)
+	s.Equal("Todo", event.NewState)
+	s.True(event.OccurredAt.Equal(time.UnixMilli(timestamp)))
+}
+
+func (s *WebhookSuite) TestConsume_Issue_UpdateAction_PublishesTicketChanged() {
+	payload := fmt.Sprintf(`{
+		"action": "update",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d,
+		"data": {"id": "issue-1", "identifier": "ENG-1", "title": "Title", "teamId": "team-1", "url": "https://linear.app/issue/1", "stateName": "Done"},
+		"updatedFrom": {"stateName": "In Progress"}
+	}`, time.Now().UnixMilli())
+
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		return &types.IssueStateResult{
+			ID:        issueId,
+			TeamID:    "team-1",
+			StateName: "Done",
+			StateType: types.IssueStateType_Completed,
+		}, nil
+	}
+
+	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_Issue,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err)
+	s.Require().Len(s.recorder.ticketChanged, 1)
+	s.Require().Len(s.recorder.archiveEvents, 1, "updates into a closed state must still emit the agent session archive event")
+
+	event := s.recorder.ticketChanged[0]
+	s.Equal(string(shared.PlatformProvider_Linear), event.Provider)
+	s.Equal(shared.TicketChange_Updated, event.ChangeType)
+	s.Equal("issue-1", event.IssueId)
+	s.Equal("ENG-1", event.IssueIdentifier)
+	s.Equal("team-1", event.TeamId)
+	s.Equal("Title", event.Title)
+	s.Equal("In Progress", event.PreviousState)
+	s.Equal("Done", event.NewState)
+}
+
+func (s *WebhookSuite) TestConsume_Issue_RemoveAction_PublishesTicketChanged() {
+	payload := fmt.Sprintf(`{
+		"action": "remove",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d,
+		"data": {"id": "issue-1", "identifier": "ENG-1", "title": "Removed issue", "teamId": "team-1"}
+	}`, time.Now().UnixMilli())
+
+	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_Issue,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err)
+	s.Require().Len(s.recorder.ticketChanged, 1)
+	s.Empty(s.recorder.archiveEvents)
+	s.Empty(s.client.issueCalls, "removal events must not query the issue state")
+
+	event := s.recorder.ticketChanged[0]
+	s.Equal(string(shared.PlatformProvider_Linear), event.Provider)
+	s.Equal(shared.TicketChange_Removed, event.ChangeType)
+	s.Equal("issue-1", event.IssueId)
+	s.Equal("ENG-1", event.IssueIdentifier)
+	s.Equal("team-1", event.TeamId)
+	s.Equal("Removed issue", event.Title)
+}
+
+func (s *WebhookSuite) TestConsume_Issue_UnknownAction_DoesNotPublishTicketChanged() {
+	payload := fmt.Sprintf(`{
+		"action": "restore",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d,
+		"data": {"id": "issue-1", "identifier": "ENG-1"}
+	}`, time.Now().UnixMilli())
+
+	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_Issue,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err)
+	s.Empty(s.recorder.ticketChanged, "unknown issue actions must not emit the ticket changed event")
+	s.Empty(s.recorder.archiveEvents)
+}
+
+func (s *WebhookSuite) TestConsume_Issue_UpdateAction_PublishesTicketChangedWhenArchiveCheckFails() {
+	payload := fmt.Sprintf(`{
+		"action": "update",
+		"organizationId": "org-1",
+		"webhookTimestamp": %d,
+		"data": {"id": "issue-1", "identifier": "ENG-1", "stateName": "Todo"},
+		"updatedFrom": {"stateName": "Backlog"}
+	}`, time.Now().UnixMilli())
+
+	s.client.issueFn = func(ctx context.Context, accessToken, issueId string) (*types.IssueStateResult, error) {
+		return nil, fmt.Errorf("linear api down")
+	}
+
+	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+		WEventType: WEventType_Issue,
+		Payload:    []byte(payload),
+	})
+
+	s.Require().NoError(err)
+	s.Empty(s.recorder.archiveEvents)
+	s.Require().Len(s.recorder.ticketChanged, 1, "the ticket changed event is emitted from the verified webhook payload regardless of the archive verification outcome")
+	s.Equal(shared.TicketChange_Updated, s.recorder.ticketChanged[0].ChangeType)
 }
 
 func (s *WebhookSuite) TestConsume_AgentSession_InvalidJson() {

@@ -14,7 +14,10 @@
 
 package shared
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // DomainEvent is the base interface every domain event must implement. The
 // event type is used by the event bus to route events to their subscribers.
@@ -35,6 +38,7 @@ const (
 	EventType_GitCompleteConnection   = "git.complete_connection"
 	EventType_PullRequestCommented    = "pull_request.comment"
 	EventType_PullRequestChecksFailed = "pull_request.checks_failed"
+	EventType_TicketChanged           = "ticket.changed"
 )
 
 // *--------------------------------------------------------------------------*
@@ -143,4 +147,38 @@ type PullRequestChecksFailedEvent struct {
 
 func (e PullRequestChecksFailedEvent) EventType() string {
 	return EventType_PullRequestChecksFailed
+}
+
+// *--------------------------------------------------------------------------*
+
+// TicketChangeType identifies how a ticket changed on its work platform.
+type TicketChangeType string
+
+const (
+	TicketChange_Created TicketChangeType = "created"
+	TicketChange_Updated TicketChangeType = "updated"
+	TicketChange_Removed TicketChangeType = "removed"
+)
+
+// *--------------------------------------------------------------------------*
+
+// TicketChangedEvent signals that a ticket changed on its work platform
+// (created, updated, or removed), as reported by a verified provider webhook.
+// It carries the issue identity and the state fields the webhook payload
+// provides; PreviousState and NewState are only populated when relevant.
+type TicketChangedEvent struct {
+	Provider        string
+	ChangeType      TicketChangeType
+	IssueId         string
+	IssueIdentifier string
+	TeamId          string
+	Title           string
+	Url             string
+	PreviousState   string
+	NewState        string
+	OccurredAt      time.Time
+}
+
+func (e TicketChangedEvent) EventType() string {
+	return EventType_TicketChanged
 }
