@@ -28,6 +28,9 @@ type DomainEvent interface {
 // EventHandler processes a published domain event.
 type EventHandler func(ctx context.Context, event DomainEvent) error
 
+// TicketChangeType identifies how a ticket changed on its work platform.
+type TicketChangeType string
+
 const (
 	EventType_AgentSessionArchive     = "agent_session.archive"
 	EventType_AgentSessionPrompt      = "agent_session.prompt"
@@ -39,6 +42,12 @@ const (
 	EventType_PullRequestCommented    = "pull_request.comment"
 	EventType_PullRequestChecksFailed = "pull_request.checks_failed"
 	EventType_TicketChanged           = "ticket.changed"
+)
+
+const (
+	TicketChange_Created TicketChangeType = "created"
+	TicketChange_Updated TicketChangeType = "updated"
+	TicketChange_Removed TicketChangeType = "removed"
 )
 
 // *--------------------------------------------------------------------------*
@@ -148,17 +157,6 @@ type PullRequestChecksFailedEvent struct {
 func (e PullRequestChecksFailedEvent) EventType() string {
 	return EventType_PullRequestChecksFailed
 }
-
-// *--------------------------------------------------------------------------*
-
-// TicketChangeType identifies how a ticket changed on its work platform.
-type TicketChangeType string
-
-const (
-	TicketChange_Created TicketChangeType = "created"
-	TicketChange_Updated TicketChangeType = "updated"
-	TicketChange_Removed TicketChangeType = "removed"
-)
 
 // *--------------------------------------------------------------------------*
 
