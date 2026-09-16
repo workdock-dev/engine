@@ -20,6 +20,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -1148,8 +1149,8 @@ func (s *AgentSessionSuite) TestSendGitConnectionRequest() {
 	s.Equal("github", input.SignalMetadata["providerName"])
 }
 
-func (s *AgentSessionSuite) TestSendServerInternalError() {
-	err := s.handler.SendServerInternalError(context.Background(), "sess-1", "token-1")
+func (s *AgentSessionSuite) TestSendError() {
+	err := s.handler.SendError(context.Background(), "sess-1", "token-1", errors.New("Internal Server Error 500"))
 
 	s.Require().NoError(err)
 	s.Require().Len(s.client.activities, 1)
@@ -1159,42 +1160,16 @@ func (s *AgentSessionSuite) TestSendServerInternalError() {
 	}, s.client.activities[0])
 }
 
-func (s *AgentSessionSuite) TestSendRetryScheduled() {
-	err := s.handler.SendRetryScheduled(context.Background(), "sess-1", "token-1")
+func (s *AgentSessionSuite) TestSendError_WrappedErrorUsesFullMessage() {
+	sent := fmt.Errorf("execution failed: %w", errors.New("will be retried automatically"))
+
+	err := s.handler.SendError(context.Background(), "sess-1", "token-1", sent)
 
 	s.Require().NoError(err)
 	s.Require().Len(s.client.activities, 1)
 	s.Equal(types.CreateAgentActivityInput{
 		AgentSessionID: "sess-1",
-		Content:        types.AgentActivityContent{Type: types.AgentActivityContentType_Error, Body: "Execution failed but will be retried automatically."},
-	}, s.client.activities[0])
-}
-
-func (s *AgentSessionSuite) TestSendSandboxCannotStartError_Retriable() {
-	err := s.handler.SendSandboxCannotStartError(context.Background(), "sess-1", "token-1", true)
-
-	s.Require().NoError(err)
-	s.Require().Len(s.client.activities, 1)
-	s.Equal(types.CreateAgentActivityInput{
-		AgentSessionID: "sess-1",
-		Content: types.AgentActivityContent{
-			Type: types.AgentActivityContentType_Error,
-			Body: "The sandbox is in a state that cannot start. This issue is caused by the sandbox provider, not WorkDock. The execution will be retried automatically.",
-		},
-	}, s.client.activities[0])
-}
-
-func (s *AgentSessionSuite) TestSendSandboxCannotStartError_NotRetriable() {
-	err := s.handler.SendSandboxCannotStartError(context.Background(), "sess-1", "token-1", false)
-
-	s.Require().NoError(err)
-	s.Require().Len(s.client.activities, 1)
-	s.Equal(types.CreateAgentActivityInput{
-		AgentSessionID: "sess-1",
-		Content: types.AgentActivityContent{
-			Type: types.AgentActivityContentType_Error,
-			Body: "The sandbox is in a state that cannot start. This issue is caused by the sandbox provider, not WorkDock. Please try again in a few minutes.",
-		},
+		Content:        types.AgentActivityContent{Type: types.AgentActivityContentType_Error, Body: "execution failed: will be retried automatically"},
 	}, s.client.activities[0])
 }
 

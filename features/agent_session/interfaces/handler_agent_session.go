@@ -63,16 +63,8 @@ type HandlerAgentSession interface {
 	// SendGitConnectionRequest indicates the user to grant access to the git hosting provider
 	SendGitConnectionRequest(ctx context.Context, sessionId, accessToken, gitProvider, gitInstallURL string) error
 
-	// SendServerInternalError sends a generic server internal error
-	SendServerInternalError(ctx context.Context, sessionId, accessToken string) error
-
-	// SendRetryScheduled notifies the user the failed execution will be retried
-	SendRetryScheduled(ctx context.Context, sessionId, accessToken string) error
-
-	// SendSandboxCannotStartError notifies the user the sandbox is in a state
-	// that cannot start because of the sandbox provider. retriable indicates
-	// whether the failed execution will be retried automatically
-	SendSandboxCannotStartError(ctx context.Context, sessionId, accessToken string, retriable bool) error
+	// SendError sends the message of the given error to the user
+	SendError(ctx context.Context, sessionId, accessToken string, err error) error
 
 	// GetIssueState returns the workflow state metadata of the ticket
 	GetIssueState(ctx context.Context, issueId, accessToken string) (*IssueState, error)

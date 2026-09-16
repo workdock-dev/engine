@@ -198,47 +198,14 @@ func (h *AgentSessionHandler) SendGitConnectionRequest(ctx context.Context, sess
 	})
 }
 
-// SendServerInternalError notifies the user about an unexpected
-// server-side error via a best-effort Linear activity.
-func (h *AgentSessionHandler) SendServerInternalError(ctx context.Context, sessionId, accessToken string) error {
+// SendError notifies the user about an error via a best-effort Linear
+// activity containing the error's message.
+func (h *AgentSessionHandler) SendError(ctx context.Context, sessionId, accessToken string, err error) error {
 	return h.client.CreateAgentActivity(ctx, accessToken, types.CreateAgentActivityInput{
 		AgentSessionID: sessionId,
 		Content: types.AgentActivityContent{
 			Type: types.AgentActivityContentType_Error,
-			Body: "Internal Server Error 500",
-		},
-	})
-}
-
-// SendRetryScheduled notifies the user the failed execution will be
-// retried automatically via a best-effort Linear activity.
-func (h *AgentSessionHandler) SendRetryScheduled(ctx context.Context, sessionId, accessToken string) error {
-	return h.client.CreateAgentActivity(ctx, accessToken, types.CreateAgentActivityInput{
-		AgentSessionID: sessionId,
-		Content: types.AgentActivityContent{
-			Type: types.AgentActivityContentType_Error,
-			Body: "Execution failed but will be retried automatically.",
-		},
-	})
-}
-
-// SendSandboxCannotStartError notifies the user the sandbox is in a state
-// that cannot start because of an issue on the sandbox provider's side,
-// not on WorkDock's, via a best-effort Linear activity. When the execution
-// will be retried the user is told so; otherwise the user is asked to
-// retry in a few minutes.
-func (h *AgentSessionHandler) SendSandboxCannotStartError(ctx context.Context, sessionId, accessToken string, retriable bool) error {
-	body := "The sandbox is in a state that cannot start. This issue is caused by the sandbox provider, not WorkDock. Please try again in a few minutes."
-
-	if retriable {
-		body = "The sandbox is in a state that cannot start. This issue is caused by the sandbox provider, not WorkDock. The execution will be retried automatically."
-	}
-
-	return h.client.CreateAgentActivity(ctx, accessToken, types.CreateAgentActivityInput{
-		AgentSessionID: sessionId,
-		Content: types.AgentActivityContent{
-			Type: types.AgentActivityContentType_Error,
-			Body: body,
+			Body: err.Error(),
 		},
 	})
 }
