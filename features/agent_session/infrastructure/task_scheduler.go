@@ -44,8 +44,9 @@ const (
 var DefaultHeartbeatInterval = time.Minute
 
 var (
-	errShutdownRequeue    = errors.New("scheduler shutdown")
-	errJobCancelledByUser = errors.New("cancelled by user")
+	errShutdownRequeue      = errors.New("scheduler shutdown")
+	errJobCancelledByUser   = errors.New("cancelled by user")
+	errQueueListenerStopped = errors.New("event queue listener stopped unexpectedly")
 )
 
 type TaskScheduler struct {
@@ -59,7 +60,13 @@ type TaskScheduler struct {
 	closed           bool
 	tracer           trace.Tracer
 	busyWorkers      atomic.Int64
-	metrics          *SchedulerMetrics
+
+	// disconnected reports whether the queue lost its database connection. It
+	// is set when the queue listener stops while the context is still live and
+	// makes the workers skip the post-handler status updates, which cannot
+	// reach a disconnected database.
+	disconnected atomic.Bool
+	metrics      *SchedulerMetrics
 
 	// heartbeatInterval controls the job lease heartbeat period. It defaults
 	// to DefaultHeartbeatInterval and is overridable in tests.
@@ -104,6 +111,11 @@ func NewTaskScheduler(queue interfaces.Queue, config types.TaskSchedulerConfig, 
 
 // Run starts the scheduler, listens for queue notifications, wakes workers
 // when new work may be available, and blocks until the scheduler shuts down.
+// It returns an error when the queue listener stops while the context is still
+// live, which happens when the database drops the listener connection: the
+// workers can no longer persist the state of the jobs they run, so the
+// scheduler stops every running job and the error makes the service exit with
+// an error, letting the infrastructure redeploy it once the database is back.
 func (s *TaskScheduler) Run(ctx context.Context) error {
 	runnable, cancellable, err := s.extQueue.Listen(ctx)
 	slog.Debug("[task-scheduler] listening to queue")
@@ -114,6 +126,7 @@ func (s *TaskScheduler) Run(ctx context.Context) error {
 	}
 
 	var wg sync.WaitGroup
+	var runErr error
 
 	shutdown := func() {
 		s.cond.L.Lock()
@@ -139,6 +152,18 @@ func (s *TaskScheduler) Run(ctx context.Context) error {
 				return
 			case sessionEventIdentifier, ok := <-cancellable:
 				if !ok {
+					// The queue listener closes its channels when it stops. With a
+					// live context that means the queue lost its database
+					// connection: workers can no longer persist the results of
+					// the jobs they run. Mark the scheduler disconnected so the
+					// workers skip the status updates, cancel every running job
+					// so its sandbox stops running, and return an error to make
+					// the service exit instead of idling with a dead queue.
+					if ctx.Err() == nil {
+						s.disconnected.Store(true)
+						runErr = errQueueListenerStopped
+					}
+
 					shutdown()
 					return
 				}
@@ -150,6 +175,11 @@ func (s *TaskScheduler) Run(ctx context.Context) error {
 
 			case _, ok := <-runnable:
 				if !ok {
+					if ctx.Err() == nil {
+						s.disconnected.Store(true)
+						runErr = errQueueListenerStopped
+					}
+
 					shutdown()
 					return
 				}
@@ -171,7 +201,7 @@ func (s *TaskScheduler) Run(ctx context.Context) error {
 	slog.Info("[task-scheduler] worker pool started", "capacity", s.config.Workers)
 	wg.Wait()
 
-	return nil
+	return runErr
 }
 
 // worker waits for notifications that new work may be available, attempts to
@@ -300,6 +330,14 @@ func (s *TaskScheduler) execute(ctx context.Context, job *types.EventJob, starte
 		span.AddEvent("job.cancelled")
 
 		s.metrics.recordJob(ctx, ResultCancelled, "", duration)
+
+		// The queue is disconnected from the database: the status of this job
+		// cannot be persisted, so skip the updates instead of trying to reach
+		// it. The job keeps its running lease, which expires and lets the
+		// redeployed service reclaim it through the lease-based recovery.
+		if s.disconnected.Load() {
+			return
+		}
 
 		if errors.Is(context.Cause(ctx), errJobCancelledByUser) {
 			// The cancel request left the job in 'cancelling' while the handler
