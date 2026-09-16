@@ -345,224 +345,26 @@ func (s *EventQueueSuite) TestClose_Error() {
 // --- Constructor ---
 
 func (s *EventQueueSuite) TestNewEventQueue() {
-	queue := NewEventQueue(s.pool, s.conn, "postgresql://localhost:5432/workdock")
+	queue := NewEventQueue(s.pool, s.conn)
 
 	s.Require().NotNil(queue)
 	s.Equal(s.pool, queue.client)
 	s.Equal(s.conn, queue.conn)
-	s.NotNil(queue.connect)
-	s.Equal(DefaultReconnectInterval, queue.reconnectInterval)
-	s.Equal(DefaultReconnectGracePeriod, queue.reconnectGracePeriod)
 }
 
 // --- Listen notification error paths ---
 
-func (s *EventQueueSuite) TestListen_GivesUpReconnectingAfterGracePeriod() {
+func (s *EventQueueSuite) TestListen_NotificationErrorStopsListener() {
 	s.conn.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		return pgconn.CommandTag{}, nil
 	}
 	s.conn.waitForNotificationFn = func(ctx context.Context) (*pgconn.Notification, error) {
-		// A notification error while the context is still live starts the
-		// reconnect loop; the dialer never succeeds, so the grace period is
-		// exhausted and the listener gives up.
+		// A notification error while the context is still live aborts the listener.
 		return nil, fmt.Errorf("connection lost")
-	}
-	s.queue.reconnectInterval = 20 * time.Millisecond
-	s.queue.reconnectGracePeriod = 100 * time.Millisecond
-	s.queue.connect = func(ctx context.Context) (DBConn, error) {
-		return nil, fmt.Errorf("dial failed")
 	}
 
 	runnableCh, cancellableCh, err := s.queue.Listen(context.Background())
 	s.Require().NoError(err)
-
-	select {
-	case _, ok := <-runnableCh:
-		s.False(ok, "runnable channel should be closed")
-	case <-time.After(2 * time.Second):
-		s.Fail("timed out waiting for runnable channel to close")
-	}
-
-	select {
-	case _, ok := <-cancellableCh:
-		s.False(ok, "cancellable channel should be closed")
-	case <-time.After(2 * time.Second):
-		s.Fail("timed out waiting for cancellable channel to close")
-	}
-
-	// The broken connection must be released before the reconnect attempts.
-	s.True(s.conn.closed)
-}
-
-func (s *EventQueueSuite) TestListen_ReconnectsAndResumesNotifications() {
-	s.conn.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
-		return pgconn.CommandTag{}, nil
-	}
-	s.conn.waitForNotificationFn = func(ctx context.Context) (*pgconn.Notification, error) {
-		return nil, fmt.Errorf("FATAL: terminating connection due to administrator command (SQLSTATE 57P01)")
-	}
-
-	listenSql := ""
-	notified := false
-	reconnected := &mockConn{
-		execFn: func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
-			listenSql = sql
-			return pgconn.CommandTag{}, nil
-		},
-		waitForNotificationFn: func(ctx context.Context) (*pgconn.Notification, error) {
-			if !notified {
-				notified = true
-				return &pgconn.Notification{Channel: "jobs_cancelled", Payload: "evt-1"}, nil
-			}
-			<-ctx.Done()
-			return nil, ctx.Err()
-		},
-	}
-
-	s.queue.reconnectInterval = 10 * time.Millisecond
-	s.queue.reconnectGracePeriod = 2 * time.Second
-	s.queue.connect = func(ctx context.Context) (DBConn, error) {
-		return reconnected, nil
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	_, cancellableCh, err := s.queue.Listen(ctx)
-	s.Require().NoError(err)
-
-	select {
-	case payload := <-cancellableCh:
-		s.Equal("evt-1", payload)
-	case <-time.After(2 * time.Second):
-		s.Fail("timed out waiting for notification after reconnect")
-	}
-
-	// The broken connection was closed and the new one re-subscribed.
-	s.True(s.conn.closed)
-	s.Contains(listenSql, "LISTEN jobs_claimable")
-	s.Contains(listenSql, "LISTEN jobs_cancelled")
-}
-
-func (s *EventQueueSuite) TestListen_ReconnectSignalsRunnableCatchUp() {
-	s.conn.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
-		return pgconn.CommandTag{}, nil
-	}
-	s.conn.waitForNotificationFn = func(ctx context.Context) (*pgconn.Notification, error) {
-		return nil, fmt.Errorf("connection lost")
-	}
-
-	reconnected := &mockConn{
-		execFn: func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
-			return pgconn.CommandTag{}, nil
-		},
-		waitForNotificationFn: func(ctx context.Context) (*pgconn.Notification, error) {
-			<-ctx.Done()
-			return nil, ctx.Err()
-		},
-	}
-
-	s.queue.reconnectInterval = 10 * time.Millisecond
-	s.queue.reconnectGracePeriod = 2 * time.Second
-	s.queue.connect = func(ctx context.Context) (DBConn, error) {
-		return reconnected, nil
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	runnableCh, _, err := s.queue.Listen(ctx)
-	s.Require().NoError(err)
-
-	// No notification is delivered after the reconnect, so the only runnable
-	// signal is the catch-up wake up that makes the workers reclaim jobs
-	// queued while the listener was disconnected.
-	select {
-	case <-runnableCh:
-	case <-time.After(2 * time.Second):
-		s.Fail("timed out waiting for catch-up signal")
-	}
-
-	s.True(s.conn.closed)
-}
-
-func (s *EventQueueSuite) TestListen_ReconnectSubscribeErrorRetries() {
-	s.conn.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
-		return pgconn.CommandTag{}, nil
-	}
-	s.conn.waitForNotificationFn = func(ctx context.Context) (*pgconn.Notification, error) {
-		return nil, fmt.Errorf("connection lost")
-	}
-
-	badConn := &mockConn{
-		execFn: func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
-			return pgconn.CommandTag{}, fmt.Errorf("LISTEN failed")
-		},
-	}
-	notified := false
-	goodConn := &mockConn{
-		execFn: func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
-			return pgconn.CommandTag{}, nil
-		},
-		waitForNotificationFn: func(ctx context.Context) (*pgconn.Notification, error) {
-			if !notified {
-				notified = true
-				return &pgconn.Notification{Channel: "jobs_cancelled", Payload: "evt-2"}, nil
-			}
-			<-ctx.Done()
-			return nil, ctx.Err()
-		},
-	}
-
-	dialCount := 0
-	s.queue.reconnectInterval = 10 * time.Millisecond
-	s.queue.reconnectGracePeriod = 2 * time.Second
-	s.queue.connect = func(ctx context.Context) (DBConn, error) {
-		dialCount++
-		if dialCount == 1 {
-			return badConn, nil
-		}
-		return goodConn, nil
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	_, cancellableCh, err := s.queue.Listen(ctx)
-	s.Require().NoError(err)
-
-	select {
-	case payload := <-cancellableCh:
-		s.Equal("evt-2", payload)
-	case <-time.After(2 * time.Second):
-		s.Fail("timed out waiting for notification after resubscribe")
-	}
-
-	// The dialled connection that failed to subscribe was closed and a fresh
-	// dial re-established the listener.
-	s.True(badConn.closed)
-	s.False(goodConn.closed)
-}
-
-func (s *EventQueueSuite) TestListen_ContextCancelDuringReconnect() {
-	s.conn.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
-		return pgconn.CommandTag{}, nil
-	}
-	s.conn.waitForNotificationFn = func(ctx context.Context) (*pgconn.Notification, error) {
-		return nil, fmt.Errorf("connection lost")
-	}
-	s.queue.reconnectInterval = 50 * time.Millisecond
-	s.queue.reconnectGracePeriod = 10 * time.Second
-	s.queue.connect = func(ctx context.Context) (DBConn, error) {
-		return nil, fmt.Errorf("dial failed")
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	runnableCh, cancellableCh, err := s.queue.Listen(ctx)
-	s.Require().NoError(err)
-
-	time.Sleep(100 * time.Millisecond)
-	cancel()
 
 	select {
 	case _, ok := <-runnableCh:

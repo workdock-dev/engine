@@ -106,8 +106,10 @@ func NewTaskScheduler(queue interfaces.Queue, config types.TaskSchedulerConfig, 
 // Run starts the scheduler, listens for queue notifications, wakes workers
 // when new work may be available, and blocks until the scheduler shuts down.
 // It returns an error when the queue listener stops while the context is still
-// live, which happens when the queue gave up reconnecting to the database, so
-// the service can exit with an error instead of idling without the queue.
+// live, which happens when the database drops the listener connection: the
+// workers can no longer persist the state of the jobs they run, so the
+// scheduler stops every running job and the error makes the service exit with
+// an error, letting the infrastructure redeploy it once the database is back.
 func (s *TaskScheduler) Run(ctx context.Context) error {
 	runnable, cancellable, err := s.extQueue.Listen(ctx)
 	slog.Debug("[task-scheduler] listening to queue")
@@ -144,11 +146,12 @@ func (s *TaskScheduler) Run(ctx context.Context) error {
 				return
 			case sessionEventIdentifier, ok := <-cancellable:
 				if !ok {
-					// The queue listener closes its channels when it stops, and
-					// with a live context that only happens after it gave up
-					// reconnecting to the database. The scheduler cannot receive
-					// queue updates anymore, so it must exit with an error
-					// instead of idling forever.
+					// The queue listener closes its channels when it stops. With a
+					// live context that means the queue lost its database
+					// connection: workers can no longer persist the results of
+					// the jobs they run, so the scheduler stops every job and
+					// returns an error to make the service exit instead of
+					// idling with a dead queue.
 					if ctx.Err() == nil {
 						runErr = errQueueListenerStopped
 					}

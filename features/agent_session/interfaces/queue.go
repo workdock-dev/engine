@@ -35,7 +35,7 @@ type Queue interface {
 	// Listen subscribes to queue changes and returns two channels: one for jobs
 	// ready to run and another for jobs marked for cancellation. Both channels
 	// are closed when the listener stops or the context is cancelled. Closing
-	// them while the context is still live tells the scheduler the queue
-	// connection is unrecoverable and it must exit with an error.
+	// them while the context is still live tells the scheduler the queue lost
+	// its database connection and it must stop all jobs and exit with an error.
 	Listen(ctx context.Context) (<-chan struct{}, <-chan string, error)
 }

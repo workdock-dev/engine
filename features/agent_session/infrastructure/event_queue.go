@@ -44,17 +44,6 @@ var (
 	FailSql string
 )
 
-const (
-	// DefaultReconnectInterval is how often the event queue listener retries
-	// to reconnect to the database after the connection is dropped.
-	DefaultReconnectInterval = 5 * time.Second
-
-	// DefaultReconnectGracePeriod is how long the event queue listener keeps
-	// attempting to reconnect to the database before giving up, letting the
-	// task scheduler exit with an error.
-	DefaultReconnectGracePeriod = 5 * time.Minute
-)
-
 type DBConn interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	WaitForNotification(ctx context.Context) (*pgconn.Notification, error)
@@ -66,27 +55,12 @@ type DBConn interface {
 type EventQueue struct {
 	client shared.PostgresPool
 	conn   DBConn
-
-	// connect dials a fresh listener connection when the database drops the
-	// current one. It is overridable in tests.
-	connect func(ctx context.Context) (DBConn, error)
-
-	// reconnectInterval and reconnectGracePeriod control the listener
-	// self-healing loop. They default to DefaultReconnectInterval and
-	// DefaultReconnectGracePeriod and are overridable in tests.
-	reconnectInterval    time.Duration
-	reconnectGracePeriod time.Duration
 }
 
-func NewEventQueue(client shared.PostgresPool, conn DBConn, databaseUrl string) *EventQueue {
+func NewEventQueue(client shared.PostgresPool, conn DBConn) *EventQueue {
 	return &EventQueue{
-		client:               client,
-		conn:                 conn,
-		reconnectInterval:    DefaultReconnectInterval,
-		reconnectGracePeriod: DefaultReconnectGracePeriod,
-		connect: func(ctx context.Context) (DBConn, error) {
-			return pgx.Connect(ctx, databaseUrl)
-		},
+		conn:   conn,
+		client: client,
 	}
 }
 
@@ -250,17 +224,16 @@ func (q *EventQueue) Fail(ctx context.Context, id string, cause error) error {
 // Listen subscribes to queue changes and returns two channels: one for jobs
 // ready to run and another for jobs marked for cancellation. Both channels are
 // closed when the listener stops or the context is cancelled.
-//
-// The listener self-heals after a database disconnection: it re-dials postgres
-// and re-subscribes every DefaultReconnectInterval until the connection is
-// re-established or DefaultReconnectGracePeriod elapses, so temporary database
-// restarts do not stall the scheduler. Once the grace period is exhausted the
-// channels are closed and the task scheduler exits with an error.
 func (q *EventQueue) Listen(ctx context.Context) (<-chan struct{}, <-chan string, error) {
 	runnableCh := make(chan struct{}, 1)
 	cancellableCh := make(chan string, 32)
 
-	if err := q.subscribe(ctx); err != nil {
+	_, err := q.conn.Exec(ctx, `
+LISTEN jobs_claimable;
+LISTEN jobs_cancelled;
+		`)
+
+	if err != nil {
 		slog.Debug("[agent-session][event-queue][postgres] failed to create listener for jobs updates", "err", err)
 		return runnableCh, cancellableCh, err
 	}
@@ -278,21 +251,7 @@ func (q *EventQueue) Listen(ctx context.Context) (<-chan struct{}, <-chan string
 				}
 
 				slog.Error("[agent-session][event-queue][postgres] event queue listener failed", "err", err)
-				q.closeConn()
-
-				if !q.reconnect(ctx) {
-					return
-				}
-
-				// Notifications emitted while the listener was disconnected
-				// are lost, so wake the workers once to reclaim jobs that
-				// became claimable during the outage.
-				select {
-				case runnableCh <- struct{}{}:
-				default:
-				}
-
-				continue
+				return
 			}
 
 			switch n.Channel {
@@ -312,81 +271,6 @@ func (q *EventQueue) Listen(ctx context.Context) (<-chan struct{}, <-chan string
 	}()
 
 	return runnableCh, cancellableCh, nil
-}
-
-// subscribe issues the LISTEN statements on the current listener connection.
-func (q *EventQueue) subscribe(ctx context.Context) error {
-	_, err := q.conn.Exec(ctx, `
-LISTEN jobs_claimable;
-LISTEN jobs_cancelled;
-		`)
-
-	return err
-}
-
-// reconnect replaces a dropped listener connection with a freshly dialled one
-// and re-subscribes it. Attempts start immediately and repeat every reconnect
-// interval until the connection is re-established or the reconnect grace
-// period elapses. It reports whether the listener connection is usable again.
-func (q *EventQueue) reconnect(ctx context.Context) bool {
-	if q.connect == nil {
-		slog.Error("[agent-session][event-queue][postgres] cannot reconnect the event queue listener, no dialer configured")
-		return false
-	}
-
-	interval := q.reconnectInterval
-	if interval <= 0 {
-		interval = DefaultReconnectInterval
-	}
-
-	grace := q.reconnectGracePeriod
-	if grace <= 0 {
-		grace = DefaultReconnectGracePeriod
-	}
-
-	deadline := time.Now().Add(grace)
-	delay := time.Duration(0)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return false
-		case <-time.After(delay):
-		}
-
-		delay = interval
-
-		dialCtx, cancel := context.WithTimeout(ctx, interval)
-		conn, err := q.connect(dialCtx)
-		cancel()
-
-		if err != nil {
-			slog.Warn("[agent-session][event-queue][postgres] failed to reconnect the event queue listener", "err", err)
-		} else {
-			q.conn = conn
-
-			if err := q.subscribe(ctx); err != nil {
-				slog.Error("[agent-session][event-queue][postgres] failed to subscribe the reconnected event queue listener", "err", err)
-				q.closeConn()
-			} else {
-				slog.Info("[agent-session][event-queue][postgres] event queue listener reconnected")
-				return true
-			}
-		}
-
-		if time.Now().After(deadline) {
-			slog.Error("[agent-session][event-queue][postgres] gave up reconnecting the event queue listener, the task scheduler cannot receive queue updates", "grace_period", grace.String())
-			return false
-		}
-	}
-}
-
-// closeConn releases the current listener connection. A close failure is
-// logged and otherwise ignored: the connection is already broken at this point.
-func (q *EventQueue) closeConn() {
-	if err := q.conn.Close(context.Background()); err != nil {
-		slog.Debug("[agent-session][event-queue][postgres] failed to close the event queue listener connection", "err", err)
-	}
 }
 
 func (q *EventQueue) Close(ctx context.Context) error {

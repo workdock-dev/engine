@@ -278,7 +278,7 @@ func main() {
 		// *-------------------------------------------------------------------------*
 
 		agentSessionPostgres := agent_session_infrastructure.NewPostgres(postgres)
-		agentSessionPostgresQueue := agent_session_infrastructure.NewEventQueue(postgres, postgresRawConn, cfg.Postgres.DatabaseUrl)
+		agentSessionPostgresQueue := agent_session_infrastructure.NewEventQueue(postgres, postgresRawConn)
 
 		err := agent_session.New(
 			ctx,
