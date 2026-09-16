@@ -527,6 +527,116 @@ func (s *TaskSchedulerSuite) TestRun_ShutdownCancelsRunningJobs() {
 	case <-time.After(2 * time.Second):
 		s.Fail("Run did not return in time")
 	}
+
+	// The queue is disconnected: the release write must be skipped.
+	s.Equal(0, q.persistCount())
+}
+
+// TestRun_ShutdownReleasesRunningJobsForRetry verifies that a graceful
+// shutdown, with the queue still connected, releases the running jobs back to
+// the queue instead of leaving them waiting for their lease to expire.
+func (s *TaskSchedulerSuite) TestRun_ShutdownReleasesRunningJobsForRetry() {
+	q := newMockQueueChannels(1)
+	job := &types.EventJob{
+		SessionEventIdentifier: "evt-shutdown-release",
+		QueuedBy:               "sess-1",
+		Attempts:               0,
+	}
+	q.claimJob = job
+
+	handlerStarted := make(chan struct{})
+	handler := func(ctx context.Context, j *types.EventJob) (types.EventJobStatus, error) {
+		q.claimJob = nil
+		close(handlerStarted)
+		<-ctx.Done()
+		return types.EventJobStatus_Failed, ctx.Err()
+	}
+
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- sched.Run(ctx)
+	}()
+
+	q.notifyRunnable()
+
+	select {
+	case <-handlerStarted:
+	case <-time.After(2 * time.Second):
+		s.Fail("handler did not start in time")
+	}
+
+	cancel()
+
+	select {
+	case err := <-done:
+		// The scheduler shuts down gracefully when the context is cancelled,
+		// regardless of the queue channels.
+		s.NoError(err)
+	case <-time.After(2 * time.Second):
+		s.Fail("Run did not return in time")
+	}
+
+	// The queue is still connected: the running job must be released for
+	// retry so it does not wait for its lease to expire.
+	q.assertRetried(s.T(), "evt-shutdown-release", errShutdownRequeue)
+}
+
+// TestRun_QueueDisconnectedSkipsPersistingRunningJobs verifies that when the
+// queue listener stops while the context is live, the running job is cancelled
+// but its status update is skipped: writing to the disconnected database is
+// pointless, and the job is recovered through its lease after the redeploy.
+func (s *TaskSchedulerSuite) TestRun_QueueDisconnectedSkipsPersistingRunningJobs() {
+	q := newMockQueueChannels(1)
+	job := &types.EventJob{
+		SessionEventIdentifier: "evt-disconnect-skip-persist",
+		QueuedBy:               "sess-1",
+		Attempts:               0,
+	}
+	q.claimJob = job
+
+	handlerStarted := make(chan struct{})
+	handler := func(ctx context.Context, j *types.EventJob) (types.EventJobStatus, error) {
+		q.claimJob = nil
+		close(handlerStarted)
+		<-ctx.Done()
+		return types.EventJobStatus_Failed, ctx.Err()
+	}
+
+	sched, _ := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1, MaxAttempts: 2}, handler)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- sched.Run(ctx)
+	}()
+
+	q.notifyRunnable()
+
+	select {
+	case <-handlerStarted:
+	case <-time.After(2 * time.Second):
+		s.Fail("handler did not start in time")
+	}
+
+	close(q.runnable)
+
+	select {
+	case err := <-done:
+		s.ErrorIs(err, errQueueListenerStopped)
+	case <-time.After(2 * time.Second):
+		s.Fail("Run did not return in time")
+	}
+
+	// The job context was cancelled while the queue was disconnected: no
+	// status update may be attempted against the disconnected database.
+	s.Equal(0, q.persistCount())
 }
 
 func (s *TaskSchedulerSuite) TestRun_RunnableChannelClosed() {
@@ -960,6 +1070,14 @@ func (m *mockQueue) failed() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.failedIds) > 0
+}
+
+// persistCount reports how many status writes (Complete, Retry and Fail) the
+// mock recorded.
+func (m *mockQueue) persistCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.completedIds) + len(m.retriedIds) + len(m.failedIds)
 }
 
 func (m *mockQueue) Complete(ctx context.Context, id string, status types.EventJobStatus) error {
