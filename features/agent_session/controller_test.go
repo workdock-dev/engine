@@ -2020,8 +2020,7 @@ func (s *ControllerSuite) TestExecute_PromptError() {
 	s.Error(err)
 	s.ErrorContains(err, "prompt failed")
 	s.Equal(types.EventJobStatus_Failed, status)
-	s.Equal(1, s.agentHdl.internalErrors, "the user must be notified with the internal server error")
-	s.Zero(s.agentHdl.retryScheduled)
+	s.Equal([]error{errServerInternal}, s.agentHdl.sentErrors, "the user must be notified with the internal server error")
 }
 
 func (s *ControllerSuite) TestExecute_PromptError_RetryScheduledWhenJobWillRetry() {
@@ -2038,8 +2037,7 @@ func (s *ControllerSuite) TestExecute_PromptError_RetryScheduledWhenJobWillRetry
 	s.Error(err)
 	s.ErrorContains(err, "prompt failed")
 	s.Equal(types.EventJobStatus_Failed, status)
-	s.Equal(1, s.agentHdl.retryScheduled, "the user must be told the execution will be retried")
-	s.Zero(s.agentHdl.internalErrors)
+	s.Equal([]error{errExecutionRetried}, s.agentHdl.sentErrors, "the user must be told the execution will be retried")
 }
 
 func (s *ControllerSuite) TestExecute_GitAccessError() {
@@ -2054,8 +2052,7 @@ func (s *ControllerSuite) TestExecute_GitAccessError() {
 	s.Error(err)
 	s.ErrorContains(err, "git lookup failed")
 	s.Equal(types.EventJobStatus_Failed, status)
-	s.Equal(1, s.agentHdl.internalErrors, "the user must be notified with the internal server error")
-	s.Zero(s.agentHdl.retryScheduled)
+	s.Equal([]error{errServerInternal}, s.agentHdl.sentErrors, "the user must be notified with the internal server error")
 }
 
 func (s *ControllerSuite) TestExecute_AwaitingAction() {
@@ -2084,8 +2081,38 @@ func (s *ControllerSuite) TestExecute_SandboxError() {
 	s.Error(err)
 	s.ErrorContains(err, "sandbox failed")
 	s.Equal(types.EventJobStatus_Failed, status)
-	s.Equal(1, s.agentHdl.internalErrors, "the user must be notified with the internal server error")
-	s.Zero(s.agentHdl.retryScheduled)
+	s.Equal([]error{errServerInternal}, s.agentHdl.sentErrors, "the user must be notified with the internal server error")
+}
+
+func (s *ControllerSuite) TestExecute_SandboxCannotStart_Retriable() {
+	s.prepareExecutable()
+	s.sandboxHdl.runFn = func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
+		return nil, fmt.Errorf("start failed: %w", interfaces.ErrSandboxCannotStart)
+	}
+
+	job := &types.EventJob{SessionEventIdentifier: "evt-1", Attempts: 1}
+	job.SetMaxAttempts(2)
+
+	status, err := s.c.execute(context.Background(), job)
+
+	s.Error(err)
+	s.ErrorIs(err, interfaces.ErrSandboxCannotStart)
+	s.Equal(types.EventJobStatus_Failed, status)
+	s.Equal([]error{errSandboxCannotStartRetried}, s.agentHdl.sentErrors, "the user must be told the sandbox cannot start and it will be retried")
+}
+
+func (s *ControllerSuite) TestExecute_SandboxCannotStart_NotRetriable() {
+	s.prepareExecutable()
+	s.sandboxHdl.runFn = func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
+		return nil, fmt.Errorf("start failed: %w", interfaces.ErrSandboxCannotStart)
+	}
+
+	status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
+
+	s.Error(err)
+	s.ErrorIs(err, interfaces.ErrSandboxCannotStart)
+	s.Equal(types.EventJobStatus_Failed, status)
+	s.Equal([]error{errSandboxCannotStartRetrySoon}, s.agentHdl.sentErrors, "the user must be told to retry in a few minutes")
 }
 
 func (s *ControllerSuite) TestExecute_HarnessError() {
@@ -2111,8 +2138,7 @@ func (s *ControllerSuite) TestExecute_HarnessError() {
 	s.Error(err)
 	s.ErrorContains(err, "harness failed")
 	s.Equal(types.EventJobStatus_Failed, status)
-	s.Equal(1, s.agentHdl.internalErrors, "the user must be notified with the internal server error")
-	s.Zero(s.agentHdl.retryScheduled)
+	s.Equal([]error{errServerInternal}, s.agentHdl.sentErrors, "the user must be notified with the internal server error")
 }
 
 func (s *ControllerSuite) TestExecute_HarnessError_RetryScheduledWhenJobWillRetry() {
@@ -2139,8 +2165,7 @@ func (s *ControllerSuite) TestExecute_HarnessError_RetryScheduledWhenJobWillRetr
 	s.Error(err)
 	s.ErrorContains(err, "harness failed")
 	s.Equal(types.EventJobStatus_Failed, status)
-	s.Equal(1, s.agentHdl.retryScheduled, "the user must be told the execution will be retried")
-	s.Zero(s.agentHdl.internalErrors)
+	s.Equal([]error{errExecutionRetried}, s.agentHdl.sentErrors, "the user must be told the execution will be retried")
 }
 
 func (s *ControllerSuite) TestExecute_HarnessError_ContextCancelled_NoErrorMessage() {
@@ -2168,8 +2193,7 @@ func (s *ControllerSuite) TestExecute_HarnessError_ContextCancelled_NoErrorMessa
 
 	s.Error(err)
 	s.Equal(types.EventJobStatus_Failed, status)
-	s.Zero(s.agentHdl.internalErrors, "cancelled jobs must not notify an internal server error")
-	s.Zero(s.agentHdl.retryScheduled, "cancelled jobs must not notify a scheduled retry")
+	s.Empty(s.agentHdl.sentErrors, "cancelled jobs must not notify an error to the user")
 }
 
 func (s *ControllerSuite) TestExecute_Success_WithPullRequestResult() {
@@ -2573,7 +2597,7 @@ func (s *ControllerSuite) TestHarness_ParseCallbacksForwardsToAgentHandler() {
 	s.Equal("approve", s.agentHdl.actions[0].Name)
 	s.Require().Len(s.agentHdl.elicitations, 1)
 	s.Equal("pick one", s.agentHdl.elicitations[0].Question)
-	s.Equal(1, s.agentHdl.internalErrors)
+	s.Equal([]error{errServerInternal}, s.agentHdl.sentErrors)
 }
 
 func (s *ControllerSuite) TestHarness_UnhealthyForwardsStderrToUser() {

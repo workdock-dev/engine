@@ -48,6 +48,12 @@ var (
 
 	//go:embed prompts/prompt_templ_pr_review.txt
 	PromptTemplate_PullRequestChecksFailed string
+
+	// Message errors whose text is sent to the user by reportExecutionError.
+	errServerInternal              = errors.New("Internal Server Error 500")
+	errExecutionRetried            = errors.New("Execution failed but will be retried automatically.")
+	errSandboxCannotStartRetried   = errors.New("The sandbox is in a state that cannot start. This issue is caused by the sandbox provider, not WorkDock. The execution will be retried automatically.")
+	errSandboxCannotStartRetrySoon = errors.New("The sandbox is in a state that cannot start. This issue is caused by the sandbox provider, not WorkDock. Please try again in a few minutes.")
 )
 
 type AgentHandlerRegistry map[string]interfaces.HandlerAgentSession
@@ -662,7 +668,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	})
 
 	if err != nil {
-		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential)
+		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential, err)
 		return types.EventJobStatus_Failed, err
 	}
 
@@ -675,7 +681,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	})
 
 	if err != nil {
-		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential)
+		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential, err)
 		return types.EventJobStatus_Failed, err
 	}
 
@@ -752,7 +758,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	}()
 
 	if err != nil {
-		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential)
+		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential, err)
 		return types.EventJobStatus_Failed, err
 	}
 
@@ -773,7 +779,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 			sessionEvent,
 		)
 	}); err != nil {
-		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential)
+		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential, err)
 		return types.EventJobStatus_Failed, err
 	}
 
@@ -781,27 +787,41 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 }
 
 // reportExecutionError notifies the user about a failed agent session execution.
-// When the job is going to be retried, the user is told the execution will be
-// retried; otherwise a generic server internal error is reported. Jobs whose
-// context was cancelled are not reported because the scheduler handles their
-// cancellation separately and platform calls would fail on a cancelled context.
+// When the sandbox is in a state that cannot start, the user is told the issue
+// is on the sandbox provider's side and whether the execution will be retried
+// automatically or should be retried manually in a few minutes. Any other
+// failure is reported as a scheduled retry when the job will be retried, or a
+// generic server internal error otherwise. Jobs whose context was cancelled
+// are not reported because the scheduler handles their cancellation separately
+// and platform calls would fail on a cancelled context.
 func (c *controller) reportExecutionError(
 	ctx context.Context,
 	job *types.EventJob,
 	session *types.Session,
 	agentHandler interfaces.HandlerAgentSession,
 	credential string,
+	err error,
 ) {
 	if ctx.Err() != nil {
 		return
 	}
 
-	if job.WillRetry() {
-		agentHandler.SendRetryScheduled(ctx, session.Identifier, credential)
+	if errors.Is(err, interfaces.ErrSandboxCannotStart) {
+		if job.WillRetry() {
+			agentHandler.SendError(ctx, session.Identifier, credential, errSandboxCannotStartRetried)
+			return
+		}
+
+		agentHandler.SendError(ctx, session.Identifier, credential, errSandboxCannotStartRetrySoon)
 		return
 	}
 
-	agentHandler.SendServerInternalError(ctx, session.Identifier, credential)
+	if job.WillRetry() {
+		agentHandler.SendError(ctx, session.Identifier, credential, errExecutionRetried)
+		return
+	}
+
+	agentHandler.SendError(ctx, session.Identifier, credential, errServerInternal)
 }
 
 func (c *controller) getHandlers(session *types.Session) (
@@ -1213,7 +1233,7 @@ func (c *controller) harness(
 
 			// sendServerInternalError sends a generic server internal error
 			func(ctx context.Context) error {
-				return agentHandler.SendServerInternalError(ctx, session.Identifier, agentHandlerCredential)
+				return agentHandler.SendError(ctx, session.Identifier, agentHandlerCredential, errServerInternal)
 			},
 		)
 	})

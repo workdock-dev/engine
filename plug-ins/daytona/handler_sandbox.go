@@ -460,6 +460,13 @@ func (h *SandboxHandler) start(ctx context.Context, sandbox *daytona.Sandbox, co
 		}
 
 		slog.Error("[sandbox][daytona] failed to start", "err", err, "event_identifier", config.SessionEvent.Identifier)
+
+		// The sandbox is in a provider-side state from which it cannot start;
+		// the sentinel lets the engine tell the user it is not WorkDock's fault.
+		if sandbox.State == daytona.SandboxStateError || sandbox.State == daytona.SandboxStateBuildFailed {
+			return fmt.Errorf("%w: sandbox is in state %s because of the sandbox provider (%w)", agent_session_interfaces.ErrSandboxCannotStart, sandbox.State, err)
+		}
+
 		return err
 	}
 

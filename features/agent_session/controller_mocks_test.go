@@ -35,8 +35,7 @@ type mockAgentHandler struct {
 	sendActionFn          func(ctx context.Context, sessionId, accessToken string, action types.AgentAction) error
 	sendElicitationFn     func(ctx context.Context, sessionId, accessToken string, elicitation types.AgentElicitation) error
 	sendGitConnectionRqFn func(ctx context.Context, sessionId, accessToken, gitProvider, gitInstallURL string) error
-	sendInternalErrFn     func(ctx context.Context, sessionId, accessToken string) error
-	sendRetryScheduledFn  func(ctx context.Context, sessionId, accessToken string) error
+	sendErrorFn           func(ctx context.Context, sessionId, accessToken string, err error) error
 	getIssueStateFn       func(ctx context.Context, issueId, accessToken string) (*interfaces.IssueState, error)
 	transitionStartedFn   func(ctx context.Context, issueId, accessToken string) error
 	transitionInReviewFn  func(ctx context.Context, issueId, accessToken string) error
@@ -46,8 +45,7 @@ type mockAgentHandler struct {
 	gitRequests          []gitRequest
 	actions              []types.AgentAction
 	elicitations         []types.AgentElicitation
-	internalErrors       int
-	retryScheduled       int
+	sentErrors           []error
 	transitionStarted    []string
 	transitionedInReview []string
 }
@@ -135,18 +133,10 @@ func (m *mockAgentHandler) SendGitConnectionRequest(ctx context.Context, session
 	return nil
 }
 
-func (m *mockAgentHandler) SendServerInternalError(ctx context.Context, sessionId, accessToken string) error {
-	m.internalErrors++
-	if m.sendInternalErrFn != nil {
-		return m.sendInternalErrFn(ctx, sessionId, accessToken)
-	}
-	return nil
-}
-
-func (m *mockAgentHandler) SendRetryScheduled(ctx context.Context, sessionId, accessToken string) error {
-	m.retryScheduled++
-	if m.sendRetryScheduledFn != nil {
-		return m.sendRetryScheduledFn(ctx, sessionId, accessToken)
+func (m *mockAgentHandler) SendError(ctx context.Context, sessionId, accessToken string, err error) error {
+	m.sentErrors = append(m.sentErrors, err)
+	if m.sendErrorFn != nil {
+		return m.sendErrorFn(ctx, sessionId, accessToken, err)
 	}
 	return nil
 }

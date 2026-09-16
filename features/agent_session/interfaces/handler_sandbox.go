@@ -16,9 +16,15 @@ package interfaces
 
 import (
 	"context"
+	"errors"
 
 	"github.com/workdock-dev/engine/features/agent_session/types"
 )
+
+// ErrSandboxCannotStart is returned by sandbox implementations when the
+// sandbox is in a state that cannot start because of an issue on the
+// sandbox provider's side, not on the engine's side.
+var ErrSandboxCannotStart = errors.New("sandbox is in a state that cannot start")
 
 type SandboxShutdown = func(ctx context.Context) string
 
