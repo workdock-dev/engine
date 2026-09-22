@@ -101,7 +101,7 @@ func TestHarnessSuite(t *testing.T) {
 
 func (s *HarnessSuite) SetupTest() {
 	s.handler = *NewHarnessHandler(types.Config{
-		Version: "0.85.1",
+		Version: "0.87.0",
 	}).(*HarnessHandler)
 
 	s.harnessConfig = &agent_session_interfaces.HarnessConfig{
@@ -168,7 +168,7 @@ func (s *HarnessSuite) TestGetConfigurationCommands_ReplacesVersionArg() {
 
 	s.Require().Len(commands, 1)
 	s.NotContains(commands[0], "VERSION_ARG")
-	s.Contains(commands[0], "pi-coding-agent@0.85.1")
+	s.Contains(commands[0], "pi-coding-agent@0.87.0")
 }
 
 func (s *HarnessSuite) TestGetCommands_Nil() {
@@ -686,6 +686,35 @@ func (s *HarnessSuite) TestParse_MessageEnd_UserMessageIsIgnored() {
 	if ok {
 		s.Equal(int64(0), s.sumInt64(messageCount))
 	}
+}
+
+func (s *HarnessSuite) TestParse_MessageEnd_SystemMessageWithStringContentIsIgnored() {
+	systemMessage := []byte(`{
+		"type":"message_end",
+		"message":{"role":"system","content":"","sections":{"preamble":"system prompt"}}
+	}`)
+
+	rec := s.parse(context.Background(),
+		systemMessage,
+		wire("message_end", func(e *types.WireEvent) {
+			e.Message = assistantMessage(func(m *types.AssistantMessage) {
+				m.Content = []types.MessageContent{{Type: "text", Text: "final answer"}}
+			})
+		}),
+	)
+
+	s.Equal([]string{"final answer", ""}, rec.responses)
+	s.Empty(rec.thoughts)
+	s.Equal(0, rec.serverErrors)
+}
+
+func (s *HarnessSuite) TestParse_MessageEnd_AssistantMessageWithStringContentSendsText() {
+	rec := s.parse(context.Background(), []byte(`{
+		"type":"message_end",
+		"message":{"role":"assistant","content":"final answer"}
+	}`))
+
+	s.Equal([]string{"final answer", ""}, rec.responses)
 }
 
 func (s *HarnessSuite) TestParse_MessageEnd_ToolResultMessageIsIgnored() {

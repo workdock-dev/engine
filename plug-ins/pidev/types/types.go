@@ -18,6 +18,12 @@
 // https://pi.dev/docs/latest/json
 package types
 
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+)
+
 // MessageContent is one of the content blocks of an assistant message.
 type MessageContent struct {
 	Type string `json:"type"`
@@ -60,6 +66,47 @@ type AssistantMessage struct {
 	StopReason   string           `json:"stopReason"`
 	ErrorMessage string           `json:"errorMessage,omitempty"`
 	Timestamp    int64            `json:"timestamp"`
+}
+
+// UnmarshalJSON accepts Pi's legacy content-block array and the string
+// content used by system messages in Pi 0.86.0 and later.
+func (m *AssistantMessage) UnmarshalJSON(data []byte) error {
+	type assistantMessage AssistantMessage
+
+	raw := struct {
+		Content json.RawMessage `json:"content"`
+		*assistantMessage
+	}{
+		assistantMessage: (*assistantMessage)(m),
+	}
+
+	m.Content = nil
+
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	content := bytes.TrimSpace(raw.Content)
+
+	if len(content) == 0 || bytes.Equal(content, []byte("null")) {
+		return nil
+	}
+
+	switch content[0] {
+	case '[':
+		return json.Unmarshal(content, &m.Content)
+	case '"':
+		var text string
+
+		if err := json.Unmarshal(content, &text); err != nil {
+			return err
+		}
+
+		m.Content = []MessageContent{{Type: "text", Text: text}}
+		return nil
+	default:
+		return fmt.Errorf("message content must be an array or string")
+	}
 }
 
 // ResultContent is one of the content blocks of a tool result.
