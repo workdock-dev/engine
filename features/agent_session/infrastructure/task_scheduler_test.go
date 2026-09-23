@@ -125,6 +125,50 @@ func (s *TaskSchedulerSuite) TestRun_ShutdownCleanly() {
 	}
 }
 
+func (s *TaskSchedulerSuite) TestRun_ShutdownReturnsAfterGracePeriodForBlockedWorker() {
+	q := newMockQueueChannels(1)
+	q.claimJob = &types.EventJob{SessionEventIdentifier: "evt-blocked-worker"}
+
+	handlerStarted := make(chan struct{})
+	handlerRelease := make(chan struct{})
+	handler := func(ctx context.Context, job *types.EventJob) (types.EventJobStatus, error) {
+		close(handlerStarted)
+		<-handlerRelease
+		return types.EventJobStatus_Succeeded, nil
+	}
+
+	sched, err := NewTaskScheduler(q, types.TaskSchedulerConfig{Workers: 1}, handler)
+	s.Require().NoError(err)
+
+	originalGracePeriod := DefaultShutdownGracePeriod
+	DefaultShutdownGracePeriod = 50 * time.Millisecond
+	defer func() {
+		DefaultShutdownGracePeriod = originalGracePeriod
+		close(handlerRelease)
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- sched.Run(ctx)
+	}()
+
+	q.notifyRunnable()
+	select {
+	case <-handlerStarted:
+	case <-time.After(2 * time.Second):
+		s.Fail("handler did not start in time")
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		s.NoError(err)
+	case <-time.After(time.Second):
+		s.Fail("Run did not return after the shutdown grace period")
+	}
+}
+
 func (s *TaskSchedulerSuite) TestRun_ClaimErrorJobNotRunnable() {
 	q := newMockQueueChannels(1)
 	q.claimErr = interfaces.ErrJobNotRunnable

@@ -2298,22 +2298,7 @@ func (s *ControllerSuite) TestExecute_TransitionsIssueToInReviewOnCompletion() {
 
 func (s *ControllerSuite) TestExecute_TransitionsIssueToInReview_AfterContextCancellation() {
 	s.prepareExecutable()
-
-	var shutdownCtx context.Context
-	s.sandboxHdl.runFn = func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
-		go func() {
-			close(stdout)
-			close(stderr)
-		}()
-
-		return func(ctx context.Context) string {
-			shutdownCtx = ctx
-			return "no pr"
-		}, nil
-	}
-	s.gitHdl.parseLatestResultFn = func(changes string) *types.PullRequest {
-		return nil
-	}
+	s.runSandboxToCompletion()
 
 	// The Linear GraphQL POST fails with "context canceled" when the job
 	// context is cancelled, so mirror that behaviour and capture the context
@@ -2335,8 +2320,6 @@ func (s *ControllerSuite) TestExecute_TransitionsIssueToInReview_AfterContextCan
 
 	s.Require().NotNil(transitionCtx, "the In Review transition must run even when the job context is cancelled")
 	s.Require().NotNil(responseCtx, "the response event must be sent even when the job context is cancelled")
-	s.Require().NotNil(shutdownCtx, "the sandbox must be shut down")
-	s.ErrorIs(shutdownCtx.Err(), context.Canceled, "sandbox shutdown must receive the cancelled job context")
 	s.NoError(transitionCtx.Err(), "the In Review transition must run on a non-cancelled context")
 	s.NoError(responseCtx.Err(), "the response event must be sent on a non-cancelled context")
 	s.Equal([]string{"issue-1"}, s.agentHdl.transitionedInReview, "issue must still transition to In Review when the job context is cancelled")

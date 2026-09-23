@@ -43,6 +43,10 @@ const (
 // observe heartbeats within a reasonable test window.
 var DefaultHeartbeatInterval = time.Minute
 
+// DefaultShutdownGracePeriod lets workers finish their existing cleanup
+// before a cancelled scheduler returns.
+var DefaultShutdownGracePeriod = 10 * time.Second
+
 var (
 	errShutdownRequeue      = errors.New("scheduler shutdown")
 	errJobCancelledByUser   = errors.New("cancelled by user")
@@ -127,6 +131,12 @@ func (s *TaskScheduler) Run(ctx context.Context) error {
 
 	var wg sync.WaitGroup
 	var runErr error
+	var runErrMu sync.Mutex
+	setRunErr := func(err error) {
+		runErrMu.Lock()
+		runErr = err
+		runErrMu.Unlock()
+	}
 
 	shutdown := func() {
 		s.cond.L.Lock()
@@ -161,7 +171,7 @@ func (s *TaskScheduler) Run(ctx context.Context) error {
 					// the service exit instead of idling with a dead queue.
 					if ctx.Err() == nil {
 						s.disconnected.Store(true)
-						runErr = errQueueListenerStopped
+						setRunErr(errQueueListenerStopped)
 					}
 
 					shutdown()
@@ -177,7 +187,7 @@ func (s *TaskScheduler) Run(ctx context.Context) error {
 				if !ok {
 					if ctx.Err() == nil {
 						s.disconnected.Store(true)
-						runErr = errQueueListenerStopped
+						setRunErr(errQueueListenerStopped)
 					}
 
 					shutdown()
@@ -199,8 +209,27 @@ func (s *TaskScheduler) Run(ctx context.Context) error {
 	}
 
 	slog.Info("[task-scheduler] worker pool started", "capacity", s.config.Workers)
-	wg.Wait()
 
+	workersStopped := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(workersStopped)
+	}()
+
+	select {
+	case <-workersStopped:
+	case <-ctx.Done():
+		shutdown()
+
+		select {
+		case <-workersStopped:
+		case <-time.After(DefaultShutdownGracePeriod):
+			slog.Warn("[task-scheduler] workers did not stop before shutdown grace period elapsed")
+		}
+	}
+
+	runErrMu.Lock()
+	defer runErrMu.Unlock()
 	return runErr
 }
 
