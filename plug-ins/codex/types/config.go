@@ -15,8 +15,8 @@
 package types
 
 type Config struct {
-	Version        string `yaml:"version"`
-	Model          string `yaml:"model"`
+	Version         string `yaml:"version"`
+	Model           string `yaml:"model"`
 	ReasoningEffort string `yaml:"reasoning_effort"`
-	AuthJson       string `yaml:"auth_json"`
+	AuthJson        string `yaml:"auth_json"`
 }

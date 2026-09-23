@@ -36,8 +36,8 @@ func TestHarnessSuite(t *testing.T) {
 
 func (s *HarnessSuite) SetupTest() {
 	s.handler = NewHarnessHandler(types.Config{
-		Version:        "0.1.0",
-		Model:          "gpt-5.6-sol",
+		Version:         "0.1.0",
+		Model:           "gpt-5.6-sol",
 		ReasoningEffort: "medium",
 	}).(*HarnessHandler)
 }
@@ -77,9 +77,9 @@ func (s *HarnessSuite) TestGetConfigFileConfiguresMCPs() {
 			AuthSecretEnvVar: "MCP_TOKEN",
 		},
 		{
-			Name:            "custom-header",
-			Url:             "https://custom.example.com",
-			AuthHeaderKey:   "X-API-Key",
+			Name:             "custom-header",
+			Url:              "https://custom.example.com",
+			AuthHeaderKey:    "X-API-Key",
 			AuthSecretEnvVar: "CUSTOM_TOKEN",
 		},
 	}})
@@ -141,7 +141,10 @@ func (s *HarnessSuite) TestParseForwardsCompletedItems() {
 		"evt-1",
 		func(ctx context.Context, text string) error { thoughts = append(thoughts, text); return nil },
 		func(ctx context.Context, text string) error { responses = append(responses, text); return nil },
-		func(ctx context.Context, action agent_session_types.AgentAction) error { actions = append(actions, action); return nil },
+		func(ctx context.Context, action agent_session_types.AgentAction) error {
+			actions = append(actions, action)
+			return nil
+		},
 		func(ctx context.Context, elicitation agent_session_types.AgentElicitation) error { return nil },
 		func(ctx context.Context) error { return nil },
 	)
