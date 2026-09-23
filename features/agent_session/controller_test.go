@@ -193,7 +193,7 @@ func (s *ControllerSuite) SetupTest() {
 		agentHandlerRegistry:      AgentHandlerRegistry{"linear": s.agentHdl},
 		gitHostingHandlerRegistry: GitHandlerRegistry{"github": s.gitHdl},
 		sandboxHandlerRegistry:    SandboxHandlerRegistry{"daytona": s.sandboxHdl},
-		harnessHandlerRegistry:    HarnessHandlerRegistry{"pidev": s.harnessHdl},
+		harnessHandlerRegistry:    HarnessHandlerRegistry{"codex": s.harnessHdl},
 		mcpHandler:                s.mcpHdl,
 		organization:              s.orgRepo,
 		git:                       s.gitRepo,
@@ -236,7 +236,7 @@ func (s *ControllerSuite) TestNew_SubscribesAndRunsScheduler() {
 			AgentHandlerRegistry{"linear": s.agentHdl},
 			GitHandlerRegistry{"github": s.gitHdl},
 			SandboxHandlerRegistry{"daytona": s.sandboxHdl},
-			HarnessHandlerRegistry{"pidev": s.harnessHdl},
+			HarnessHandlerRegistry{"codex": s.harnessHdl},
 			s.mcpHdl,
 			s.eventBus,
 			s.secretMgr,
@@ -273,7 +273,7 @@ func (s *ControllerSuite) TestNew_DisabledSchedulerDoesNotRun() {
 		AgentHandlerRegistry{"linear": s.agentHdl},
 		GitHandlerRegistry{"github": s.gitHdl},
 		SandboxHandlerRegistry{"daytona": s.sandboxHdl},
-		HarnessHandlerRegistry{"pidev": s.harnessHdl},
+		HarnessHandlerRegistry{"codex": s.harnessHdl},
 		s.mcpHdl,
 		s.eventBus,
 		s.secretMgr,
@@ -305,7 +305,7 @@ func (s *ControllerSuite) TestNew_SchedulerInitError() {
 		AgentHandlerRegistry{"linear": s.agentHdl},
 		GitHandlerRegistry{"github": s.gitHdl},
 		SandboxHandlerRegistry{"daytona": s.sandboxHdl},
-		HarnessHandlerRegistry{"pidev": s.harnessHdl},
+		HarnessHandlerRegistry{"codex": s.harnessHdl},
 		s.mcpHdl,
 		s.eventBus,
 		s.secretMgr,
@@ -1383,12 +1383,12 @@ func (s *ControllerSuite) TestGetHandlers_MissingSandboxHandler() {
 }
 
 func (s *ControllerSuite) TestGetHandlers_MissingHarnessHandler() {
-	delete(s.c.harnessHandlerRegistry, "pidev")
+	delete(s.c.harnessHandlerRegistry, string(shared.HarnessProvider_Codex))
 
 	_, _, _, _, err := s.c.getHandlers(newTestSession())
 
 	s.Error(err)
-	s.ErrorContains(err, "provider pidev not configured for harness handler")
+	s.ErrorContains(err, "provider codex not configured for harness handler")
 }
 
 // ---------------------------------------------------------------------------

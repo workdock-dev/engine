@@ -109,6 +109,14 @@ pidev:
     models:
       - id: "glm-5.3-flash:cloud"
 
+codex:
+  version: "0.156.1"
+  model: "gpt-6-luna"
+  reasoning_effort: "medium"
+  # Run `codex login` outside Workdock and paste the resulting ~/.codex/auth.json
+  # content here. This file contains credentials; protect config.yaml accordingly.
+  auth_json: ""
+
 github:
   bot_login_id: "workdock[bot]"
   client_id: "replace-with-github-app-client-id"

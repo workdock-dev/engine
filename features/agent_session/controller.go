@@ -851,11 +851,10 @@ func (c *controller) getHandlers(session *types.Session) (
 		return nil, nil, nil, nil, fmt.Errorf("[agent-session] provider %s not configured for sandbox handler", shared.PlatformProvider_Daytona)
 	}
 
-	// TODO: Make this dynamic
-	harnessHandler, ok := c.harnessHandlerRegistry[string(shared.HarnessProvider_PiDev)]
+	harnessHandler, ok := c.harnessHandlerRegistry[string(shared.HarnessProvider_Codex)]
 
 	if !ok {
-		return nil, nil, nil, nil, fmt.Errorf("[agent-session] provider %s not configured for harness handler", shared.HarnessProvider_PiDev)
+		return nil, nil, nil, nil, fmt.Errorf("[agent-session] provider %s not configured for harness handler", shared.HarnessProvider_Codex)
 	}
 
 	return agentHandler, gitHandler, sandboxHandler, harnessHandler, nil
@@ -1138,6 +1137,7 @@ func (c *controller) harness(
 	lastOutput.Store(time.Now().UnixNano())
 	part := make(chan []byte, 100)
 	done := make(chan struct{})
+	parseDone := make(chan struct{})
 
 	heartbeat := func() {
 		lastOutput.Store(time.Now().UnixNano())
@@ -1205,6 +1205,7 @@ func (c *controller) harness(
 	// *-------------------------------------------------------------------------*
 
 	wg.Go(func() error {
+		defer close(parseDone)
 		return harnessHandler.Parse(
 			ctx,
 			harnessConfig,
@@ -1249,6 +1250,8 @@ func (c *controller) harness(
 
 		for stdout != nil || stderr != nil {
 			select {
+			case <-parseDone:
+				return nil
 			case chunk, ok := <-stdout:
 				if !ok {
 					stdout = nil
@@ -1259,6 +1262,8 @@ func (c *controller) harness(
 						if json.Valid(out) {
 							select {
 							case part <- out:
+							case <-parseDone:
+								return nil
 							case <-ctx.Done():
 								return ctx.Err()
 							}
@@ -1289,6 +1294,8 @@ func (c *controller) harness(
 					if json.Valid(message) {
 						select {
 						case part <- message:
+						case <-parseDone:
+							return nil
 						case <-ctx.Done():
 							return ctx.Err()
 						}
