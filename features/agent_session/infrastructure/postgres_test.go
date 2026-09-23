@@ -645,6 +645,13 @@ func (s *PostgresSuite) TestUpsertConnection_Success() {
 	s.Equal("install-1", *connection.SessionEventIdentifier)
 }
 
+func (s *PostgresSuite) TestUpsertConnection_UpdatesPendingSessionEventOnConflict() {
+	s.Contains(
+		UpsertGitConnectionSql,
+		"session_event_identifier = COALESCE(EXCLUDED.session_event_identifier, git_connections.session_event_identifier)",
+	)
+}
+
 func (s *PostgresSuite) TestUpsertConnection_Error() {
 	s.pool.queryRowFn = func(ctx context.Context, sql string, args ...any) pgx.Row {
 		return &mockRow{scanFn: func(dest ...any) error { return fmt.Errorf("db error") }}
