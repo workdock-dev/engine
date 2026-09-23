@@ -1016,14 +1016,6 @@ func (c *controller) sandbox(
 
 	// TODO: dynamicly inject harness configuration
 
-	if authentication, required := harnessHandler.GetAuthentication(session); required {
-		if authentication == nil {
-			return nil, nil, nil, nil, fmt.Errorf("[agent-session] harness requires authentication but none is configured")
-		}
-
-		fileUploads[authentication.CredentialFilePath] = authentication.Credential
-	}
-
 	if c.mcpHandler != nil {
 		harnessConfig.Mcps = c.mcpHandler.GetMCPList()
 

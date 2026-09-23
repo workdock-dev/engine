@@ -58,10 +58,6 @@ func NewHarnessHandler(config types.Config) agent_session_interfaces.HandlerHarn
 	}
 }
 
-func (h *HarnessHandler) GetAuthentication(session *agent_session_types.Session) (*agent_session_interfaces.HarnessAuthentication, bool) {
-	return nil, false
-}
-
 func (h *HarnessHandler) GetConfigurationCommands() []string {
 	return []string{
 		strings.ReplaceAll(OPENCODE_INSTALL, "VERSION_ARG", h.config.Version),

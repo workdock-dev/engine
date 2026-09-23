@@ -105,18 +105,13 @@ func (h *HarnessHandler) GetConfigFile(config *agent_session_interfaces.HarnessC
 }
 
 func (h *HarnessHandler) GetFiles(config *agent_session_interfaces.HarnessConfig) ([]map[string][]byte, error) {
-	return nil, nil
-}
-
-func (h *HarnessHandler) GetAuthentication(session *agent_session_types.Session) (*agent_session_interfaces.HarnessAuthentication, bool) {
 	if h.config.AuthJson == "" {
-		return nil, true
+		err := fmt.Errorf("[codex] auth.json is not configured")
+		slog.Error("[codex] auth.json is not configured", "err", err)
+		return nil, err
 	}
 
-	return &agent_session_interfaces.HarnessAuthentication{
-		CredentialFilePath: AUTH_FILE_PATH,
-		Credential:         []byte(h.config.AuthJson),
-	}, true
+	return []map[string][]byte{{AUTH_FILE_PATH: []byte(h.config.AuthJson)}}, nil
 }
 
 func (h *HarnessHandler) RunCommand() string {

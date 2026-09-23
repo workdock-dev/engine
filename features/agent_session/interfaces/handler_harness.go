@@ -33,18 +33,7 @@ type HarnessConfig struct {
 	Permissions map[string]any
 }
 
-// HarnessAuthentication identifies a credential file that must be placed in
-// the sandbox before a harness is executed.
-type HarnessAuthentication struct {
-	CredentialFilePath string
-	Credential         []byte
-}
-
 type HandlerHarness interface {
-	// GetAuthentication returns the credential required by this harness.
-	// Harnesses without authentication return nil, false.
-	GetAuthentication(session *types.Session) (*HarnessAuthentication, bool)
-
 	// GetConfigurationCommands may return a list of commands the harness handler
 	// provider requires to be install in the sandbox
 	GetConfigurationCommands() []string

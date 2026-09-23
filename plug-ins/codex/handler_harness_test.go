@@ -94,20 +94,20 @@ func (s *HarnessSuite) TestGetConfigFileConfiguresMCPs() {
 	s.False(strings.Contains(config, "{env:"))
 }
 
-func (s *HarnessSuite) TestGetAuthenticationUsesConfiguredSecret() {
+func (s *HarnessSuite) TestGetFilesIncludesConfiguredAuthentication() {
 	s.handler.config.AuthJson = `{"tokens":"credential"}`
-	authentication, required := s.handler.GetAuthentication(&agent_session_types.Session{})
+	files, err := s.handler.GetFiles(&agent_session_interfaces.HarnessConfig{})
 
-	s.True(required)
-	s.Require().NotNil(authentication)
-	s.Equal(AUTH_FILE_PATH, authentication.CredentialFilePath)
-	s.Equal([]byte(`{"tokens":"credential"}`), authentication.Credential)
+	s.Require().NoError(err)
+	s.Require().Len(files, 1)
+	s.Equal([]byte(`{"tokens":"credential"}`), files[0][AUTH_FILE_PATH])
 }
 
-func (s *HarnessSuite) TestGetAuthenticationIsAlwaysRequired() {
-	authentication, required := s.handler.GetAuthentication(nil)
-	s.Nil(authentication)
-	s.True(required)
+func (s *HarnessSuite) TestGetFilesRequiresAuthentication() {
+	files, err := s.handler.GetFiles(&agent_session_interfaces.HarnessConfig{})
+
+	s.Nil(files)
+	s.EqualError(err, "[codex] auth.json is not configured")
 }
 
 func (s *HarnessSuite) TestRunCommandUsesCodexHomeAndNoAPIKey() {

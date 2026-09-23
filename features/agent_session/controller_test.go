@@ -1902,23 +1902,6 @@ func (s *ControllerSuite) TestSandbox_GetFilesMergedIntoFileUploads() {
 	s.Equal([]byte("{}"), config.FileUploads["/tmp/config.json"])
 }
 
-func (s *ControllerSuite) TestSandbox_HydratesUserScopedHarnessCredential() {
-	s.harnessHdl.getAuthenticationFn = func(session *types.Session) (*interfaces.HarnessAuthentication, bool) {
-		return &interfaces.HarnessAuthentication{
-			CredentialFilePath: "/home/${USER}/.codex/auth.json",
-			Credential:         []byte(`{"tokens":"secret"}`),
-		}, true
-	}
-
-	_, _, _, _, err := s.c.sandbox(
-		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", newTestSession(), testSessionEvent,
-	)
-
-	s.Require().NoError(err)
-	s.Equal([]byte(`{"tokens":"secret"}`), s.sandboxHdl.runConfig.FileUploads["/home/${USER}/.codex/auth.json"])
-}
-
 func (s *ControllerSuite) TestSandbox_RunError() {
 	s.sandboxHdl.runFn = func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
 		return nil, errors.New("run failed")
