@@ -12,23 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package shared
+package types
 
-type PlatformProvider string
-type HarnessProvider string
-
-const (
-	PlatformProvider_Linear  PlatformProvider = "linear"
-	PlatformProvider_GitHub  PlatformProvider = "github"
-	PlatformProvider_Daytona PlatformProvider = "daytona"
-
-	HarnessProvider_OpenCode HarnessProvider = "opencode"
-	HarnessProvider_PiDev    HarnessProvider = "pidev"
-	HarnessProvider_Codex    HarnessProvider = "codex"
-)
-
-type Organization struct {
-	Identifier string
-	Provider   PlatformProvider
-	Name       string
+type Config struct {
+	Version        string `yaml:"version"`
+	Model          string `yaml:"model"`
+	ReasoningEffort string `yaml:"reasoning_effort"`
+	AuthJson       string `yaml:"auth_json"`
 }

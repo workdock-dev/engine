@@ -41,6 +41,8 @@ import (
 	"github.com/workdock-dev/engine/infrastructure/infisical_client"
 	"github.com/workdock-dev/engine/infrastructure/otlp_client"
 	"github.com/workdock-dev/engine/infrastructure/server"
+	"github.com/workdock-dev/engine/plug-ins/codex"
+	codex_types "github.com/workdock-dev/engine/plug-ins/codex/types"
 	"github.com/workdock-dev/engine/plug-ins/daytona"
 	daytona_types "github.com/workdock-dev/engine/plug-ins/daytona/types"
 	"github.com/workdock-dev/engine/plug-ins/github"
@@ -83,6 +85,7 @@ type Config struct {
 	Daytona  daytona_types.Config  `yaml:"daytona"`
 	Opencode opencode_types.Config `yaml:"opencode"`
 	Pidev    pidev_types.Config    `yaml:"pidev"`
+	Codex    codex_types.Config    `yaml:"codex"`
 	Github   github_types.Config   `yaml:"github"`
 
 	// infrastructure configuration
@@ -233,6 +236,7 @@ func main() {
 	daytonaSandboxHandler := daytona.NewSandboxHandler(cfg.Daytona)
 	opencodeHarnessHandler := opencode.NewHarnessHandler(cfg.Opencode)
 	pidevHarnessHandler := pidev.NewHarnessHandler(cfg.Pidev)
+	codexHarnessHandler := codex.NewHarnessHandler(cfg.Codex)
 
 	// *-------------------------------------------------------------------------*
 	// * Setup application                                                       *
@@ -296,6 +300,7 @@ func main() {
 			agent_session.HarnessHandlerRegistry{
 				string(shared.HarnessProvider_OpenCode): opencodeHarnessHandler,
 				string(shared.HarnessProvider_PiDev):    pidevHarnessHandler,
+				string(shared.HarnessProvider_Codex):    codexHarnessHandler,
 			},
 			&MCPFromConfigFile{config: cfg},
 			eventBus,

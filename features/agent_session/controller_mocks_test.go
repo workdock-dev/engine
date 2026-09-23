@@ -262,6 +262,7 @@ type mockHarnessHandler struct {
 	getPromptFileFn     func(prompt string) (string, []byte)
 	getConfigFileFn     func(config *interfaces.HarnessConfig) (string, []byte, error)
 	getFilesFn          func(config *interfaces.HarnessConfig) ([]map[string][]byte, error)
+	getAuthenticationFn func(session *types.Session) (*interfaces.HarnessAuthentication, bool)
 	runCommandFn        func() string
 	parseFn             func(
 		ctx context.Context,
@@ -316,6 +317,13 @@ func (m *mockHarnessHandler) GetFiles(config *interfaces.HarnessConfig) ([]map[s
 		return m.getFilesFn(config)
 	}
 	return nil, nil
+}
+
+func (m *mockHarnessHandler) GetAuthentication(session *types.Session) (*interfaces.HarnessAuthentication, bool) {
+	if m.getAuthenticationFn != nil {
+		return m.getAuthenticationFn(session)
+	}
+	return nil, false
 }
 
 func (m *mockHarnessHandler) RunCommand() string {
