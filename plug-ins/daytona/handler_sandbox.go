@@ -123,7 +123,7 @@ func (h *SandboxHandler) Run(
 				h.deleteExecutionSession(ctx, sandbox, config)
 			}
 
-			h.shutdown(context.Background(), sandbox, config)
+			h.shutdown(ctx, sandbox, config)
 		}
 
 		for _, id := range secretIds {
@@ -209,7 +209,7 @@ func (h *SandboxHandler) Run(
 		for _, cmd := range config.CommandsWhenCreated {
 			if _, _, err := h.executeCommand(ctx, sandbox, config, cmd, time.Minute*5); err != nil {
 				deleting = true
-				h.deleteSandbox(context.Background(), sandbox, config)
+				h.deleteSandbox(ctx, sandbox, config)
 				return shutdown, err
 			}
 		}
