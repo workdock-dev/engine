@@ -21,6 +21,7 @@ INSERT INTO git_connections (
 VALUES ($1, $2, $3, $4)
 ON CONFLICT (repo_full_name)
 DO UPDATE SET
+    session_event_identifier = COALESCE(EXCLUDED.session_event_identifier, git_connections.session_event_identifier),
     connected = EXCLUDED.connected,
     installation_id = EXCLUDED.installation_id,
     updated_at = NOW()
