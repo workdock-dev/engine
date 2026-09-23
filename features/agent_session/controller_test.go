@@ -2452,6 +2452,27 @@ func (s *ControllerSuite) TestHarness_ForwardsStderrAfterCompletion() {
 	s.Contains(s.agentHdl.responses, "something went wrong")
 }
 
+func (s *ControllerSuite) TestActivityBuffer_CoalescesAdjacentFragmentsAndPreservesKinds() {
+	var activities []string
+	buffer := newActivityBuffer(
+		func(ctx context.Context, text string) error {
+			activities = append(activities, "thought:"+text)
+			return nil
+		},
+		func(ctx context.Context, text string) error {
+			activities = append(activities, "response:"+text)
+			return nil
+		},
+	)
+
+	s.Require().NoError(buffer.Thought(context.Background(), "thinking "))
+	s.Require().NoError(buffer.Thought(context.Background(), "through it"))
+	s.Require().NoError(buffer.Response(context.Background(), "done"))
+	s.Require().NoError(buffer.Flush(context.Background()))
+
+	s.Equal([]string{"thought:thinking through it", "response:done"}, activities)
+}
+
 func (s *ControllerSuite) TestHarness_ParseError() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)

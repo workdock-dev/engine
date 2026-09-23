@@ -1132,6 +1132,14 @@ func (c *controller) harness(
 	var stdErrBuilder strings.Builder
 	var missed atomic.Int64
 	var lastOutput atomic.Int64
+	activities := newActivityBuffer(
+		func(ctx context.Context, text string) error {
+			return agentHandler.SendThought(ctx, session.Identifier, agentHandlerCredential, text)
+		},
+		func(ctx context.Context, text string) error {
+			return agentHandler.SendResponse(ctx, session.Identifier, agentHandlerCredential, text)
+		},
+	)
 
 	wg, ctx := errgroup.WithContext(ctx)
 	lastOutput.Store(time.Now().UnixNano())
@@ -1214,26 +1222,35 @@ func (c *controller) harness(
 
 			// sendThought sends the thinking state to the provider
 			func(ctx context.Context, text string) error {
-				return agentHandler.SendThought(ctx, session.Identifier, agentHandlerCredential, text)
+				return activities.Thought(ctx, text)
 			},
 
 			// sendResponse sends text chunks/parts to the provider
 			func(ctx context.Context, text string) error {
-				return agentHandler.SendResponse(ctx, session.Identifier, agentHandlerCredential, text)
+				return activities.Response(ctx, text)
 			},
 
 			// sendACtion sends an action required to be executed by the user
 			func(ctx context.Context, action types.AgentAction) error {
+				if err := activities.Flush(ctx); err != nil {
+					return err
+				}
 				return agentHandler.SendAction(ctx, session.Identifier, agentHandlerCredential, action)
 			},
 
 			// sendElicitation sends a collection of questions to be answer by the user
 			func(ctx context.Context, elicitation types.AgentElicitation) error {
+				if err := activities.Flush(ctx); err != nil {
+					return err
+				}
 				return agentHandler.SendElicitation(ctx, session.Identifier, agentHandlerCredential, elicitation)
 			},
 
 			// sendServerInternalError sends a generic server internal error
 			func(ctx context.Context) error {
+				if err := activities.Flush(ctx); err != nil {
+					return err
+				}
 				return agentHandler.SendError(ctx, session.Identifier, agentHandlerCredential, errServerInternal)
 			},
 		)
@@ -1337,6 +1354,10 @@ func (c *controller) harness(
 			}
 		}
 
+		return err
+	}
+
+	if err := activities.Flush(context.WithoutCancel(ctx)); err != nil {
 		return err
 	}
 

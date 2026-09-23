@@ -733,6 +733,20 @@ func (s *LinearServiceSuite) TestDoRequest_Success() {
 	s.Equal("ws-1", info.ID)
 }
 
+func (s *LinearServiceSuite) TestParseRateLimitError_PrefersEndpointReset() {
+	resetAt := time.UnixMilli(1_800_000_000_000)
+	headers := http.Header{}
+	headers.Set("X-RateLimit-Requests-Reset", "1700000000000")
+	headers.Set("X-RateLimit-Endpoint-Requests-Reset", "1800000000000")
+	errs := []graphQLError{{}}
+	errs[0].Extensions.Code = "RATELIMITED"
+
+	err := parseRateLimitError(headers, errs)
+
+	s.Require().NotNil(err)
+	s.Equal(resetAt, err.ResetAt)
+}
+
 // --- ExchangeCode() ---
 
 func (s *LinearServiceSuite) TestExchangeCode_HTTPFailure() {

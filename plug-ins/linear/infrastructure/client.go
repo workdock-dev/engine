@@ -22,9 +22,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/workdock-dev/engine/plug-ins/linear/helpers"
@@ -36,6 +39,8 @@ const (
 	GraphqlEndpoint       = "https://api.linear.app/graphql"
 	AuthorizeEndpoint     = "https://linear.app/oauth/authorize"
 	ExchangeTokenEndpoint = "https://api.linear.app/oauth/token"
+	linearRequestAttempts = 3
+	linearRetryDelay      = 250 * time.Millisecond
 )
 
 type graphQLRequest struct {
@@ -49,7 +54,24 @@ type graphQLResponse struct {
 }
 
 type graphQLError struct {
-	Message string `json:"message"`
+	Message    string `json:"message"`
+	Extensions struct {
+		Code string `json:"code"`
+	} `json:"extensions"`
+}
+
+// rateLimitError preserves Linear's reset time so callers can decide when to
+// retry without guessing at a window that may be operation-specific.
+type rateLimitError struct {
+	ResetAt time.Time
+}
+
+func (e *rateLimitError) Error() string {
+	if e.ResetAt.IsZero() {
+		return "linear request rate limited"
+	}
+
+	return fmt.Sprintf("linear request rate limited until %s", e.ResetAt.UTC().Format(time.RFC3339))
 }
 
 type Client struct {
@@ -80,7 +102,9 @@ func NewClient(config types.Config, secretManager shared.SecretManager) (*Client
 	client := &Client{
 		config:        config,
 		secretManager: secretManager,
-		httpClient:    &http.Client{},
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
 	}
 	client.tokenHandler = helpers.NewTokenHandler(secretManager, client)
 
@@ -516,56 +540,134 @@ func (s *Client) doRequest(ctx context.Context, query string, variables map[stri
 		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", s.config.ApiUrl, bytes.NewReader(reqBody))
-
-	if err != nil {
-		slog.Error("[linear-client] failed to create graphql request", "err", err)
-		return nil, err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := s.httpClient.Do(req)
-
-	if err != nil {
-		if !errors.Is(err, context.Canceled) &&
-			!errors.Is(err, context.DeadlineExceeded) {
-			slog.Error("failed to send linear graphql request", "err", err)
+	for attempt := 1; attempt <= linearRequestAttempts; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.config.ApiUrl, bytes.NewReader(reqBody))
+		if err != nil {
+			slog.Error("[linear-client] failed to create graphql request", "err", err)
+			return nil, err
 		}
-		return nil, err
-	}
 
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
 
-	if err != nil {
-		slog.Error("[linear-client] failed to parse graphql response", "err", err)
-		return nil, err
-	}
+		resp, err := s.httpClient.Do(req)
+		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil, err
+			}
 
-	if resp.StatusCode != http.StatusOK {
-		err := errors.New("unexpected linear request status code")
-		slog.Error("[linear-client] graphql request failed", "err", err, "statusCode", resp.StatusCode, "query", query)
-		return nil, err
-	}
+			if attempt == linearRequestAttempts || !isRetryableTransportError(err) {
+				slog.Error("[linear-client] failed to send graphql request", "err", err, "attempt", attempt)
+				return nil, err
+			}
 
-	var gqlResp graphQLResponse
-
-	if err := json.Unmarshal(body, &gqlResp); err != nil {
-		slog.Error("failed to unmarshall linear graphql response", "err", err)
-		return nil, err
-	}
-
-	if len(gqlResp.Errors) > 0 {
-		err := errors.New("linear graphql returned errors")
-		for _, err := range gqlResp.Errors {
-			slog.Error("[linear-client] graphql request failed", "err", err, "query", query)
+			if err := waitForRetry(ctx, attempt); err != nil {
+				return nil, err
+			}
+			continue
 		}
-		return nil, err
+
+		body, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			slog.Error("[linear-client] failed to parse graphql response", "err", readErr)
+			return nil, readErr
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			var gqlResp graphQLResponse
+			if json.Unmarshal(body, &gqlResp) == nil {
+				if rateLimitErr := parseRateLimitError(resp.Header, gqlResp.Errors); rateLimitErr != nil {
+					slog.Warn(
+						"[linear-client] graphql request rate limited",
+						"remaining", resp.Header.Get("X-RateLimit-Requests-Remaining"),
+						"reset", rateLimitErr.ResetAt,
+					)
+					return nil, rateLimitErr
+				}
+			}
+
+			err := fmt.Errorf("unexpected linear request status code: %d", resp.StatusCode)
+			if resp.StatusCode >= http.StatusInternalServerError && attempt < linearRequestAttempts {
+				if err := waitForRetry(ctx, attempt); err != nil {
+					return nil, err
+				}
+				continue
+			}
+			slog.Error("[linear-client] graphql request failed", "err", err, "status_code", resp.StatusCode, "attempt", attempt)
+			return nil, err
+		}
+
+		var gqlResp graphQLResponse
+		if err := json.Unmarshal(body, &gqlResp); err != nil {
+			slog.Error("[linear-client] failed to unmarshall graphql response", "err", err)
+			return nil, err
+		}
+
+		if rateLimitErr := parseRateLimitError(resp.Header, gqlResp.Errors); rateLimitErr != nil {
+			slog.Warn(
+				"[linear-client] graphql request rate limited",
+				"remaining", resp.Header.Get("X-RateLimit-Requests-Remaining"),
+				"reset", rateLimitErr.ResetAt,
+			)
+			return nil, rateLimitErr
+		}
+
+		if len(gqlResp.Errors) > 0 {
+			err := errors.New("linear graphql returned errors")
+			for _, gqlErr := range gqlResp.Errors {
+				slog.Error("[linear-client] graphql request failed", "err", gqlErr.Message, "query", query)
+			}
+			return nil, err
+		}
+
+		return gqlResp.Data, nil
 	}
 
-	return gqlResp.Data, nil
+	return nil, errors.New("linear request retry attempts exhausted")
+}
+
+func isRetryableTransportError(err error) bool {
+	var networkErr net.Error
+	return errors.As(err, &networkErr) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, io.ErrUnexpectedEOF)
+}
+
+func waitForRetry(ctx context.Context, attempt int) error {
+	delay := linearRetryDelay * time.Duration(1<<(attempt-1))
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func parseRateLimitError(headers http.Header, gqlErrors []graphQLError) *rateLimitError {
+	for _, gqlErr := range gqlErrors {
+		if gqlErr.Extensions.Code != "RATELIMITED" {
+			continue
+		}
+
+		resetAt := parseRateLimitReset(headers.Get("X-RateLimit-Endpoint-Requests-Reset"))
+		if resetAt.IsZero() {
+			resetAt = parseRateLimitReset(headers.Get("X-RateLimit-Requests-Reset"))
+		}
+		return &rateLimitError{ResetAt: resetAt}
+	}
+
+	return nil
+}
+
+func parseRateLimitReset(value string) time.Time {
+	milliseconds, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || milliseconds <= 0 {
+		return time.Time{}
+	}
+
+	return time.UnixMilli(milliseconds)
 }
 
 // exchangeCode exchanges a Linear OAuth authorization code for an access token.
