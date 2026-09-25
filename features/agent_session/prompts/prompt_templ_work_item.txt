@@ -9,9 +9,6 @@ You are working on the following work item.
 ## Requirements
 %s
 
-## Additional Context
-%s
-
 ### Workflow rules
 When determining what work to perform, use the following order of precedence:
 

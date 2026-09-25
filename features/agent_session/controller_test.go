@@ -47,8 +47,11 @@ var (
 	}
 
 	testPromptContext = &interfaces.PromptContext{
-		Prompt: "do the work",
-		Issue:  types.Issue{Title: "Title", Identifier: "issue-1", Description: "Description"},
+		ContextFile: &interfaces.ContextFile{
+			Content: "do the work",
+			Summary: "summary of the context",
+		},
+		Issue: types.Issue{Title: "Title", Identifier: "issue-1", Description: "Description"},
 	}
 )
 
@@ -1400,10 +1403,80 @@ func (s *ControllerSuite) TestGetPromptContextError() {
 		return nil, errors.New("prompt context failed")
 	}
 
-	_, err := s.c.getPrompt(s.agentHdl, newTestSession(), testSessionEvent)
+	_, _, err := s.c.getPrompt(s.agentHdl, newTestSession(), testSessionEvent)
 
 	s.Error(err)
 	s.ErrorContains(err, "prompt context failed")
+}
+
+// newDerivedSessionEvent builds an event that was cloned from another event's
+// payload, the way pull request review and checks-failed events are.
+func newDerivedSessionEvent(reason types.AgentSessionEventReason) *types.SessionEvent {
+	return &types.SessionEvent{
+		Identifier: "evt-derived",
+		Seed:       repoName("evt-parent"),
+		GitRef:     repoName("workdock/main"),
+		Reason:     reason,
+	}
+}
+
+// TestGetPrompt_FirstRunDeliversContextFile covers the run that opens a
+// session: the sandbox is new, so the harness has nothing to resume and needs
+// the provider context.
+func (s *ControllerSuite) TestGetPrompt_FirstRunDeliversContextFile() {
+	s.agentHdl.getPromptContextFn = func(sessionEvent *types.SessionEvent) (*interfaces.PromptContext, error) {
+		return &interfaces.PromptContext{
+			ContextFile: &interfaces.ContextFile{Content: "do the work", Summary: "summary of the context"},
+			Issue:       types.Issue{Title: "Title", Identifier: "issue-1"},
+		}, nil
+	}
+
+	prompt, contextFile, err := s.c.getPrompt(s.agentHdl, newTestSession(), testSessionEvent)
+
+	s.Require().NoError(err)
+	s.Require().NotNil(contextFile)
+	s.Equal("do the work", contextFile.Content)
+	s.Contains(prompt, promptContextFilePath)
+	s.NotContains(prompt, "do the work")
+}
+
+// TestGetPrompt_DerivedEventSkipsContextFile covers events cloned from another
+// event's payload. They are not the first run of the session, and the harness
+// resumes the previous run, so the context is withheld.
+func (s *ControllerSuite) TestGetPrompt_DerivedEventSkipsContextFile() {
+	s.agentHdl.getPromptContextFn = func(sessionEvent *types.SessionEvent) (*interfaces.PromptContext, error) {
+		return &interfaces.PromptContext{
+			ContextFile: &interfaces.ContextFile{Content: "do the work", Summary: "summary of the context"},
+			Issue:       types.Issue{Title: "Title", Identifier: "issue-1"},
+		}, nil
+	}
+
+	for _, reason := range []types.AgentSessionEventReason{
+		types.AgentSessionEventReason_PRComment,
+		types.AgentSessionEventReason_PRChecksFailed,
+	} {
+		prompt, contextFile, err := s.c.getPrompt(s.agentHdl, newTestSession(), newDerivedSessionEvent(reason))
+
+		s.Require().NoError(err, reason)
+		s.Nil(contextFile, reason)
+		s.NotContains(prompt, promptContextFilePath, reason)
+	}
+}
+
+// TestGetPrompt_NilSessionEventDeliversContextFile guards the no-event case:
+// without an event to inspect, the context is delivered rather than dropped.
+func (s *ControllerSuite) TestGetPrompt_NilSessionEventDeliversContextFile() {
+	s.agentHdl.getPromptContextFn = func(sessionEvent *types.SessionEvent) (*interfaces.PromptContext, error) {
+		return &interfaces.PromptContext{
+			ContextFile: &interfaces.ContextFile{Content: "do the work", Summary: "summary of the context"},
+			Issue:       types.Issue{Title: "Title", Identifier: "issue-1"},
+		}, nil
+	}
+
+	_, contextFile, err := s.c.getPrompt(s.agentHdl, newTestSession(), nil)
+
+	s.Require().NoError(err)
+	s.Require().NotNil(contextFile)
 }
 
 func (s *ControllerSuite) TestCreatePrompt_Base() {
@@ -1415,8 +1488,30 @@ func (s *ControllerSuite) TestCreatePrompt_Base() {
 	s.Contains(p, "**Identifier:** issue-1")
 	s.Contains(p, "**Repository:** workdock/repo")
 	s.Contains(p, "Description")
-	s.Contains(p, "do the work")
 	s.False(strings.Contains(p, "### Latest User Comment"))
+}
+
+// TestCreatePrompt_Base_PointsAtContextFile asserts the provider context is
+// referenced by path and never inlined: inlining is what made a single prompt
+// reach a megabyte.
+func (s *ControllerSuite) TestCreatePrompt_Base_PointsAtContextFile() {
+	p := s.c.createPrompt(newTestSession(), nil, testPromptContext)
+
+	s.Contains(p, promptContextFilePath)
+	s.Contains(p, "summary of the context")
+	s.Contains(p, "Read it before planning your work")
+	s.NotContains(p, "do the work")
+}
+
+func (s *ControllerSuite) TestCreatePrompt_NoContextFile() {
+	promptContext := &interfaces.PromptContext{
+		Issue: types.Issue{Title: "Title", Identifier: "issue-1", Description: "Description"},
+	}
+
+	p := s.c.createPrompt(newTestSession(), nil, promptContext)
+
+	s.NotContains(p, promptContextFilePath)
+	s.NotContains(p, "## Additional Context")
 }
 
 func (s *ControllerSuite) TestCreatePrompt_NilSession() {
@@ -1467,7 +1562,6 @@ func (s *ControllerSuite) TestCreatePrompt_CheckRun() {
 func (s *ControllerSuite) TestCreatePrompt_WithContext() {
 	ctx := "additional user context"
 	promptContext := &interfaces.PromptContext{
-		Prompt:  "do the work",
 		Context: &ctx,
 		Issue:   types.Issue{Title: "Title", Identifier: "issue-1", Description: "Description"},
 	}
@@ -1484,10 +1578,11 @@ func (s *ControllerSuite) TestGetPrompt_AssemblesPrompt() {
 		return testPromptContext, nil
 	}
 
-	prompt, err := s.c.getPrompt(s.agentHdl, session, testSessionEvent)
+	prompt, contextFile, err := s.c.getPrompt(s.agentHdl, session, testSessionEvent)
 
 	s.Require().NoError(err)
-	s.Contains(prompt, "do the work")
+	s.Same(testPromptContext.ContextFile, contextFile)
+	s.Contains(prompt, "summary of the context")
 	s.Contains(prompt, "Title")
 }
 
@@ -1729,7 +1824,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_Success() {
 func (s *ControllerSuite) TestSandbox_NoMcpNoGitAccess() {
 	harnessConfig, stdout, stderr, shutdown, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt text", newTestSession(), testSessionEvent,
+		nil, "prompt text", nil, newTestSession(), testSessionEvent,
 	)
 
 	s.Require().NoError(err)
@@ -1759,7 +1854,7 @@ func (s *ControllerSuite) TestSandbox_NoGitAccess_SkipsGitCommands() {
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", newTestSession(), testSessionEvent,
+		nil, "prompt", nil, newTestSession(), testSessionEvent,
 	)
 
 	s.Require().NoError(err)
@@ -1782,7 +1877,7 @@ func (s *ControllerSuite) TestSandbox_WithGitAccess_RunsGitCommands() {
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		gitAccess, "prompt", newTestSession(), testSessionEvent,
+		gitAccess, "prompt", nil, newTestSession(), testSessionEvent,
 	)
 
 	s.Require().NoError(err)
@@ -1808,7 +1903,7 @@ func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		gitAccess, "prompt", newTestSession(), testSessionEvent,
+		gitAccess, "prompt", nil, newTestSession(), testSessionEvent,
 	)
 
 	s.Require().NoError(err)
@@ -1825,7 +1920,7 @@ func (s *ControllerSuite) TestSandbox_GitAccessNotGranted_NotInSecrets() {
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		gitAccess, "prompt", newTestSession(), testSessionEvent,
+		gitAccess, "prompt", nil, newTestSession(), testSessionEvent,
 	)
 
 	s.Require().NoError(err)
@@ -1837,7 +1932,7 @@ func (s *ControllerSuite) TestSandbox_NilMcpHandler() {
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", newTestSession(), testSessionEvent,
+		nil, "prompt", nil, newTestSession(), testSessionEvent,
 	)
 
 	s.Require().NoError(err)
@@ -1851,7 +1946,7 @@ func (s *ControllerSuite) TestSandbox_GetConfigFileError() {
 
 	harnessConfig, stdout, stderr, shutdown, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", newTestSession(), testSessionEvent,
+		nil, "prompt", nil, newTestSession(), testSessionEvent,
 	)
 
 	s.Error(err)
@@ -1869,7 +1964,7 @@ func (s *ControllerSuite) TestSandbox_GetFilesError() {
 
 	harnessConfig, stdout, stderr, shutdown, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", newTestSession(), testSessionEvent,
+		nil, "prompt", nil, newTestSession(), testSessionEvent,
 	)
 
 	s.Error(err)
@@ -1890,7 +1985,7 @@ func (s *ControllerSuite) TestSandbox_GetFilesMergedIntoFileUploads() {
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", newTestSession(), testSessionEvent,
+		nil, "prompt", nil, newTestSession(), testSessionEvent,
 	)
 
 	s.Require().NoError(err)
@@ -1902,6 +1997,38 @@ func (s *ControllerSuite) TestSandbox_GetFilesMergedIntoFileUploads() {
 	s.Equal([]byte("{}"), config.FileUploads["/tmp/config.json"])
 }
 
+// TestSandbox_ContextFileUploaded asserts the provider context reaches the
+// sandbox at the path the prompt advertises, and that the prompt itself stays
+// small.
+func (s *ControllerSuite) TestSandbox_ContextFileUploaded() {
+	_, _, _, _, err := s.c.sandbox(
+		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		nil, "prompt", &interfaces.ContextFile{Content: "do the work", Summary: "summary of the context"},
+		newTestSession(), testSessionEvent,
+	)
+
+	s.Require().NoError(err)
+	config := s.sandboxHdl.runConfig
+	s.Require().NotNil(config)
+	s.Equal([]byte("do the work"), config.FileUploads[promptContextFilePath])
+	s.Equal([]byte("prompt"), config.FileUploads["/tmp/prompt.txt"])
+	s.NotContains(string(config.FileUploads["/tmp/prompt.txt"]), "do the work")
+}
+
+// TestSandbox_NoContextFileUploaded covers the later runs of a session, where
+// the context is withheld because the harness resumes the previous run.
+func (s *ControllerSuite) TestSandbox_NoContextFileUploaded() {
+	_, _, _, _, err := s.c.sandbox(
+		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		nil, "prompt", nil, newTestSession(), testSessionEvent,
+	)
+
+	s.Require().NoError(err)
+	config := s.sandboxHdl.runConfig
+	s.Require().NotNil(config)
+	s.NotContains(config.FileUploads, promptContextFilePath)
+}
+
 func (s *ControllerSuite) TestSandbox_RunError() {
 	s.sandboxHdl.runFn = func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
 		return nil, errors.New("run failed")
@@ -1909,7 +2036,7 @@ func (s *ControllerSuite) TestSandbox_RunError() {
 
 	_, _, _, shutdown, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", newTestSession(), testSessionEvent,
+		nil, "prompt", nil, newTestSession(), testSessionEvent,
 	)
 
 	s.Error(err)

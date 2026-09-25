@@ -1189,7 +1189,8 @@ func (s *AgentSessionSuite) TestGetPromptContext_WithActivity() {
 	})
 
 	s.Require().NoError(err)
-	s.Equal("do the work", context.Prompt)
+	s.Require().NotNil(context.ContextFile)
+	s.Equal("do the work", context.ContextFile.Content)
 	s.Require().NotNil(context.Context)
 	s.Equal("recent thoughts", *context.Context)
 	s.Equal("Title", context.Issue.Title)
@@ -1209,9 +1210,89 @@ func (s *AgentSessionSuite) TestGetPromptContext_WithoutActivity() {
 	})
 
 	s.Require().NoError(err)
-	s.Equal("do the work", context.Prompt)
+	s.Require().NotNil(context.ContextFile)
+	s.Equal("do the work", context.ContextFile.Content)
 	s.Nil(context.Context)
 	s.Equal("Title", context.Issue.Title)
+}
+
+// TestGetPromptContext_NoPromptContext covers the events Linear sends without
+// accumulated history. Nothing is delivered as a file, so the engine never
+// points the agent at a file that does not exist.
+func (s *AgentSessionSuite) TestGetPromptContext_NoPromptContext() {
+	data := agentSessionEventData()
+	data.PromptContext = ""
+	payload, err := json.Marshal(data)
+	s.Require().NoError(err)
+
+	context, err := s.handler.GetPromptContext(&agent_session_types.SessionEvent{
+		Identifier: "evt-1",
+		Payload:    payload,
+	})
+
+	s.Require().NoError(err)
+	s.Nil(context.ContextFile)
+	s.Equal("Title", context.Issue.Title)
+}
+
+// TestSummarizePromptContext_Empty covers a document with no comments, no
+// parent and no sub-issues: the summary must not promise a section the agent
+// will never find.
+func (s *AgentSessionSuite) TestSummarizePromptContext_Empty() {
+	summary := summarizePromptContext("<issue identifier=\"ENG-1\"></issue>", "ENG-1")
+
+	s.Equal("It is a 34 bytes XML document of about ENG-1 covering 1 issue.", summary)
+	s.NotContains(summary, "comment")
+	s.NotContains(summary, "parent")
+	s.NotContains(summary, "sub-issues")
+}
+
+// TestSummarizePromptContext_SingleThread guards the singular wording, so the
+// agent is not told to grep through "1 comment threads" or "1 replys".
+func (s *AgentSessionSuite) TestSummarizePromptContext_SingleThread() {
+	summary := summarizePromptContext(
+		"<issue identifier=\"ENG-1\"></issue><comments><replies></replies></comments>",
+		"ENG-1",
+	)
+
+	s.Equal(
+		"It is a 74 bytes XML document of about ENG-1 covering 1 issue with 1 comment thread and 1 reply.",
+		summary,
+	)
+}
+
+// TestSummarizePromptContext_Full is the shape that matters: a real Linear
+// document that grew past a megabyte, and the summary has to let the agent
+// navigate it without reading it first.
+func (s *AgentSessionSuite) TestSummarizePromptContext_Full() {
+	var document strings.Builder
+
+	document.WriteString("<parent-issue><issue identifier=\"ENG-1\"></issue>")
+
+	for i := 0; i < 2; i++ {
+		document.WriteString(fmt.Sprintf("<issue identifier=\"ENG-%d\"></issue>", i+1))
+	}
+
+	document.WriteString("<sub-issues><issue identifier=\"ENG-9\"></issue></sub-issues>")
+
+	for i := 0; i < 23; i++ {
+		document.WriteString("<comments>")
+
+		for j := 0; j < 824; j++ {
+			document.WriteString("<replies></replies>")
+		}
+
+		document.WriteString("</comments>")
+	}
+
+	document.WriteString(strings.Repeat("x", 1200*1024))
+
+	summary := summarizePromptContext(document.String(), "ENG-1")
+
+	s.Equal(
+		"It is a 1552 KB XML document of about ENG-1 covering 4 issues with 23 comment threads and 18952 replies, including the parent issue and its sub-issues.",
+		summary,
+	)
 }
 
 // ---------------------------------------------------------------------------
