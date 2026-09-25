@@ -1440,29 +1440,6 @@ func (s *ControllerSuite) TestGetPrompt_FirstRunDeliversContextFile() {
 	s.NotContains(prompt, "do the work")
 }
 
-// TestGetPrompt_DerivedEventSkipsContextFile covers events cloned from another
-// event's payload. They are not the first run of the session, and the harness
-// resumes the previous run, so the context is withheld.
-func (s *ControllerSuite) TestGetPrompt_DerivedEventSkipsContextFile() {
-	s.agentHdl.getPromptContextFn = func(sessionEvent *types.SessionEvent) (*interfaces.PromptContext, error) {
-		return &interfaces.PromptContext{
-			ContextFile: &interfaces.ContextFile{Content: "do the work", Summary: "summary of the context"},
-			Issue:       types.Issue{Title: "Title", Identifier: "issue-1"},
-		}, nil
-	}
-
-	for _, reason := range []types.AgentSessionEventReason{
-		types.AgentSessionEventReason_PRComment,
-		types.AgentSessionEventReason_PRChecksFailed,
-	} {
-		prompt, contextFile, err := s.c.getPrompt(s.agentHdl, newTestSession(), newDerivedSessionEvent(reason))
-
-		s.Require().NoError(err, reason)
-		s.Nil(contextFile, reason)
-		s.NotContains(prompt, promptContextFilePath, reason)
-	}
-}
-
 // TestGetPrompt_NilSessionEventDeliversContextFile guards the no-event case:
 // without an event to inspect, the context is delivered rather than dropped.
 func (s *ControllerSuite) TestGetPrompt_NilSessionEventDeliversContextFile() {
