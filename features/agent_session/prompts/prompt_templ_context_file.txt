@@ -1,0 +1,9 @@
+## Additional Context
+
+The full context for this work item is in a file:
+
+`%s`
+
+%s
+
+Read it before planning your work. First check its size and use that to decide how to inspect it. If it is reasonably small, read it in full. If it is large, inspect it selectively: search for the relevant issue, comment thread, or reply, then read the relevant sections in manageable chunks as needed.

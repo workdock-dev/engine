@@ -21,10 +21,26 @@ import (
 	"github.com/workdock-dev/engine/shared"
 )
 
+// ContextFile is provider context too large to inline in the prompt. The
+// engine uploads it to the sandbox and points the agent at it, so the agent
+// reads only the parts it needs instead of paying for the whole document on
+// every turn.
+type ContextFile struct {
+	// Content is the provider's complete context document
+	Content string
+
+	// Summary describes what Content holds so the agent can decide whether
+	// and where reading it is worth the cost
+	Summary string
+}
+
 type PromptContext struct {
-	Prompt  string
 	Context *string // Optional context to provide
 	Issue   types.Issue
+
+	// ContextFile is optional provider context delivered as a file rather
+	// than inlined into the prompt
+	ContextFile *ContextFile
 }
 
 // IssueState describes the workflow state of a ticket on the work platform.

@@ -83,8 +83,11 @@ func (m *mockAgentHandler) GetPromptContext(sessionEvent *types.SessionEvent) (*
 		return m.getPromptContextFn(sessionEvent)
 	}
 	return &interfaces.PromptContext{
-		Prompt: "prompt",
-		Issue:  types.Issue{Title: "Title", Identifier: "issue-1", Description: "Description"},
+		ContextFile: &interfaces.ContextFile{
+			Content: "prompt",
+			Summary: "summary",
+		},
+		Issue: types.Issue{Title: "Title", Identifier: "issue-1", Description: "Description"},
 	}, nil
 }
 

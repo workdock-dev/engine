@@ -49,12 +49,21 @@ var (
 	//go:embed prompts/prompt_templ_pr_review.txt
 	PromptTemplate_PullRequestChecksFailed string
 
+	//go:embed prompts/prompt_templ_context_file.txt
+	PromptTemplate_ContextFile string
+
 	// Message errors whose text is sent to the user by reportExecutionError.
 	errServerInternal              = errors.New("Internal Server Error 500")
 	errExecutionRetried            = errors.New("Execution failed but will be retried automatically.")
 	errSandboxCannotStartRetried   = errors.New("The sandbox is in a state that cannot start. This issue is caused by the sandbox provider, not WorkDock. The execution will be retried automatically.")
 	errSandboxCannotStartRetrySoon = errors.New("The sandbox is in a state that cannot start. This issue is caused by the sandbox provider, not WorkDock. Please try again in a few minutes.")
 )
+
+// promptContextFilePath is where provider context that is too large to inline
+// is uploaded in the sandbox. The prompt points the agent at this file so it
+// reads only the parts it needs. It sits outside the workspace so the agent
+// cannot commit the document into a pull request.
+const promptContextFilePath = "/tmp/prompt_context.txt"
 
 type AgentHandlerRegistry map[string]interfaces.HandlerAgentSession
 
@@ -663,7 +672,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	// * Create prompt                                                           *
 	// *-------------------------------------------------------------------------*
 	slog.Debug("[agent-session] get prompt")
-	prompt, err := telemetry.Span(ctx, c.tracer, "execute.get_prompt", func(ctx context.Context) (string, error) {
+	prompt, contextFile, err := telemetry.Span2(ctx, c.tracer, "execute.get_prompt", func(ctx context.Context) (string, *interfaces.ContextFile, error) {
 		return c.getPrompt(agentHandler, session, sessionEvent)
 	})
 
@@ -709,6 +718,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 			sandboxHandler,
 			gitAccess,
 			prompt,
+			contextFile,
 			session,
 			sessionEvent,
 		)
@@ -864,14 +874,14 @@ func (c *controller) getPrompt(
 	agentHandler interfaces.HandlerAgentSession,
 	session *types.Session,
 	sessionEvent *types.SessionEvent,
-) (string, error) {
+) (string, *interfaces.ContextFile, error) {
 	promptContext, err := agentHandler.GetPromptContext(sessionEvent)
 
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
-	return c.createPrompt(session, sessionEvent, promptContext), nil
+	return c.createPrompt(session, sessionEvent, promptContext), promptContext.ContextFile, nil
 }
 
 func (c *controller) createPrompt(
@@ -890,8 +900,21 @@ func (c *controller) createPrompt(
 		promptContext.Issue.Identifier,
 		repo,
 		promptContext.Issue.Description,
-		promptContext.Prompt,
 	))
+
+	if promptContext.ContextFile != nil {
+		slog.Debug(
+			"[agent-session] delivering prompt context as a file",
+			"path", promptContextFilePath,
+			"bytes", len(promptContext.ContextFile.Content),
+		)
+
+		p += fmt.Sprintf(
+			PromptTemplate_ContextFile,
+			promptContextFilePath,
+			promptContext.ContextFile.Summary,
+		)
+	}
 
 	if sessionEvent != nil && sessionEvent.GitRef != nil && sessionEvent.Seed != nil {
 		if sessionEvent.Reason == types.AgentSessionEventReason_PRChecksFailed {
@@ -999,6 +1022,7 @@ func (c *controller) sandbox(
 	sandboxHandler interfaces.HandlerSandbox,
 	gitAccess *interfaces.GitAccess,
 	prompt string,
+	contextFile *interfaces.ContextFile,
 	session *types.Session,
 	sessionEvent *types.SessionEvent,
 ) (
@@ -1039,6 +1063,12 @@ func (c *controller) sandbox(
 	// Get prompt file and prepare it for upload
 	promptFilePath, promptData := harnessHandler.GetPromptFile(prompt)
 	fileUploads[promptFilePath] = promptData
+
+	// Get the provider context that was kept out of the prompt and prepare it
+	// for upload. The prompt already points the agent at this path.
+	if contextFile != nil {
+		fileUploads[promptContextFilePath] = []byte(contextFile.Content)
+	}
 
 	// Get harness configuration and prepare it for upload
 	if file, data, err := harnessHandler.GetConfigFile(harnessConfig); err != nil {

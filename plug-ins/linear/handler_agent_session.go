@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
 	agent_session_types "github.com/workdock-dev/engine/features/agent_session/types"
@@ -126,15 +127,73 @@ func (h *AgentSessionHandler) GetPromptContext(sessionEvent *agent_session_types
 		context = &linearEvent.AgentActivity.Content.Body
 	}
 
+	var contextFile *agent_session_interfaces.ContextFile
+
+	if linearEvent.PromptContext != "" {
+		contextFile = &agent_session_interfaces.ContextFile{
+			Content: linearEvent.PromptContext,
+			Summary: summarizePromptContext(linearEvent.PromptContext, linearEvent.AgentSession.Issue.Identifier),
+		}
+	}
+
 	return &agent_session_interfaces.PromptContext{
-		Prompt:  linearEvent.PromptContext,
-		Context: context,
+		Context:     context,
+		ContextFile: contextFile,
 		Issue: agent_session_types.Issue{
 			Title:       linearEvent.AgentSession.Issue.Title,
 			Identifier:  linearEvent.AgentSession.Issue.Identifier,
 			Description: linearEvent.AgentSession.Issue.Description,
 		},
 	}, nil
+}
+
+// summarizePromptContext describes Linear's prompt context document so the
+// agent can decide whether and where reading it is worth the cost instead of
+// loading a document that routinely exceeds a megabyte.
+//
+// Linear nests the work item inside its parent issue and sub-issues, and each
+// comment thread carries its replies inline, so the counts are what tells the
+// agent how to navigate: it greps for these tags to jump to the part it needs.
+func summarizePromptContext(document, issueIdentifier string) string {
+	issues := strings.Count(document, "<issue ")
+	threads := strings.Count(document, "<comments>")
+	replies := strings.Count(document, "<replies>")
+
+	size := documentSize(document)
+
+	summary := fmt.Sprintf("It is a %s XML document of about %s covering %s", size, issueIdentifier, pluralize(issues, "issue", "issues"))
+
+	if threads > 0 || replies > 0 {
+		summary += fmt.Sprintf(" with %s and %s", pluralize(threads, "comment thread", "comment threads"), pluralize(replies, "reply", "replies"))
+	}
+
+	if strings.Contains(document, "<parent-issue>") {
+		summary += ", including the parent issue"
+	}
+
+	if strings.Contains(document, "<sub-issues>") {
+		summary += " and its sub-issues"
+	}
+
+	return summary + "."
+}
+
+func documentSize(document string) string {
+	const unit = 1024
+
+	if kb := len(document) / unit; kb > 0 {
+		return fmt.Sprintf("%d KB", kb)
+	}
+
+	return fmt.Sprintf("%d bytes", len(document))
+}
+
+func pluralize(n int, singular, plural string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, singular)
+	}
+
+	return fmt.Sprintf("%d %s", n, plural)
 }
 
 func (h *AgentSessionHandler) SendThought(ctx context.Context, sessionId, accessToken, text string) error {
