@@ -138,6 +138,7 @@ type PullRequestCommentedEvent struct {
 	GitRef         string
 	InstallationId string
 	RepoFullName   string
+	DeliveryId     *string
 }
 
 func (e PullRequestCommentedEvent) EventType() string {
@@ -152,6 +153,7 @@ type PullRequestChecksFailedEvent struct {
 	InstallationId string
 	RepoFullName   string
 	ChecksFailed   []string
+	DeliveryId     *string
 }
 
 func (e PullRequestChecksFailedEvent) EventType() string {

@@ -865,6 +865,7 @@ func (s *WebhookSuite) TestHandlePullRequestComment() {
 func (s *WebhookSuite) TestHandlePullRequestComment_Success() {
 	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
 		WEventType: WEventType_PullRequestReview,
+		DeliveryID: "delivery-comment-1",
 		Payload: []byte(`{
 			"action": "submitted",
 			"sender": {"login": "alice"},
@@ -883,6 +884,8 @@ func (s *WebhookSuite) TestHandlePullRequestComment_Success() {
 	s.Equal("feature", event.GitRef)
 	s.Equal("owner/repo", event.RepoFullName)
 	s.Equal("11", event.InstallationId)
+	s.Require().NotNil(event.DeliveryId)
+	s.Equal("delivery-comment-1", *event.DeliveryId)
 }
 
 // ---------------------------------------------------------------------------
@@ -924,6 +927,7 @@ func (s *WebhookSuite) TestHandleCheckSuite() {
 func (s *WebhookSuite) TestHandleCheckSuite_Success() {
 	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
 		WEventType: WEventType_CheckSuite,
+		DeliveryID: "delivery-checks-1",
 		Payload: []byte(`{
 			"action": "completed",
 			"sender": {"login": "alice"},
@@ -952,6 +956,8 @@ func (s *WebhookSuite) TestHandleCheckSuite_Success() {
 		s.Equal("owner/repo", event.RepoFullName)
 		s.Equal("5", event.InstallationId)
 		s.Equal([]string{expected.url}, event.ChecksFailed)
+		s.Require().NotNil(event.DeliveryId)
+		s.Equal("delivery-checks-1", *event.DeliveryId)
 	}
 }
 
