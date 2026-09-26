@@ -118,7 +118,8 @@ func (s *HarnessSuite) TestRunCommandUsesCodexHomeAndNoAPIKey() {
 	s.Contains(command, "codex exec --json")
 	s.Contains(command, "--skip-git-repo-check")
 	s.Contains(command, "resume --last")
-	s.Contains(command, "sed '/^Reading prompt from stdin\\.\\.\\.$/d'")
+	s.Contains(command, "-e '/^Reading prompt from stdin\\.\\.\\.$/d'")
+	s.Contains(command, "-e '/ERROR codex_core::tools::router:/d'")
 	s.NotContains(command, "--full-auto")
 	s.NotContains(command, "OPENAI_API_KEY")
 }

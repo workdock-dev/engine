@@ -29,7 +29,10 @@ cd WORKSPACE_PATH_ARG || {
 PATH=/home/${USER}/.local/bin:$PATH CODEX_HOME=CODEX_HOME_ARG codex exec --json --skip-git-repo-check resume --last < PROMPT_FILE_PATH_ARG 2>"${CODEX_STDERR_FILE}"
 CODEX_EXIT_CODE=$?
 
-sed '/^Reading prompt from stdin\.\.\.$/d' "${CODEX_STDERR_FILE}" >&2
+sed \
+	-e '/^Reading prompt from stdin\.\.\.$/d' \
+	-e '/ERROR codex_core::tools::router:/d' \
+	"${CODEX_STDERR_FILE}" >&2
 printf '%s\n' '{"type":"workdock.stream.flush"}'
 rm -f "${CODEX_STDERR_FILE}"
 
