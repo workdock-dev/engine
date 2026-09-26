@@ -596,7 +596,7 @@ func (s *WebhookSuite) TestConsume_InvalidPayload() {
 	tests := []string{
 		WEventType_Installation,
 		WEventType_InstallationRepositories,
-		WEventType_PullRequestReviewComment,
+		WEventType_PullRequestReview,
 		WEventType_CheckSuite,
 		"totally_unknown",
 	}
@@ -841,17 +841,17 @@ func (s *WebhookSuite) TestHandlePullRequestComment() {
 		name    string
 		payload string
 	}{
-		{name: "nil sender", payload: `{"action":"created"}`},
-		{name: "bot login", payload: `{"action":"created","sender":{"login":"workdock-bot"}}`},
+		{name: "nil sender", payload: `{"action":"submitted"}`},
+		{name: "bot login", payload: `{"action":"submitted","sender":{"login":"workdock-bot"}}`},
 		{name: "deleted action", payload: `{"action":"deleted","sender":{"login":"alice"}}`},
-		{name: "nil pull request", payload: `{"action":"created","sender":{"login":"alice"}}`},
-		{name: "nil installation", payload: `{"action":"created","sender":{"login":"alice"},"pull_request":{"head":{"ref":"main"}}}`},
+		{name: "nil pull request", payload: `{"action":"submitted","sender":{"login":"alice"}}`},
+		{name: "nil installation", payload: `{"action":"submitted","sender":{"login":"alice"},"pull_request":{"head":{"ref":"main"}}}`},
 	}
 
 	for _, tt := range tests {
 		s.Run(tt.name, func() {
 			err := consumer.Consume(context.Background(), &webhook.VerifiedWEvent{
-				WEventType: WEventType_PullRequestReviewComment,
+				WEventType: WEventType_PullRequestReview,
 				Payload:    []byte(tt.payload),
 			})
 
@@ -864,9 +864,9 @@ func (s *WebhookSuite) TestHandlePullRequestComment() {
 
 func (s *WebhookSuite) TestHandlePullRequestComment_Success() {
 	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
-		WEventType: WEventType_PullRequestReviewComment,
+		WEventType: WEventType_PullRequestReview,
 		Payload: []byte(`{
-			"action": "created",
+			"action": "submitted",
 			"sender": {"login": "alice"},
 			"installation": {"id": 11},
 			"pull_request": {
