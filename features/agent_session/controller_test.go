@@ -968,6 +968,27 @@ func (s *ControllerSuite) TestOnPullRequestCommented_Success() {
 	s.NotEmpty(created.Identifier, "new event should have a generated identifier")
 }
 
+func (s *ControllerSuite) TestOnPullRequestCommented_DeliveryIdDeduplicatesAndIdentifiesEvents() {
+	s.initController()
+	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
+		return &types.SessionEvent{SessionIdentifier: "sess-1", Identifier: "delivery-1", Payload: []byte(`{"seeded":true}`)}, nil
+	}
+	s.sessionRep.getAgentSessionFn = func(ctx context.Context, identifier string) (*types.Session, error) {
+		session := newTestSession()
+		session.RepoFullName = repoName("workdock/repo")
+		return session, nil
+	}
+
+	err := s.publish(shared.EventType_PullRequestCommented, shared.PullRequestCommentedEvent{GitRef: "workdock/main", RepoFullName: "workdock/repo", DeliveryId: repoName("delivery-1")})
+	s.Require().NoError(err)
+	s.Empty(s.sessionRep.createdEvents)
+
+	err = s.publish(shared.EventType_PullRequestCommented, shared.PullRequestCommentedEvent{GitRef: "workdock/main", RepoFullName: "workdock/repo", DeliveryId: repoName("delivery-2")})
+	s.Require().NoError(err)
+	s.Require().Len(s.sessionRep.createdEvents, 1)
+	s.Equal("delivery-2", s.sessionRep.createdEvents[0].Identifier)
+}
+
 func (s *ControllerSuite) TestOnPullRequestCommented_RepoNotSet() {
 	s.initController()
 	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
@@ -1118,6 +1139,27 @@ func (s *ControllerSuite) TestOnPullRequestChecksFailed_Success() {
 	s.Equal(types.AgentSessionEventReason_PRChecksFailed, created.Reason)
 	s.Equal([]byte(`{"seeded":true}`), []byte(created.Payload))
 	s.NotEmpty(created.Identifier, "new event should have a generated identifier")
+}
+
+func (s *ControllerSuite) TestOnPullRequestChecksFailed_DeliveryIdDeduplicatesAndIdentifiesEvents() {
+	s.initController()
+	s.sessionRep.getAgentSessionEventByGitRefFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
+		return &types.SessionEvent{SessionIdentifier: "sess-1", Identifier: "delivery-1", Payload: []byte(`{"seeded":true}`)}, nil
+	}
+	s.sessionRep.getAgentSessionFn = func(ctx context.Context, identifier string) (*types.Session, error) {
+		session := newTestSession()
+		session.RepoFullName = repoName("workdock/repo")
+		return session, nil
+	}
+
+	err := s.publish(shared.EventType_PullRequestChecksFailed, shared.PullRequestChecksFailedEvent{GitRef: "workdock/main", RepoFullName: "workdock/repo", DeliveryId: repoName("delivery-1")})
+	s.Require().NoError(err)
+	s.Empty(s.sessionRep.createdEvents)
+
+	err = s.publish(shared.EventType_PullRequestChecksFailed, shared.PullRequestChecksFailedEvent{GitRef: "workdock/main", RepoFullName: "workdock/repo", DeliveryId: repoName("delivery-2")})
+	s.Require().NoError(err)
+	s.Require().Len(s.sessionRep.createdEvents, 1)
+	s.Equal("delivery-2", s.sessionRep.createdEvents[0].Identifier)
 }
 
 func (s *ControllerSuite) TestOnPullRequestChecksFailed_RepoNotSet() {

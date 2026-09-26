@@ -147,6 +147,13 @@ type WEventConsumer struct {
 	eventBus *shared.EventBus
 }
 
+func deliveryID(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
 // NewWEventConsumer creates a webhook consumer for processing verified
 // Linear webhook events.
 func NewWEventConsumer(
@@ -176,6 +183,9 @@ func (c *WEventConsumer) Consume(ctx context.Context, event *webhook.VerifiedWEv
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		slog.Error("[webhook][github] failed to unmarshal", "err", err)
 		return webhook.ErrWBadRequest
+	}
+	if event.DeliveryID != "" {
+		payload.DeliveryID = event.DeliveryID
 	}
 
 	if event.WEventType == WEventType_Installation {
@@ -353,6 +363,7 @@ func (c *WEventConsumer) handlePullRequestComment(event *types.WebhookEvent) err
 		GitRef:         event.PullRequest.Head.Ref,
 		RepoFullName:   event.PullRequest.Head.Repo.FullName,
 		InstallationId: installationId,
+		DeliveryId:     deliveryID(event.DeliveryID),
 	})
 
 	return nil
@@ -410,6 +421,7 @@ func (c *WEventConsumer) handleCheckSuite(event *types.WebhookEvent) error {
 			RepoFullName:   event.Repository.FullName,
 			InstallationId: installationId,
 			ChecksFailed:   []string{pr.URL},
+			DeliveryId:     deliveryID(event.DeliveryID),
 		})
 	}
 

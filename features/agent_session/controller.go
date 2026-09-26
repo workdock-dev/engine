@@ -431,6 +431,10 @@ func (c *controller) onPullRequestCommented() {
 				return fmt.Errorf("[agent-session] session event not found: %s", e.GitRef)
 			}
 
+			if e.DeliveryId != nil && sessionEvent.Identifier == *e.DeliveryId {
+				return nil
+			}
+
 			session, err := telemetry.Span(ctx, c.tracer, "on_pull_request_comment.get_session", func(ctx context.Context) (*types.Session, error) {
 				return c.session.GetAgentSession(ctx, sessionEvent.SessionIdentifier)
 			})
@@ -453,9 +457,13 @@ func (c *controller) onPullRequestCommented() {
 
 			slog.Debug("[agent-session] created session event for pull request comment review")
 			if err := telemetry.SpanErr(ctx, c.tracer, "on_pull_request_comment.create_session_event", func(ctx context.Context) error {
+				identifier := uuid.NewV7().String()
+				if e.DeliveryId != nil {
+					identifier = *e.DeliveryId
+				}
 				return c.session.CreateSessionEvent(ctx, &types.SessionEvent{
 					SessionIdentifier: session.Identifier,
-					Identifier:        uuid.NewV7().String(),
+					Identifier:        identifier,
 					Payload:           sessionEvent.Payload,
 					Seed:              &sessionEvent.Identifier,
 					GitRef:            &e.GitRef,
@@ -494,6 +502,10 @@ func (c *controller) onPullRequestChecksFailed() {
 				return fmt.Errorf("[agent-session] session event not found: %s", e.GitRef)
 			}
 
+			if e.DeliveryId != nil && sessionEvent.Identifier == *e.DeliveryId {
+				return nil
+			}
+
 			session, err := telemetry.Span(ctx, c.tracer, "on_pull_request_checks_failed.get_session", func(ctx context.Context) (*types.Session, error) {
 				return c.session.GetAgentSession(ctx, sessionEvent.SessionIdentifier)
 			})
@@ -516,9 +528,13 @@ func (c *controller) onPullRequestChecksFailed() {
 
 			slog.Debug("[agent-session] created session event for pull request checks failed")
 			if err := telemetry.SpanErr(ctx, c.tracer, "on_pull_request_checks_failed.create_session_event", func(ctx context.Context) error {
+				identifier := uuid.NewV7().String()
+				if e.DeliveryId != nil {
+					identifier = *e.DeliveryId
+				}
 				return c.session.CreateSessionEvent(ctx, &types.SessionEvent{
 					SessionIdentifier: session.Identifier,
-					Identifier:        uuid.NewV7().String(),
+					Identifier:        identifier,
 					Payload:           sessionEvent.Payload,
 					Seed:              &sessionEvent.Identifier,
 					GitRef:            &e.GitRef,
