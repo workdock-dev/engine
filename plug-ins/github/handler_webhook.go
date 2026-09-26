@@ -39,7 +39,7 @@ const (
 	WEventType_Installation             = "installation"
 	WEventType_InstallationRepositories = "installation_repositories"
 	WEventType_Issues                   = "issues"
-	WEventType_PullRequestReviewComment = "pull_request_review_comment"
+	WEventType_PullRequestReview        = "pull_request_review"
 	WEventType_CheckSuite               = "check_suite"
 )
 
@@ -191,7 +191,7 @@ func (c *WEventConsumer) Consume(ctx context.Context, event *webhook.VerifiedWEv
 		return nil
 	}
 
-	if event.WEventType == WEventType_PullRequestReviewComment {
+	if event.WEventType == WEventType_PullRequestReview {
 		return c.handlePullRequestComment(&payload)
 	}
 
@@ -330,7 +330,7 @@ func (c *WEventConsumer) handlePullRequestComment(event *types.WebhookEvent) err
 		return nil
 	}
 
-	if event.Action == "deleted" {
+	if event.Action != "submitted" {
 		return nil
 	}
 
