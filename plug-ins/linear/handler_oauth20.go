@@ -47,7 +47,7 @@ func NewOAuth20Handler(config types.Config, client interfaces.Client) oauth20.Oa
 func (h *oauth20Handler) GetAuthorizationURL() string {
 	scope := "read,write,app:assignable,app:mentionable"
 	return fmt.Sprintf(
-		"%s?client_id=%s&redirect_uri=%s/linear/oauth/callback&response_type=code&scope=%s&actor=app",
+		"%s?client_id=%s&redirect_uri=%s/api/v1/linear/oauth/callback&response_type=code&scope=%s&actor=app",
 		AuthorizeEndpoint, h.config.ClientId, h.config.ServerUrl, scope,
 	)
 

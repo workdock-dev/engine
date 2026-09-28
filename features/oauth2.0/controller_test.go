@@ -72,7 +72,7 @@ func (s *ControllerSuite) newCallbackRequest(code, errCode string) *http.Request
 		params.Set("error", errCode)
 	}
 
-	target := fmt.Sprintf("/%s/oauth/callback?%s", testProvider, params.Encode())
+	target := fmt.Sprintf("/api/v1/%s/oauth/callback?%s", testProvider, params.Encode())
 	r, err := http.NewRequest(http.MethodGet, target, nil)
 	s.Require().NoError(err)
 	return r
@@ -92,12 +92,12 @@ func (s *ControllerSuite) publishedEvents() *[]shared.DomainEvent {
 func (s *ControllerSuite) TestNew_RegistersRoutes() {
 	s.newController()
 
-	r := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/%s/oauth/authorize", testProvider), nil)
+	r := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/%s/oauth/authorize", testProvider), nil)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, r)
 	s.Equal(http.StatusFound, w.Code, "authorize route should be registered")
 
-	r = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/%s/oauth/callback", testProvider), nil)
+	r = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/%s/oauth/callback", testProvider), nil)
 	w = httptest.NewRecorder()
 	s.mux.ServeHTTP(w, r)
 	s.NotEqual(http.StatusNotFound, w.Code, "callback route should be registered")
@@ -109,7 +109,7 @@ func (s *ControllerSuite) TestAuthorizeRoute_Redirects() {
 	}
 	s.newController()
 
-	r := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/%s/oauth/authorize", testProvider), nil)
+	r := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/%s/oauth/authorize", testProvider), nil)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, r)
 
@@ -128,7 +128,7 @@ func (s *ControllerSuite) TestCallbackRoute_Success() {
 	}
 	s.newController()
 
-	r := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/%s/oauth/callback?code=abc", testProvider), nil)
+	r := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/%s/oauth/callback?code=abc", testProvider), nil)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, r)
 
@@ -143,7 +143,7 @@ func (s *ControllerSuite) TestCallbackRoute_HandlerError() {
 	}
 	s.newController()
 
-	r := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/%s/oauth/callback?code=abc", testProvider), nil)
+	r := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/%s/oauth/callback?code=abc", testProvider), nil)
 	w := httptest.NewRecorder()
 	s.mux.ServeHTTP(w, r)
 

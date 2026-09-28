@@ -1707,7 +1707,7 @@ func (s *OAuthSuite) TestGetAuthorizationURL() {
 	url := s.newHandler().GetAuthorizationURL()
 
 	s.Equal(
-		"https://linear.app/oauth/authorize?client_id=client-1&redirect_uri=https://server.example.com/linear/oauth/callback&response_type=code&scope=read,write,app:assignable,app:mentionable&actor=app",
+		"https://linear.app/oauth/authorize?client_id=client-1&redirect_uri=https://server.example.com/api/v1/linear/oauth/callback&response_type=code&scope=read,write,app:assignable,app:mentionable&actor=app",
 		url,
 	)
 }

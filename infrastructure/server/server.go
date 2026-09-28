@@ -44,10 +44,10 @@ func New(address string) (*Server, error) {
 	}
 
 	mux := http.NewServeMux()
-	// mux.HandleFunc("GET /linear/oauth/authorize", s.handleLinearOauthAuthorize)
-	// mux.HandleFunc("GET /linear/oauth/callback", s.handleLinearOauthCallback)
-	// mux.HandleFunc("POST /linear/webhook", s.handleLinearWebhook)
-	// mux.HandleFunc("POST /github/webhook", s.handleGitHubWebhook)
+	// mux.HandleFunc("GET /api/v1/linear/oauth/authorize", s.handleLinearOauthAuthorize)
+	// mux.HandleFunc("GET /api/v1/linear/oauth/callback", s.handleLinearOauthCallback)
+	// mux.HandleFunc("POST /api/v1/linear/webhook", s.handleLinearWebhook)
+	// mux.HandleFunc("POST /api/v1/github/webhook", s.handleGitHubWebhook)
 	s.mux = mux
 
 	slog.Debug("[http-server] created")

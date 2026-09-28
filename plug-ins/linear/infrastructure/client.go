@@ -683,7 +683,7 @@ func (s *Client) ExchangeCode(ctx context.Context, code string) (*types.TokenExc
 		"grant_type":    {"authorization_code"},
 		"client_id":     {s.config.ClientId},
 		"client_secret": {s.config.ClientSecret},
-		"redirect_uri":  {s.config.ServerUrl + "/linear/oauth/callback"},
+		"redirect_uri":  {s.config.ServerUrl + "/api/v1/linear/oauth/callback"},
 		"code":          {code},
 	}
 

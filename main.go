@@ -243,7 +243,7 @@ func main() {
 	// *-------------------------------------------------------------------------*
 
 	webhook.New(
-		"POST /github/webhook",
+		"POST /api/v1/github/webhook",
 		server.Mux(),
 		github.NewWEventTransformer(),
 		github.NewWEventVerifier(cfg.Github),
@@ -258,7 +258,7 @@ func main() {
 		eventBus,
 	)
 	webhook.New(
-		"POST /linear/webhook",
+		"POST /api/v1/linear/webhook",
 		server.Mux(),
 		linear.NewWEventTransformer(),
 		linear.NewWEventVerifier(cfg.Linear),

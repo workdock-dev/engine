@@ -71,13 +71,13 @@ func New(
 		eventBus:      eventBus,
 	}
 
-	mux.HandleFunc(fmt.Sprintf("GET /%s/oauth/authorize", provider), func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(fmt.Sprintf("GET /api/v1/%s/oauth/authorize", provider), func(w http.ResponseWriter, r *http.Request) {
 		url := c.authorize()
 
 		http.Redirect(w, r, url, http.StatusFound)
 	})
 
-	mux.HandleFunc(fmt.Sprintf("GET /%s/oauth/callback", provider), func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc(fmt.Sprintf("GET /api/v1/%s/oauth/callback", provider), func(w http.ResponseWriter, r *http.Request) {
 		message, err := c.callback(r)
 
 		if err != nil {
