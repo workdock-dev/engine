@@ -319,7 +319,7 @@ func main() {
 
 	slog.Info("[service] started", "service.name", serviceName)
 
-	server.Run(ctx)
+	server.Run(ctx, nil)
 	wg.Wait()
 
 	slog.Info("[service] stopped")

@@ -19,6 +19,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"time"
 )
 
@@ -66,8 +67,14 @@ func (s *Server) Mux() *http.ServeMux {
 //
 // The process terminates if the server fails to start or encounters an
 // unrecoverable runtime error.
-func (s *Server) Run(ctx context.Context) {
-	s.srv = &http.Server{Addr: s.address, Handler: s.mux}
+func (s *Server) Run(ctx context.Context, middlewares []func(http.Handler) http.Handler) {
+	var handler http.Handler = s.mux
+
+	for _, middleware := range slices.Backward(middlewares) {
+		handler = middleware(handler)
+	}
+
+	s.srv = &http.Server{Addr: s.address, Handler: handler}
 	slog.Info("[http-server] started", "address", s.address)
 
 	go func() {
