@@ -698,7 +698,7 @@ func (s *WebhookSuite) TestConsume_Issue_CreateAction_PublishesTicketChanged() {
 		"action": "create",
 		"organizationId": "org-1",
 		"webhookTimestamp": %d,
-		"data": {"id": "issue-1", "identifier": "ENG-1", "title": "New issue", "teamId": "team-1", "url": "https://linear.app/issue/1", "stateName": "Todo"}
+		"data": {"id": "issue-1", "identifier": "ENG-1", "title": "New issue", "description": "Track ticket data", "teamId": "team-1", "url": "https://linear.app/issue/1", "stateName": "Todo"}
 	}`, timestamp)
 
 	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
@@ -718,6 +718,7 @@ func (s *WebhookSuite) TestConsume_Issue_CreateAction_PublishesTicketChanged() {
 	s.Equal("ENG-1", event.IssueIdentifier)
 	s.Equal("team-1", event.TeamId)
 	s.Equal("New issue", event.Title)
+	s.Equal("Track ticket data", event.Description)
 	s.Equal("https://linear.app/issue/1", event.Url)
 	s.Empty(event.PreviousState)
 	s.Equal("Todo", event.NewState)

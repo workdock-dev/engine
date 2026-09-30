@@ -318,6 +318,7 @@ func (c *WEventConsumer) publishTicketChanged(payload types.IssueStatusChangePay
 		IssueIdentifier: payload.Data.Identifier,
 		TeamId:          payload.Data.TeamID,
 		Title:           payload.Data.Title,
+		Description:     payload.Data.Description,
 		Url:             payload.Data.URL,
 		PreviousState:   payload.UpdatedFrom.StateName,
 		NewState:        payload.Data.StateName,
