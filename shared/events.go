@@ -102,6 +102,7 @@ func (e AgentSessionResumeEvent) EventType() string {
 
 type SessionRepoAssignedEvent struct {
 	SessionIdentifier string
+	IssueId           string
 	RepoFullName      string
 }
 

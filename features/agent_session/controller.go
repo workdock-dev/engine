@@ -276,6 +276,7 @@ func (c *controller) onAgentSessionPrompt() {
 
 				c.eventBus.Publish(ctx, shared.SessionRepoAssignedEvent{
 					SessionIdentifier: session.Identifier,
+					IssueId:           session.IssueId,
 					RepoFullName:      repo,
 				})
 			}

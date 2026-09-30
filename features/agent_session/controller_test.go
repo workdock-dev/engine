@@ -583,6 +583,7 @@ func (s *ControllerSuite) TestOnAgentSessionPrompt_RepoLabel_UpdatesSession() {
 	s.Equal("workdock/other", *s.sessionRep.upsertedSessions[0].RepoFullName)
 	s.Require().Len(assignedEvents, 1)
 	s.Equal("sess-1", assignedEvents[0].SessionIdentifier)
+	s.Equal("issue-1", assignedEvents[0].IssueId)
 	s.Equal("workdock/other", assignedEvents[0].RepoFullName)
 	s.Require().Len(s.sessionRep.createdEvents, 1)
 }
