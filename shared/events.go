@@ -35,6 +35,7 @@ const (
 	EventType_AgentSessionArchive     = "agent_session.archive"
 	EventType_AgentSessionPrompt      = "agent_session.prompt"
 	EventType_AgentSessionResume      = "agent_session.resume"
+	EventType_SessionRepoAssigned     = "session.repo_assigned"
 	EventType_AgentSessionStop        = "agent_session.stop"
 	EventType_OrganizationCreate      = "organization.create"
 	EventType_GitResetConnection      = "git.reset_connection"
@@ -95,6 +96,17 @@ type AgentSessionResumeEvent struct {
 
 func (e AgentSessionResumeEvent) EventType() string {
 	return EventType_AgentSessionResume
+}
+
+// *--------------------------------------------------------------------------*
+
+type SessionRepoAssignedEvent struct {
+	SessionIdentifier string
+	RepoFullName      string
+}
+
+func (e SessionRepoAssignedEvent) EventType() string {
+	return EventType_SessionRepoAssigned
 }
 
 // *--------------------------------------------------------------------------*

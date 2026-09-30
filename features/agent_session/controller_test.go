@@ -557,6 +557,11 @@ func (s *ControllerSuite) TestOnAgentSessionPrompt_LabelsError() {
 
 func (s *ControllerSuite) TestOnAgentSessionPrompt_RepoLabel_UpdatesSession() {
 	s.initController()
+	var assignedEvents []shared.SessionRepoAssignedEvent
+	s.eventBus.Subscribe(shared.EventType_SessionRepoAssigned, func(ctx context.Context, event shared.DomainEvent) error {
+		assignedEvents = append(assignedEvents, event.(shared.SessionRepoAssignedEvent))
+		return nil
+	})
 	s.sessionRep.getAgentSessionFn = func(ctx context.Context, identifier string) (*types.Session, error) {
 		return newTestSession(), nil // session already exists
 	}
@@ -576,6 +581,9 @@ func (s *ControllerSuite) TestOnAgentSessionPrompt_RepoLabel_UpdatesSession() {
 	s.Require().Len(s.sessionRep.upsertedSessions, 1, "repo change should upsert the session")
 	s.Require().NotNil(s.sessionRep.upsertedSessions[0].RepoFullName)
 	s.Equal("workdock/other", *s.sessionRep.upsertedSessions[0].RepoFullName)
+	s.Require().Len(assignedEvents, 1)
+	s.Equal("sess-1", assignedEvents[0].SessionIdentifier)
+	s.Equal("workdock/other", assignedEvents[0].RepoFullName)
 	s.Require().Len(s.sessionRep.createdEvents, 1)
 }
 

@@ -273,6 +273,11 @@ func (c *controller) onAgentSessionPrompt() {
 				}); err != nil {
 					return err
 				}
+
+				c.eventBus.Publish(ctx, shared.SessionRepoAssignedEvent{
+					SessionIdentifier: session.Identifier,
+					RepoFullName:      repo,
+				})
 			}
 
 			slog.Debug("[agent-session] created session event for prompt", "event_identifier", sessionEvent.Identifier)
