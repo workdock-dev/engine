@@ -18,10 +18,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/daytona/clients/sdk-go/pkg/daytona"
 	"github.com/stretchr/testify/suite"
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
 	"github.com/workdock-dev/engine/plug-ins/daytona/types"
@@ -36,7 +39,7 @@ func TestSandboxSuite(t *testing.T) {
 }
 
 func (s *SandboxSuite) TestNewSandboxHandler() {
-	handler := NewSandboxHandler(types.Config{Target: "eu", ApiKey: "key", ApiUrl: "https://api"})
+	handler := NewSandboxHandler(types.Config{Target: "eu", ApiKey: "key", ApiUrl: "https://api"}, http.NewServeMux())
 
 	var iface agent_session_interfaces.HandlerSandbox = handler
 	s.NotNil(iface)
@@ -103,4 +106,63 @@ func (s *SandboxSuite) TestNewUUIDStartingWithLetter_FormattedLikeProductionUsag
 		name := handler.newUUIDStartingWithLetter()
 		s.False(strings.ContainsAny(name, "{}: "), "no braces, colons or spaces allowed: %s", name)
 	}
+}
+
+func (s *SandboxSuite) TestConstructorConfiguresAndRegistersGitMCP() {
+	mux := http.NewServeMux()
+	stored := map[string]string{"session": "token"}
+	handler := NewSandboxHandler(types.Config{
+		MCPApiKey: "api-key",
+		MCPTokenLookup: func(_ context.Context, id string) (string, error) {
+			return stored[id], nil
+		},
+	}, mux).(*SandboxHandler)
+	s.Require().NotNil(handler.mcp)
+	s.Require().NoError(handler.mcp.RegisterExecution("session", &daytona.Sandbox{}, ""))
+	invocations := 0
+	handler.mcp.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := handler.mcp.authorized(r.Context(), types.AgentSession{Id: "session", Token: "token"})
+
+		if err != nil {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+
+		invocations++
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	for _, test := range []struct {
+		name   string
+		header string
+		status int
+	}{
+		{name: "missing API key", status: http.StatusUnauthorized},
+		{name: "invalid API key", header: "Bearer invalid", status: http.StatusUnauthorized},
+		{name: "valid execution", header: "Bearer api-key", status: http.StatusNoContent},
+	} {
+		s.Run(test.name, func() {
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/git", nil)
+			request.Header.Set("Authorization", test.header)
+			response := httptest.NewRecorder()
+
+			mux.ServeHTTP(response, request)
+
+			s.Equal(test.status, response.Code)
+		})
+	}
+
+	s.Equal(1, invocations)
+	delete(stored, "session")
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/git", nil)
+	request.Header.Set("Authorization", "Bearer api-key")
+	response := httptest.NewRecorder()
+
+	mux.ServeHTTP(response, request)
+
+	s.Equal(http.StatusForbidden, response.Code)
+	s.Equal(1, invocations)
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/mcp/daytona", nil))
+	s.Equal(http.StatusNotFound, response.Code)
 }

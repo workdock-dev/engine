@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 	"uuid"
@@ -42,16 +43,10 @@ type SandboxHandler struct {
 	mcp    *MCPServer
 }
 
-func NewSandboxHandler(config types.Config, mcpServer ...*MCPServer) agent_session_interfaces.HandlerSandbox {
-	var mcp *MCPServer
-
-	if len(mcpServer) > 0 {
-		mcp = mcpServer[0]
-	}
-
+func NewSandboxHandler(config types.Config, mux *http.ServeMux) agent_session_interfaces.HandlerSandbox {
 	return &SandboxHandler{
 		config: config,
-		mcp:    mcp,
+		mcp:    NewMCPServer(config, mux),
 	}
 }
 

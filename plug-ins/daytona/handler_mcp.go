@@ -38,16 +38,18 @@ type MCPServer struct {
 	handler     http.Handler
 }
 
-func NewMCPServer(apiKey string, lookupToken func(context.Context, string) (string, error)) *MCPServer {
+func NewMCPServer(config types.Config, mux *http.ServeMux) *MCPServer {
 	h := &MCPServer{
-		apiKey:      apiKey,
-		lookupToken: lookupToken,
+		apiKey:      config.MCPApiKey,
+		lookupToken: config.MCPTokenLookup,
 		sessions:    make(map[string]types.MCPExecution),
-		server:      mcp.NewServer(&mcp.Implementation{Name: "workdock-daytona", Version: "1.0.0"}, nil),
+		server:      mcp.NewServer(&mcp.Implementation{Name: "workdock", Version: "1.0.0"}, nil),
 	}
 
 	h.registerTools()
 	h.handler = mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return h.server }, nil)
+
+	mux.Handle("/api/v1/mcp/git", h.Handler())
 
 	return h
 }
@@ -90,28 +92,28 @@ func (h *MCPServer) Handler() http.Handler {
 	})
 }
 
-func (h *MCPServer) authorized(ctx context.Context, auth types.MCPAuth) (*types.MCPExecution, error) {
+func (h *MCPServer) authorized(ctx context.Context, auth types.AgentSession) (*types.MCPExecution, error) {
 	if ctx.Value(types.MCPAuthenticatedKey{}) != true {
 		return nil, errors.New("MCP API key authentication required")
 	}
 
-	if auth.AgentSessionID == "" || auth.AgentSessionToken == "" || h.lookupToken == nil {
-		return nil, errors.New("active Workdock agent session required")
+	if auth.Id == "" || auth.Token == "" || h.lookupToken == nil {
+		return nil, errors.New("active agent session required")
 	}
 
-	token, err := h.lookupToken(ctx, auth.AgentSessionID)
+	token, err := h.lookupToken(ctx, auth.Id)
 
-	if err != nil || token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(auth.AgentSessionToken)) != 1 {
-		return nil, errors.New("active Workdock agent session required")
+	if err != nil || token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(auth.Token)) != 1 {
+		return nil, errors.New("active agent session required")
 	}
 
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	execution, ok := h.sessions[auth.AgentSessionID]
+	execution, ok := h.sessions[auth.Id]
 
 	if !ok || execution.Sandbox == nil {
-		return nil, errors.New("active Workdock agent session required")
+		return nil, errors.New("active agent session required")
 	}
 
 	return &execution, nil
@@ -142,24 +144,24 @@ func (h *MCPServer) authorizeRemote(ctx context.Context, execution *types.MCPExe
 }
 
 func (h *MCPServer) registerTools() {
-	mcp.AddTool(h.server, &mcp.Tool{Name: "daytona_git_clone", Description: "Clone a repository in this execution's Daytona sandbox."}, h.gitClone)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "daytona_git_status", Description: "Get repository status."}, h.gitStatus)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "daytona_git_branches", Description: "List repository branches."}, h.gitBranches)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "daytona_git_history", Description: "Get repository commit history."}, h.gitHistory)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "daytona_git_create_branch", Description: "Create a repository branch."}, h.gitCreateBranch)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "daytona_git_checkout", Description: "Check out a branch or commit."}, h.gitCheckout)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "daytona_git_delete_branch", Description: "Delete a branch."}, h.gitDeleteBranch)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "daytona_git_add", Description: "Stage files in a repository."}, h.gitAdd)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "daytona_git_commit", Description: "Commit staged changes."}, h.gitCommit)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "daytona_git_push", Description: "Push commits using Workdock's GitHub installation token."}, h.gitPush)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "daytona_git_pull", Description: "Pull changes using Workdock's GitHub installation token."}, h.gitPull)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "daytona_git_init", Description: "Initialize a repository."}, h.gitInit)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "daytona_git_reset", Description: "Reset repository changes."}, h.gitReset)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "daytona_git_restore", Description: "Restore repository files."}, h.gitRestore)
+	mcp.AddTool(h.server, &mcp.Tool{Name: "git_clone", Description: "Clone a repository."}, h.gitClone)
+	mcp.AddTool(h.server, &mcp.Tool{Name: "git_status", Description: "Get repository status."}, h.gitStatus)
+	mcp.AddTool(h.server, &mcp.Tool{Name: "git_branches", Description: "List repository branches."}, h.gitBranches)
+	mcp.AddTool(h.server, &mcp.Tool{Name: "git_history", Description: "Get repository commit history."}, h.gitHistory)
+	mcp.AddTool(h.server, &mcp.Tool{Name: "git_create_branch", Description: "Create a repository branch."}, h.gitCreateBranch)
+	mcp.AddTool(h.server, &mcp.Tool{Name: "git_checkout", Description: "Check out a branch or commit."}, h.gitCheckout)
+	mcp.AddTool(h.server, &mcp.Tool{Name: "git_delete_branch", Description: "Delete a branch."}, h.gitDeleteBranch)
+	mcp.AddTool(h.server, &mcp.Tool{Name: "git_add", Description: "Stage files in a repository."}, h.gitAdd)
+	mcp.AddTool(h.server, &mcp.Tool{Name: "git_commit", Description: "Commit staged changes."}, h.gitCommit)
+	mcp.AddTool(h.server, &mcp.Tool{Name: "git_push", Description: "Push repository commits."}, h.gitPush)
+	mcp.AddTool(h.server, &mcp.Tool{Name: "git_pull", Description: "Pull repository changes."}, h.gitPull)
+	mcp.AddTool(h.server, &mcp.Tool{Name: "git_init", Description: "Initialize a repository."}, h.gitInit)
+	mcp.AddTool(h.server, &mcp.Tool{Name: "git_reset", Description: "Reset repository changes."}, h.gitReset)
+	mcp.AddTool(h.server, &mcp.Tool{Name: "git_restore", Description: "Restore repository files."}, h.gitRestore)
 }
 
 func (h *MCPServer) gitClone(ctx context.Context, _ *mcp.CallToolRequest, in types.GitCloneInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.MCPAuth)
+	execution, err := h.authorized(ctx, in.AgentSession)
 
 	if err != nil {
 		return nil, nil, err
@@ -189,7 +191,7 @@ func (h *MCPServer) gitClone(ctx context.Context, _ *mcp.CallToolRequest, in typ
 }
 
 func (h *MCPServer) gitStatus(ctx context.Context, _ *mcp.CallToolRequest, in types.GitStatusInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.MCPAuth)
+	execution, err := h.authorized(ctx, in.AgentSession)
 
 	if err != nil {
 		return nil, nil, err
@@ -201,7 +203,7 @@ func (h *MCPServer) gitStatus(ctx context.Context, _ *mcp.CallToolRequest, in ty
 }
 
 func (h *MCPServer) gitBranches(ctx context.Context, _ *mcp.CallToolRequest, in types.GitBranchesInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.MCPAuth)
+	execution, err := h.authorized(ctx, in.AgentSession)
 
 	if err != nil {
 		return nil, nil, err
@@ -213,7 +215,7 @@ func (h *MCPServer) gitBranches(ctx context.Context, _ *mcp.CallToolRequest, in 
 }
 
 func (h *MCPServer) gitHistory(ctx context.Context, _ *mcp.CallToolRequest, in types.GitHistoryInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.MCPAuth)
+	execution, err := h.authorized(ctx, in.AgentSession)
 
 	if err != nil {
 		return nil, nil, err
@@ -225,7 +227,7 @@ func (h *MCPServer) gitHistory(ctx context.Context, _ *mcp.CallToolRequest, in t
 }
 
 func (h *MCPServer) gitCreateBranch(ctx context.Context, _ *mcp.CallToolRequest, in types.GitCreateBranchInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.MCPAuth)
+	execution, err := h.authorized(ctx, in.AgentSession)
 
 	if err != nil {
 		return nil, nil, err
@@ -237,7 +239,7 @@ func (h *MCPServer) gitCreateBranch(ctx context.Context, _ *mcp.CallToolRequest,
 }
 
 func (h *MCPServer) gitCheckout(ctx context.Context, _ *mcp.CallToolRequest, in types.GitCheckoutInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.MCPAuth)
+	execution, err := h.authorized(ctx, in.AgentSession)
 
 	if err != nil {
 		return nil, nil, err
@@ -249,7 +251,7 @@ func (h *MCPServer) gitCheckout(ctx context.Context, _ *mcp.CallToolRequest, in 
 }
 
 func (h *MCPServer) gitDeleteBranch(ctx context.Context, _ *mcp.CallToolRequest, in types.GitDeleteBranchInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.MCPAuth)
+	execution, err := h.authorized(ctx, in.AgentSession)
 
 	if err != nil {
 		return nil, nil, err
@@ -267,7 +269,7 @@ func (h *MCPServer) gitDeleteBranch(ctx context.Context, _ *mcp.CallToolRequest,
 }
 
 func (h *MCPServer) gitAdd(ctx context.Context, _ *mcp.CallToolRequest, in types.GitAddInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.MCPAuth)
+	execution, err := h.authorized(ctx, in.AgentSession)
 
 	if err != nil {
 		return nil, nil, err
@@ -279,7 +281,7 @@ func (h *MCPServer) gitAdd(ctx context.Context, _ *mcp.CallToolRequest, in types
 }
 
 func (h *MCPServer) gitCommit(ctx context.Context, _ *mcp.CallToolRequest, in types.GitCommitInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.MCPAuth)
+	execution, err := h.authorized(ctx, in.AgentSession)
 
 	if err != nil {
 		return nil, nil, err
@@ -291,7 +293,7 @@ func (h *MCPServer) gitCommit(ctx context.Context, _ *mcp.CallToolRequest, in ty
 }
 
 func (h *MCPServer) gitPush(ctx context.Context, _ *mcp.CallToolRequest, in types.GitPushInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.MCPAuth)
+	execution, err := h.authorized(ctx, in.AgentSession)
 
 	if err != nil {
 		return nil, nil, err
@@ -321,7 +323,7 @@ func (h *MCPServer) gitPush(ctx context.Context, _ *mcp.CallToolRequest, in type
 }
 
 func (h *MCPServer) gitPull(ctx context.Context, _ *mcp.CallToolRequest, in types.GitPullInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.MCPAuth)
+	execution, err := h.authorized(ctx, in.AgentSession)
 
 	if err != nil {
 		return nil, nil, err
@@ -351,7 +353,7 @@ func (h *MCPServer) gitPull(ctx context.Context, _ *mcp.CallToolRequest, in type
 }
 
 func (h *MCPServer) gitInit(ctx context.Context, _ *mcp.CallToolRequest, in types.GitInitInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.MCPAuth)
+	execution, err := h.authorized(ctx, in.AgentSession)
 
 	if err != nil {
 		return nil, nil, err
@@ -369,7 +371,7 @@ func (h *MCPServer) gitInit(ctx context.Context, _ *mcp.CallToolRequest, in type
 }
 
 func (h *MCPServer) gitReset(ctx context.Context, _ *mcp.CallToolRequest, in types.GitResetInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.MCPAuth)
+	execution, err := h.authorized(ctx, in.AgentSession)
 
 	if err != nil {
 		return nil, nil, err
@@ -395,7 +397,7 @@ func (h *MCPServer) gitReset(ctx context.Context, _ *mcp.CallToolRequest, in typ
 }
 
 func (h *MCPServer) gitRestore(ctx context.Context, _ *mcp.CallToolRequest, in types.GitRestoreInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.MCPAuth)
+	execution, err := h.authorized(ctx, in.AgentSession)
 
 	if err != nil {
 		return nil, nil, err

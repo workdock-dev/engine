@@ -124,11 +124,11 @@ func (m *MCPFromConfigFile) GetMCPList() []agent_session_interfaces.MCPConfig {
 		}
 
 		list = append(list, agent_session_interfaces.MCPConfig{
-			Name:             "daytona",
+			Name:             "git",
 			Url:              m.config.Daytona.MCPServerURL,
 			AuthHeaderKey:    "Authorization",
-			AuthHeaderValue:  "Bearer {env:WORKDOCK_DAYTONA_MCP_API_KEY}",
-			AuthSecretEnvVar: "WORKDOCK_DAYTONA_MCP_API_KEY",
+			AuthHeaderValue:  "Bearer {env:WORKDOCK_GIT_MCP_API_KEY}",
+			AuthSecretEnvVar: "WORKDOCK_GIT_MCP_API_KEY",
 			AuthSecret:       m.config.Daytona.MCPApiKey,
 			Hosts:            []string{host},
 		})
@@ -169,12 +169,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	mcpEndpoint, mcpEndpointErr := url.Parse(cfg.Daytona.MCPServerURL)
-
-	if cfg.Daytona.MCPApiKey == "" || mcpEndpointErr != nil || mcpEndpoint.Scheme != "https" || mcpEndpoint.Hostname() == "" {
-		slog.Error("[service] daytona MCP requires mcp_api_key and mcp_server_url configuration")
-		os.Exit(1)
-	}
 
 	serviceName := fmt.Sprintf("workdock-%s", uuid.NewString())
 
@@ -247,14 +241,13 @@ func main() {
 	postgres, err := pgxpool.New(context.Background(), cfg.Postgres.DatabaseUrl)
 	exit(err)
 	agentSessionPostgres := agent_session_infrastructure.NewPostgres(postgres)
-	daytonaMCP := daytona.NewMCPServer(cfg.Daytona.MCPApiKey, agentSessionPostgres.GetMCPToken)
+	cfg.Daytona.MCPTokenLookup = agentSessionPostgres.GetMCPToken
 
 	postgresRawConn, err := pgx.Connect(ctx, cfg.Postgres.DatabaseUrl)
 	exit(err)
 
 	server, err := server.New(cfg.ServerAddress)
 	exit(err)
-	server.Mux().Handle("/api/v1/mcp/daytona", daytonaMCP.Handler())
 
 	// *-------------------------------------------------------------------------*
 	// * Setup plug-ins                                                         *
@@ -262,7 +255,7 @@ func main() {
 
 	linearAgentSessionHandler := linear.NewAgentSessionHandler(linearClient, secretManager)
 	githubGitHandler := github.NewGitHandler(cfg.Github, githubClient, secretManager)
-	daytonaSandboxHandler := daytona.NewSandboxHandler(cfg.Daytona, daytonaMCP)
+	daytonaSandboxHandler := daytona.NewSandboxHandler(cfg.Daytona, server.Mux())
 	opencodeHarnessHandler := opencode.NewHarnessHandler(cfg.Opencode)
 	pidevHarnessHandler := pidev.NewHarnessHandler(cfg.Pidev)
 	codexHarnessHandler := codex.NewHarnessHandler(cfg.Codex)

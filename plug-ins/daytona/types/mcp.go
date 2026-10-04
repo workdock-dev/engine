@@ -23,13 +23,13 @@ type MCPExecution struct {
 	GitToken string
 }
 
-type MCPAuth struct {
-	AgentSessionID    string `json:"agentSessionId" jsonschema:"Workdock agent session identifier"`
-	AgentSessionToken string `json:"agentSessionToken" jsonschema:"ephemeral token for this Workdock execution"`
+type AgentSession struct {
+	Id    string `json:"agentSessionId" jsonschema:"agent session identifier"`
+	Token string `json:"agentSessionToken" jsonschema:"ephemeral token for this agent execution"`
 }
 
 type GitCloneInput struct {
-	MCPAuth
+	AgentSession
 	URL      string `json:"url"`
 	Path     string `json:"path"`
 	Branch   string `json:"branch,omitempty"`
@@ -37,47 +37,47 @@ type GitCloneInput struct {
 }
 
 type GitStatusInput struct {
-	MCPAuth
+	AgentSession
 	Path string `json:"path"`
 }
 
 type GitBranchesInput struct {
-	MCPAuth
+	AgentSession
 	Path string `json:"path"`
 }
 
 type GitHistoryInput struct {
-	MCPAuth
+	AgentSession
 	Path string `json:"path"`
 }
 
 type GitCreateBranchInput struct {
-	MCPAuth
+	AgentSession
 	Path string `json:"path"`
 	Name string `json:"name"`
 }
 
 type GitCheckoutInput struct {
-	MCPAuth
+	AgentSession
 	Path string `json:"path"`
 	Name string `json:"name"`
 }
 
 type GitDeleteBranchInput struct {
-	MCPAuth
+	AgentSession
 	Path  string `json:"path"`
 	Name  string `json:"name"`
 	Force bool   `json:"force,omitempty"`
 }
 
 type GitAddInput struct {
-	MCPAuth
+	AgentSession
 	Path  string   `json:"path"`
 	Files []string `json:"files"`
 }
 
 type GitCommitInput struct {
-	MCPAuth
+	AgentSession
 	Path    string `json:"path"`
 	Message string `json:"message"`
 	Author  string `json:"author"`
@@ -85,28 +85,28 @@ type GitCommitInput struct {
 }
 
 type GitPushInput struct {
-	MCPAuth
+	AgentSession
 	Path   string `json:"path"`
 	Branch string `json:"branch,omitempty"`
 	Remote string `json:"remote,omitempty"`
 }
 
 type GitPullInput struct {
-	MCPAuth
+	AgentSession
 	Path   string `json:"path"`
 	Branch string `json:"branch,omitempty"`
 	Remote string `json:"remote,omitempty"`
 }
 
 type GitInitInput struct {
-	MCPAuth
+	AgentSession
 	Path          string `json:"path"`
 	Bare          bool   `json:"bare,omitempty"`
 	InitialBranch string `json:"initialBranch,omitempty"`
 }
 
 type GitResetInput struct {
-	MCPAuth
+	AgentSession
 	Path   string   `json:"path"`
 	Mode   string   `json:"mode,omitempty"`
 	Target string   `json:"target,omitempty"`
@@ -114,7 +114,7 @@ type GitResetInput struct {
 }
 
 type GitRestoreInput struct {
-	MCPAuth
+	AgentSession
 	Path     string   `json:"path"`
 	Files    []string `json:"files"`
 	Staged   bool     `json:"staged,omitempty"`

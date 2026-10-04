@@ -52,7 +52,7 @@ func (s *MCPSuite) TestAPIKeyAuthentication() {
 		{name: "valid", apiKey: "secret", header: "Bearer secret", status: http.StatusNoContent},
 	} {
 		s.Run(test.name, func() {
-			h := NewMCPServer(test.apiKey, nil)
+			h := NewMCPServer(types.Config{MCPApiKey: test.apiKey, MCPTokenLookup: nil}, http.NewServeMux())
 			called := false
 			h.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				called = true
@@ -88,7 +88,7 @@ func (s *MCPSuite) TestGitHubURLValidationRejectsEmbeddedCredentialsAndOtherHost
 }
 
 func (s *MCPSuite) TestToolCallRejectsUnassociatedExecutionBeforeDaytonaOperation() {
-	h := NewMCPServer("api", func(context.Context, string) (string, error) { return "stored", nil })
+	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(context.Context, string) (string, error) { return "stored", nil }}, http.NewServeMux())
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -105,6 +105,9 @@ func (s *MCPSuite) TestToolCallRejectsUnassociatedExecutionBeforeDaytonaOperatio
 	registered := make([]string, 0, len(tools.Tools))
 	for _, tool := range tools.Tools {
 		registered = append(registered, tool.Name)
+		s.NotContains(tool.Name, "daytona")
+		s.NotContains(tool.Description, "Daytona")
+		s.NotContains(tool.Description, "Workdock")
 		schemaData, err := json.Marshal(tool.InputSchema)
 		s.Require().NoError(err)
 		var schema struct {
@@ -120,16 +123,16 @@ func (s *MCPSuite) TestToolCallRejectsUnassociatedExecutionBeforeDaytonaOperatio
 		}
 	}
 	s.ElementsMatch([]string{
-		"daytona_git_clone", "daytona_git_status", "daytona_git_branches", "daytona_git_history",
-		"daytona_git_create_branch", "daytona_git_checkout", "daytona_git_delete_branch",
-		"daytona_git_add", "daytona_git_commit", "daytona_git_push", "daytona_git_pull",
-		"daytona_git_init", "daytona_git_reset", "daytona_git_restore",
+		"git_clone", "git_status", "git_branches", "git_history",
+		"git_create_branch", "git_checkout", "git_delete_branch",
+		"git_add", "git_commit", "git_push", "git_pull",
+		"git_init", "git_reset", "git_restore",
 	}, registered)
-	for _, prohibited := range []string{"daytona_git_get_config", "daytona_git_set_config", "daytona_git_authenticate", "daytona_git_configure_user", "daytona_git_remotes", "daytona_git_remote_get"} {
+	for _, prohibited := range []string{"git_get_config", "git_set_config", "git_authenticate", "git_configure_user", "git_remotes", "git_remote_get"} {
 		s.NotContains(registered, prohibited)
 	}
 	result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "daytona_git_status",
+		Name:      "git_status",
 		Arguments: map[string]any{"agentSessionId": "not-active", "agentSessionToken": "stored", "path": "/workspace/repo"},
 	})
 	s.Require().NoError(err)
@@ -138,71 +141,71 @@ func (s *MCPSuite) TestToolCallRejectsUnassociatedExecutionBeforeDaytonaOperatio
 
 func (s *MCPSuite) TestExecutionSessionAuthenticationAndIsolation() {
 	stored := map[string]string{"session-one": "token-one", "session-two": "token-two"}
-	h := NewMCPServer("api", func(_ context.Context, id string) (string, error) { return stored[id], nil })
+	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(_ context.Context, id string) (string, error) { return stored[id], nil }}, http.NewServeMux())
 	first := &daytona.Sandbox{}
 	second := &daytona.Sandbox{}
 	s.Require().NoError(h.RegisterExecution("session-one", first, ""))
 	s.Require().NoError(h.RegisterExecution("session-two", second, ""))
 
-	authorized, err := h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.MCPAuth{AgentSessionID: "session-one", AgentSessionToken: "token-one"})
+	authorized, err := h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.AgentSession{Id: "session-one", Token: "token-one"})
 	s.Require().NoError(err)
 	s.Same(first, authorized.Sandbox)
-	_, err = h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.MCPAuth{AgentSessionID: "unknown", AgentSessionToken: "token-one"})
+	_, err = h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.AgentSession{Id: "unknown", Token: "token-one"})
 	s.Error(err)
-	_, err = h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.MCPAuth{AgentSessionID: "session-one", AgentSessionToken: "wrong"})
+	_, err = h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.AgentSession{Id: "session-one", Token: "wrong"})
 	s.Error(err)
-	_, err = h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.MCPAuth{AgentSessionID: "session-one"})
+	_, err = h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.AgentSession{Id: "session-one"})
 	s.Error(err)
 
-	secondAuthorized, err := h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.MCPAuth{AgentSessionID: "session-two", AgentSessionToken: "token-two"})
+	secondAuthorized, err := h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.AgentSession{Id: "session-two", Token: "token-two"})
 	s.Require().NoError(err)
 	s.Same(second, secondAuthorized.Sandbox)
 
 	delete(stored, "session-one")
-	_, err = h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.MCPAuth{AgentSessionID: "session-one", AgentSessionToken: "token-one"})
+	_, err = h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.AgentSession{Id: "session-one", Token: "token-one"})
 	s.Error(err)
 	h.RemoveExecution("session-two")
-	_, err = h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.MCPAuth{AgentSessionID: "session-two", AgentSessionToken: "token-two"})
+	_, err = h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.AgentSession{Id: "session-two", Token: "token-two"})
 	s.Error(err)
 }
 
 func (s *MCPSuite) TestExecutionRequiresAPIKeyAuthentication() {
-	h := NewMCPServer("api", func(context.Context, string) (string, error) { return "token", nil })
+	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(context.Context, string) (string, error) { return "token", nil }}, http.NewServeMux())
 	s.Require().NoError(h.RegisterExecution("session", &daytona.Sandbox{}, ""))
 
-	_, err := h.authorized(context.Background(), types.MCPAuth{AgentSessionID: "session", AgentSessionToken: "token"})
+	_, err := h.authorized(context.Background(), types.AgentSession{Id: "session", Token: "token"})
 
 	s.ErrorContains(err, "API key authentication required")
 }
 
 func (s *MCPSuite) TestDuplicateExecutionDoesNotReplaceSandbox() {
-	h := NewMCPServer("api", func(context.Context, string) (string, error) { return "token", nil })
+	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(context.Context, string) (string, error) { return "token", nil }}, http.NewServeMux())
 	first := &daytona.Sandbox{}
 	s.Require().NoError(h.RegisterExecution("session", first, ""))
 	s.Error(h.RegisterExecution("session", &daytona.Sandbox{}, ""))
 
 	ctx := context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true)
-	execution, err := h.authorized(ctx, types.MCPAuth{AgentSessionID: "session", AgentSessionToken: "token"})
+	execution, err := h.authorized(ctx, types.AgentSession{Id: "session", Token: "token"})
 
 	s.Require().NoError(err)
 	s.Same(first, execution.Sandbox)
 }
 
 func (s *MCPSuite) TestExecutionRegistrationRequiresSessionAndSandbox() {
-	h := NewMCPServer("api", nil)
+	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: nil}, http.NewServeMux())
 
 	s.Error(h.RegisterExecution("", &daytona.Sandbox{}, ""))
 	s.Error(h.RegisterExecution("session", nil, ""))
 }
 
 func (s *MCPSuite) TestAllGitToolsRejectInvalidExecutionBeforeDaytonaOperation() {
-	h := NewMCPServer("api", func(_ context.Context, id string) (string, error) {
+	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(_ context.Context, id string) (string, error) {
 		if id == "active" {
 			return "token", nil
 		}
 
 		return "", nil
-	})
+	}}, http.NewServeMux())
 	s.Require().NoError(h.RegisterExecution("active", &daytona.Sandbox{}, ""))
 	ctx := context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
@@ -218,26 +221,26 @@ func (s *MCPSuite) TestAllGitToolsRejectInvalidExecutionBeforeDaytonaOperation()
 
 	for _, tool := range tools.Tools {
 		s.Run(tool.Name, func() {
-			for _, auth := range []types.MCPAuth{
-				{AgentSessionID: "unknown", AgentSessionToken: "token"},
-				{AgentSessionID: "active", AgentSessionToken: "wrong"},
-				{AgentSessionID: "active"},
+			for _, auth := range []types.AgentSession{
+				{Id: "unknown", Token: "token"},
+				{Id: "active", Token: "wrong"},
+				{Id: "active"},
 				{},
 			} {
 				arguments := map[string]any{
-					"agentSessionId":    auth.AgentSessionID,
-					"agentSessionToken": auth.AgentSessionToken,
+					"agentSessionId":    auth.Id,
+					"agentSessionToken": auth.Token,
 					"path":              "/workspace/repo",
 				}
 
 				switch tool.Name {
-				case "daytona_git_clone":
+				case "git_clone":
 					arguments["url"] = "https://github.com/workdock-dev/engine.git"
-				case "daytona_git_create_branch", "daytona_git_checkout", "daytona_git_delete_branch":
+				case "git_create_branch", "git_checkout", "git_delete_branch":
 					arguments["name"] = "feature"
-				case "daytona_git_add", "daytona_git_restore":
+				case "git_add", "git_restore":
 					arguments["files"] = []string{"file.txt"}
-				case "daytona_git_commit":
+				case "git_commit":
 					arguments["message"] = "commit"
 					arguments["author"] = "workdock"
 					arguments["email"] = "no-reply@workdock.dev"
@@ -252,21 +255,21 @@ func (s *MCPSuite) TestAllGitToolsRejectInvalidExecutionBeforeDaytonaOperation()
 				s.Require().NotNil(result)
 				s.True(result.IsError)
 				s.Require().NotEmpty(result.Content)
-				s.Contains(result.Content[0].(*mcp.TextContent).Text, "active Workdock agent session required")
+				s.Contains(result.Content[0].(*mcp.TextContent).Text, "active agent session required")
 			}
 		})
 	}
 }
 
 func (s *MCPSuite) TestAuthenticatedCloneRejectsCredentialBearingURL() {
-	h := NewMCPServer("api", func(context.Context, string) (string, error) { return "token", nil })
+	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(context.Context, string) (string, error) { return "token", nil }}, http.NewServeMux())
 	s.Require().NoError(h.RegisterExecution("session", &daytona.Sandbox{}, ""))
 	ctx := context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true)
 
 	_, _, err := h.gitClone(ctx, nil, types.GitCloneInput{
-		MCPAuth: types.MCPAuth{AgentSessionID: "session", AgentSessionToken: "token"},
-		URL:     "https://credential@github.com/workdock-dev/engine.git",
-		Path:    "/workspace/repo",
+		AgentSession: types.AgentSession{Id: "session", Token: "token"},
+		URL:          "https://credential@github.com/workdock-dev/engine.git",
+		Path:         "/workspace/repo",
 	})
 
 	s.ErrorContains(err, "without embedded credentials")
@@ -281,12 +284,12 @@ func (s *MCPSuite) TestTokenLookupFailureRejectsExecution() {
 		func(context.Context, string) (string, error) { return "", nil },
 		func(context.Context, string) (string, error) { return "token", errors.New("database unavailable") },
 	} {
-		h := NewMCPServer("api", lookup)
+		h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: lookup}, http.NewServeMux())
 		s.Require().NoError(h.RegisterExecution("session", &daytona.Sandbox{}, ""))
 
-		_, err := h.authorized(ctx, types.MCPAuth{AgentSessionID: "session", AgentSessionToken: "token"})
+		_, err := h.authorized(ctx, types.AgentSession{Id: "session", Token: "token"})
 
-		s.ErrorContains(err, "active Workdock agent session required")
+		s.ErrorContains(err, "active agent session required")
 	}
 }
 
@@ -300,7 +303,7 @@ func (s *MCPSuite) TestConcurrentExecutionIsolation() {
 		sandboxes[id] = &daytona.Sandbox{}
 	}
 
-	h := NewMCPServer("api", func(_ context.Context, id string) (string, error) { return stored[id], nil })
+	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(_ context.Context, id string) (string, error) { return stored[id], nil }}, http.NewServeMux())
 	ctx := context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true)
 	results := make(chan error, len(stored))
 	var executions sync.WaitGroup
@@ -312,7 +315,7 @@ func (s *MCPSuite) TestConcurrentExecutionIsolation() {
 				return
 			}
 
-			execution, err := h.authorized(ctx, types.MCPAuth{AgentSessionID: id, AgentSessionToken: stored[id]})
+			execution, err := h.authorized(ctx, types.AgentSession{Id: id, Token: stored[id]})
 
 			if err == nil && execution.Sandbox != sandbox {
 				err = errors.New("execution received another session's sandbox")

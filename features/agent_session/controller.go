@@ -1066,7 +1066,7 @@ func (c *controller) sandbox(
 	contextFile *interfaces.ContextFile,
 	session *types.Session,
 	sessionEvent *types.SessionEvent,
-	mcpTokens ...string,
+	mcpToken string,
 ) (
 	*interfaces.HarnessConfig,
 	<-chan string,
@@ -1094,10 +1094,10 @@ func (c *controller) sandbox(
 		}
 	}
 
-	if len(mcpTokens) > 0 && mcpTokens[0] != "" {
+	if mcpToken != "" {
 		secrets = append(secrets,
 			interfaces.SandboxSecret{Name: "WORKDOCK_AGENT_SESSION_ID", Value: session.Identifier},
-			interfaces.SandboxSecret{Name: "WORKDOCK_AGENT_SESSION_TOKEN", Value: mcpTokens[0]},
+			interfaces.SandboxSecret{Name: "WORKDOCK_AGENT_SESSION_TOKEN", Value: mcpToken},
 		)
 	}
 

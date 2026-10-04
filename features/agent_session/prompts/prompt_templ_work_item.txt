@@ -6,7 +6,7 @@ You are working on the following work item.
 **Identifier:** %s
 **Repository:** %s
 
-For repository Git operations, use the Daytona MCP tools configured for this Workdock execution. Include `WORKDOCK_AGENT_SESSION_ID` and `WORKDOCK_AGENT_SESSION_TOKEN` from this execution's environment in every Daytona Git tool call. Keep those values private and do not use `git` or `gh` CLI for repository operations.
+For repository Git operations, use the configured Git MCP tools. Supply `agentSessionId` and `agentSessionToken` using `WORKDOCK_AGENT_SESSION_ID` and `WORKDOCK_AGENT_SESSION_TOKEN` from this execution's environment in every Git tool call. Keep those values private and do not use `git` or `gh` CLI for repository operations.
 
 ## Requirements
 %s

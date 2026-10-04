@@ -1622,7 +1622,7 @@ func (s *ControllerSuite) TestGetPrompt_AssemblesPrompt() {
 func (s *ControllerSuite) TestVerifyGitAccess_NoRepo() {
 	access, err := s.c.verifyGitAccess(
 		context.Background(), s.agentHdl, "token", s.gitHdl,
-		&types.Session{RepoFullName: nil}, testSessionEvent,
+		&types.Session{RepoFullName: nil}, testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -1638,7 +1638,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_ConnectionLookupError() {
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
 	)
 
 	s.Error(err)
@@ -1653,7 +1653,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_RequiresConnection_RequestsAccess(
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -1678,7 +1678,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_UpsertError() {
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
 	)
 
 	s.Error(err)
@@ -1693,7 +1693,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_SendGitConnectionRequestError() {
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
 	)
 
 	s.Error(err)
@@ -1715,7 +1715,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_GetGitAccessError() {
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
 	)
 
 	s.Error(err)
@@ -1737,7 +1737,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_InstallationUnavailable_ResetsAndR
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -1766,7 +1766,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_ResetError() {
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
 	)
 
 	s.Error(err)
@@ -1791,7 +1791,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_SecretDeleteError() {
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
 	)
 
 	s.Error(err)
@@ -1816,7 +1816,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_InstallationUnavailable_ReRequestS
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
 	)
 
 	s.Error(err)
@@ -1839,7 +1839,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_Success() {
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -1853,7 +1853,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_Success() {
 func (s *ControllerSuite) TestSandbox_NoMcpNoGitAccess() {
 	harnessConfig, stdout, stderr, shutdown, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt text", nil, newTestSession(), testSessionEvent,
+		nil, "prompt text", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -1882,7 +1882,7 @@ func (s *ControllerSuite) TestSandbox_NoGitAccess_SkipsGitCommands() {
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent,
+		nil, "prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -1905,7 +1905,7 @@ func (s *ControllerSuite) TestSandbox_WithGitAccess_RunsGitCommands() {
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		gitAccess, "prompt", nil, newTestSession(), testSessionEvent,
+		gitAccess, "prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -1931,7 +1931,7 @@ func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		gitAccess, "prompt", nil, newTestSession(), testSessionEvent,
+		gitAccess, "prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -1949,7 +1949,7 @@ func (s *ControllerSuite) TestSandbox_GitAccessNotGranted_NotInSecrets() {
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		gitAccess, "prompt", nil, newTestSession(), testSessionEvent,
+		gitAccess, "prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -1961,7 +1961,7 @@ func (s *ControllerSuite) TestSandbox_NilMcpHandler() {
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent,
+		nil, "prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -1975,7 +1975,7 @@ func (s *ControllerSuite) TestSandbox_GetConfigFileError() {
 
 	harnessConfig, stdout, stderr, shutdown, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent,
+		nil, "prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Error(err)
@@ -1993,7 +1993,7 @@ func (s *ControllerSuite) TestSandbox_GetFilesError() {
 
 	harnessConfig, stdout, stderr, shutdown, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent,
+		nil, "prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Error(err)
@@ -2014,7 +2014,7 @@ func (s *ControllerSuite) TestSandbox_GetFilesMergedIntoFileUploads() {
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent,
+		nil, "prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -2033,7 +2033,7 @@ func (s *ControllerSuite) TestSandbox_ContextFileUploaded() {
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
 		nil, "prompt", &interfaces.ContextFile{Content: "do the work", Summary: "summary of the context"},
-		newTestSession(), testSessionEvent,
+		newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -2049,7 +2049,7 @@ func (s *ControllerSuite) TestSandbox_ContextFileUploaded() {
 func (s *ControllerSuite) TestSandbox_NoContextFileUploaded() {
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent,
+		nil, "prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -2065,7 +2065,7 @@ func (s *ControllerSuite) TestSandbox_RunError() {
 
 	_, _, _, shutdown, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent,
+		nil, "prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Error(err)
@@ -3119,11 +3119,11 @@ func (s *ControllerSuite) TestExecute_MCPTokenCreationErrorPreventsDispatch() {
 
 func (s *ControllerSuite) TestSandbox_MCPDispatchScopesCredentialsToExecution() {
 	mcps := []interfaces.MCPConfig{{
-		Name:             "daytona",
-		Url:              "https://engine.example.com/api/v1/mcp/daytona",
+		Name:             "git",
+		Url:              "https://engine.example.com/api/v1/mcp/git",
 		AuthHeaderKey:    "Authorization",
-		AuthHeaderValue:  "Bearer {env:WORKDOCK_DAYTONA_MCP_API_KEY}",
-		AuthSecretEnvVar: "WORKDOCK_DAYTONA_MCP_API_KEY",
+		AuthHeaderValue:  "Bearer {env:WORKDOCK_GIT_MCP_API_KEY}",
+		AuthSecretEnvVar: "WORKDOCK_GIT_MCP_API_KEY",
 		AuthSecret:       "api-key",
 		Hosts:            []string{"engine.example.com"},
 	}}
