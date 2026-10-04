@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/daytona/clients/sdk-go/pkg/daytona"
@@ -455,4 +456,22 @@ func (s *MCPSuite) TestMissingConfigurationAndGitLookupRejectInvocation() {
 	_, err = h.authorized(ctx, auth)
 	s.ErrorContains(err, "Git access required")
 	s.NotContains(err.Error(), "private")
+}
+
+func (s *MCPSuite) TestStatelessMCPTransportAcceptsCallsOnAnyReplica() {
+	for range 2 {
+		h := NewMCPServer(types.Config{MCPApiKey: "api"}, http.NewServeMux())
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/git", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+		request.Header.Set("Authorization", "Bearer api")
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Accept", "application/json, text/event-stream")
+		request.Header.Set("Mcp-Session-Id", "connection-from-another-replica")
+		response := httptest.NewRecorder()
+
+		h.Handler().ServeHTTP(response, request)
+
+		s.Equal(http.StatusOK, response.Code)
+		s.Contains(response.Body.String(), "git_clone")
+		s.Empty(response.Header().Get("Mcp-Session-Id"))
+	}
 }

@@ -48,7 +48,7 @@ func NewMCPServer(config types.Config, mux *http.ServeMux) *MCPServer {
 	}
 
 	h.registerTools()
-	h.handler = mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return h.server }, nil)
+	h.handler = mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return h.server }, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 
 	mux.Handle("/api/v1/mcp/git", h.Handler())
 
