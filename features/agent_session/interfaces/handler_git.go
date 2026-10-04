@@ -25,7 +25,6 @@ type GitAccess struct {
 	Secret     string
 	Hosts      []string
 	Granted    bool
-	Connection *types.GitConnection
 }
 
 // HandlerGit is the interface to interact with the git hosting provider

@@ -28,25 +28,23 @@ import (
 	"github.com/daytona/clients/sdk-go/pkg/options"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/workdock-dev/engine/features/agent_session/interfaces"
-	agentTypes "github.com/workdock-dev/engine/features/agent_session/types"
 	"github.com/workdock-dev/engine/plug-ins/daytona/types"
 )
 
 type MCPServer struct {
-	apiKey      string
-	lookupToken func(context.Context, string) (string, error)
-	mu          sync.RWMutex
-	sessions    map[string]types.MCPExecution
-	server      *mcp.Server
-	handler     http.Handler
+	apiKey     string
+	mu         sync.RWMutex
+	config     *interfaces.SandboxMCPConfig
+	getSandbox func(context.Context, string) (*daytona.Sandbox, func(), error)
+	server     *mcp.Server
+	handler    http.Handler
 }
 
 func NewMCPServer(config types.Config, mux *http.ServeMux) *MCPServer {
 	h := &MCPServer{
-		apiKey:      config.MCPApiKey,
-		lookupToken: config.MCPTokenLookup,
-		sessions:    make(map[string]types.MCPExecution),
-		server:      mcp.NewServer(&mcp.Implementation{Name: "workdock", Version: "1.0.0"}, nil),
+		apiKey:     config.MCPApiKey,
+		getSandbox: (&SandboxHandler{config: config}).getMCPSandbox,
+		server:     mcp.NewServer(&mcp.Implementation{Name: "workdock", Version: "1.0.0"}, nil),
 	}
 
 	h.registerTools()
@@ -59,33 +57,12 @@ func NewMCPServer(config types.Config, mux *http.ServeMux) *MCPServer {
 	return h
 }
 
-func (h *MCPServer) RegisterExecution(sessionID string, sandbox *daytona.Sandbox, gitHandler interfaces.HandlerGit, connection *agentTypes.GitConnection) error {
+func (h *MCPServer) Configure(config *interfaces.SandboxMCPConfig) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if sessionID == "" || sandbox == nil {
-		slog.Error("[daytona] MCP execution requires a session and sandbox")
-		return errors.New("MCP execution requires a session and sandbox")
-	}
-
-	if _, exists := h.sessions[sessionID]; exists {
-		slog.Error("[daytona] MCP execution is already active")
-		return errors.New("MCP execution is already active")
-	}
-
-	h.sessions[sessionID] = types.MCPExecution{Sandbox: sandbox, GitHandler: gitHandler, GitConnection: connection}
-
-	slog.Debug("[daytona] MCP execution registered", "session_id", sessionID)
-
-	return nil
-}
-
-func (h *MCPServer) RemoveExecution(sessionID string) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	delete(h.sessions, sessionID)
-	slog.Debug("[daytona] MCP execution removed", "session_id", sessionID)
+	h.config = config
+	slog.Debug("[daytona] Git MCP dependencies configured")
 }
 
 func (h *MCPServer) Handler() http.Handler {
@@ -109,29 +86,34 @@ func (h *MCPServer) authorized(ctx context.Context, auth types.AgentSession) (*t
 		return nil, errors.New("MCP API key authentication required")
 	}
 
-	if auth.Id == "" || auth.Token == "" || h.lookupToken == nil {
+	h.mu.RLock()
+	config := h.config
+	h.mu.RUnlock()
+
+	if auth.Id == "" || auth.Token == "" || config == nil || config.TokenLookup == nil {
 		slog.Error("[daytona] active agent session required")
 		return nil, errors.New("active agent session required")
 	}
 
-	token, err := h.lookupToken(ctx, auth.Id)
+	token, err := config.TokenLookup(ctx, auth.Id)
 
 	if err != nil || token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(auth.Token)) != 1 {
 		slog.Error("[daytona] active agent session required")
 		return nil, errors.New("active agent session required")
 	}
 
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	execution, ok := h.sessions[auth.Id]
-
-	if !ok || execution.Sandbox == nil {
-		slog.Error("[daytona] active agent session required")
-		return nil, errors.New("active agent session required")
+	if config.GitLookup == nil {
+		slog.Error("[daytona] Git access lookup is not configured")
+		return nil, errors.New("Git access required")
 	}
 
-	return &execution, nil
+	gitHandler, connection, err := config.GitLookup(ctx, auth.Id)
+
+	if err != nil {
+		return nil, errors.New("Git access required")
+	}
+
+	return &types.MCPExecution{GitHandler: gitHandler, GitConnection: connection}, nil
 }
 
 func isGitHubHTTPSURL(raw string) bool {
@@ -140,12 +122,12 @@ func isGitHubHTTPSURL(raw string) bool {
 	return err == nil && u.Scheme == "https" && u.User == nil && u.RawQuery == "" && u.Fragment == "" && u.Host == "github.com" && u.Path != ""
 }
 
-func (h *MCPServer) authorizeRemote(ctx context.Context, execution *types.MCPExecution, path, remote string) error {
+func (h *MCPServer) authorizeRemote(ctx context.Context, sandbox *daytona.Sandbox, path, remote string) error {
 	if remote == "" {
 		remote = "origin"
 	}
 
-	remoteURL, err := execution.Sandbox.Git.RemoteGet(ctx, path, remote)
+	remoteURL, err := sandbox.Git.RemoteGet(ctx, path, remote)
 
 	if err != nil {
 		slog.Error("[daytona] failed to validate Git remote")
@@ -184,6 +166,14 @@ func (h *MCPServer) gitClone(ctx context.Context, _ *mcp.CallToolRequest, in typ
 		return nil, nil, err
 	}
 
+	sandbox, release, err := h.getSandbox(ctx, in.Id)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	defer release()
+
 	opts := []func(*options.GitClone){options.WithUsername("x-access-token"), options.WithPassword(access.Secret)}
 
 	if in.Branch != "" {
@@ -195,7 +185,7 @@ func (h *MCPServer) gitClone(ctx context.Context, _ *mcp.CallToolRequest, in typ
 	}
 
 	slog.Debug("[daytona] executing Git MCP clone", "session_id", in.Id)
-	err = execution.Sandbox.Git.Clone(ctx, in.URL, in.Path, opts...)
+	err = sandbox.Git.Clone(ctx, in.URL, in.Path, opts...)
 
 	if err != nil {
 		slog.Error("[daytona] Git MCP clone failed", "session_id", in.Id)
@@ -218,7 +208,15 @@ func (h *MCPServer) gitPush(ctx context.Context, _ *mcp.CallToolRequest, in type
 		return nil, nil, err
 	}
 
-	if err := h.authorizeRemote(ctx, execution, in.Path, in.Remote); err != nil {
+	sandbox, release, err := h.getSandbox(ctx, in.Id)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	defer release()
+
+	if err := h.authorizeRemote(ctx, sandbox, in.Path, in.Remote); err != nil {
 		return nil, nil, err
 	}
 
@@ -233,7 +231,7 @@ func (h *MCPServer) gitPush(ctx context.Context, _ *mcp.CallToolRequest, in type
 	}
 
 	slog.Debug("[daytona] executing Git MCP push", "session_id", in.Id)
-	err = execution.Sandbox.Git.Push(ctx, in.Path, opts...)
+	err = sandbox.Git.Push(ctx, in.Path, opts...)
 
 	if err != nil {
 		slog.Error("[daytona] Git MCP push failed", "session_id", in.Id)
@@ -256,7 +254,15 @@ func (h *MCPServer) gitPull(ctx context.Context, _ *mcp.CallToolRequest, in type
 		return nil, nil, err
 	}
 
-	if err := h.authorizeRemote(ctx, execution, in.Path, in.Remote); err != nil {
+	sandbox, release, err := h.getSandbox(ctx, in.Id)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	defer release()
+
+	if err := h.authorizeRemote(ctx, sandbox, in.Path, in.Remote); err != nil {
 		return nil, nil, err
 	}
 
@@ -271,7 +277,7 @@ func (h *MCPServer) gitPull(ctx context.Context, _ *mcp.CallToolRequest, in type
 	}
 
 	slog.Debug("[daytona] executing Git MCP pull", "session_id", in.Id)
-	err = execution.Sandbox.Git.Pull(ctx, in.Path, opts...)
+	err = sandbox.Git.Pull(ctx, in.Path, opts...)
 
 	if err != nil {
 		slog.Error("[daytona] Git MCP pull failed", "session_id", in.Id)

@@ -44,10 +44,11 @@ type SandboxHandler struct {
 }
 
 func NewSandboxHandler(config types.Config, mux *http.ServeMux) agent_session_interfaces.HandlerSandbox {
-	return &SandboxHandler{
-		config: config,
-		mcp:    NewMCPServer(config, mux),
-	}
+	h := &SandboxHandler{config: config}
+	h.mcp = NewMCPServer(config, mux)
+	h.mcp.getSandbox = h.getMCPSandbox
+
+	return h
 }
 
 func (h *SandboxHandler) Run(
@@ -56,26 +57,10 @@ func (h *SandboxHandler) Run(
 	stdout chan<- string,
 	stderr chan<- string,
 ) (func(ctx context.Context) string, error) {
-	target := h.config.Target
-
-	if target == "" {
-		target = "us"
-	}
-
-	// *-------------------------------------------------------------------------*
-	// * Create daytona client                                                   *
-	// *-------------------------------------------------------------------------*
-
-	slog.Debug("[sandbox][daytona] client created")
-	client, err := daytona.NewClientWithConfig(&sdktypes.DaytonaConfig{
-		APIKey:     h.config.ApiKey,
-		APIUrl:     h.config.ApiUrl,
-		Target:     target,
-		HTTPClient: helpers.HTTPClient,
-	})
+	h.ConfigureMCP(config.MCP)
+	client, err := h.newClient()
 
 	if err != nil {
-		slog.Error("failed to create daytona client", "err", err)
 		return nil, err
 	}
 
@@ -91,14 +76,9 @@ func (h *SandboxHandler) Run(
 	var deleting bool
 	var listening bool
 	var execSessionCreated bool
-	var mcpRegistered bool
 
 	shutdown := func(ctx context.Context) string {
 		out := ""
-
-		if mcpRegistered {
-			h.mcp.RemoveExecution(config.Session.Identifier)
-		}
 
 		if sandbox != nil && !deleting {
 
@@ -186,13 +166,6 @@ func (h *SandboxHandler) Run(
 		return shutdown, err
 	}
 
-	if h.mcp != nil {
-		if err := h.mcp.RegisterExecution(config.Session.Identifier, sandbox, config.GitHandler, config.GitConnection); err != nil {
-			return shutdown, err
-		}
-
-		mcpRegistered = true
-	}
 
 	// *-------------------------------------------------------------------------*
 	// * Starts the sandbox                                                      *
@@ -663,4 +636,56 @@ func (h *SandboxHandler) newUUIDStartingWithLetter() string {
 
 func (h *SandboxHandler) isContextCanceledOrDeadlineExceeded(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
+func (h *SandboxHandler) ConfigureMCP(config *agent_session_interfaces.SandboxMCPConfig) {
+	h.mcp.Configure(config)
+}
+
+func (h *SandboxHandler) newClient() (*daytona.Client, error) {
+	target := h.config.Target
+
+	if target == "" {
+		target = "us"
+	}
+
+	client, err := daytona.NewClientWithConfig(&sdktypes.DaytonaConfig{
+		APIKey:     h.config.ApiKey,
+		APIUrl:     h.config.ApiUrl,
+		Target:     target,
+		HTTPClient: helpers.HTTPClient,
+	})
+
+	if err != nil {
+		slog.Error("[daytona] failed to create client")
+		return nil, err
+	}
+
+	return client, nil
+}
+
+func (h *SandboxHandler) getMCPSandbox(ctx context.Context, sessionID string) (*daytona.Sandbox, func(), error) {
+	client, err := h.newClient()
+
+	if err != nil {
+		return nil, nil, errors.New("failed to get sandbox")
+	}
+
+	release := func() {
+		if err := client.Close(context.WithoutCancel(ctx)); err != nil {
+			slog.Error("[daytona] failed to close MCP client")
+		}
+	}
+
+	sandbox, err := helpers.RetryRateLimited(ctx, helpers.ThrottlerAuthenticated, "get MCP sandbox", func() (*daytona.Sandbox, error) {
+		return client.Get(ctx, sessionID)
+	})
+
+	if err != nil || sandbox == nil {
+		release()
+		slog.Error("[daytona] failed to get MCP sandbox")
+		return nil, nil, errors.New("failed to get sandbox")
+	}
+
+	return sandbox, release, nil
 }

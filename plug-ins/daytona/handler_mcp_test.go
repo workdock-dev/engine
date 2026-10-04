@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 
 	"github.com/daytona/clients/sdk-go/pkg/daytona"
@@ -54,7 +53,7 @@ func (s *MCPSuite) TestAPIKeyAuthentication() {
 		{name: "valid", apiKey: "secret", header: "Bearer secret", status: http.StatusNoContent},
 	} {
 		s.Run(test.name, func() {
-			h := NewMCPServer(types.Config{MCPApiKey: test.apiKey, MCPTokenLookup: nil}, http.NewServeMux())
+			h := newTestMCPServer(test.apiKey, nil)
 			called := false
 			h.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				called = true
@@ -90,7 +89,7 @@ func (s *MCPSuite) TestGitHubURLValidationRejectsEmbeddedCredentialsAndOtherHost
 }
 
 func (s *MCPSuite) TestToolCallRejectsUnassociatedExecutionBeforeDaytonaOperation() {
-	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(context.Context, string) (string, error) { return "stored", nil }}, http.NewServeMux())
+	h := newTestMCPServer("api", func(context.Context, string) (string, error) { return "stored", nil })
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -138,15 +137,11 @@ func (s *MCPSuite) TestToolCallRejectsUnassociatedExecutionBeforeDaytonaOperatio
 
 func (s *MCPSuite) TestExecutionSessionAuthenticationAndIsolation() {
 	stored := map[string]string{"session-one": "token-one", "session-two": "token-two"}
-	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(_ context.Context, id string) (string, error) { return stored[id], nil }}, http.NewServeMux())
-	first := &daytona.Sandbox{}
-	second := &daytona.Sandbox{}
-	s.Require().NoError(h.RegisterExecution("session-one", first, nil, nil))
-	s.Require().NoError(h.RegisterExecution("session-two", second, nil, nil))
+	h := newTestMCPServer("api", func(_ context.Context, id string) (string, error) { return stored[id], nil })
 
 	authorized, err := h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.AgentSession{Id: "session-one", Token: "token-one"})
 	s.Require().NoError(err)
-	s.Same(first, authorized.Sandbox)
+	s.NotNil(authorized)
 	_, err = h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.AgentSession{Id: "unknown", Token: "token-one"})
 	s.Error(err)
 	_, err = h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.AgentSession{Id: "session-one", Token: "wrong"})
@@ -156,54 +151,32 @@ func (s *MCPSuite) TestExecutionSessionAuthenticationAndIsolation() {
 
 	secondAuthorized, err := h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.AgentSession{Id: "session-two", Token: "token-two"})
 	s.Require().NoError(err)
-	s.Same(second, secondAuthorized.Sandbox)
+	s.NotNil(secondAuthorized)
 
 	delete(stored, "session-one")
 	_, err = h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.AgentSession{Id: "session-one", Token: "token-one"})
 	s.Error(err)
-	h.RemoveExecution("session-two")
+	delete(stored, "session-two")
 	_, err = h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.AgentSession{Id: "session-two", Token: "token-two"})
 	s.Error(err)
 }
 
 func (s *MCPSuite) TestExecutionRequiresAPIKeyAuthentication() {
-	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(context.Context, string) (string, error) { return "token", nil }}, http.NewServeMux())
-	s.Require().NoError(h.RegisterExecution("session", &daytona.Sandbox{}, nil, nil))
+	h := newTestMCPServer("api", func(context.Context, string) (string, error) { return "token", nil })
 
 	_, err := h.authorized(context.Background(), types.AgentSession{Id: "session", Token: "token"})
 
 	s.ErrorContains(err, "API key authentication required")
 }
 
-func (s *MCPSuite) TestDuplicateExecutionDoesNotReplaceSandbox() {
-	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(context.Context, string) (string, error) { return "token", nil }}, http.NewServeMux())
-	first := &daytona.Sandbox{}
-	s.Require().NoError(h.RegisterExecution("session", first, nil, nil))
-	s.Error(h.RegisterExecution("session", &daytona.Sandbox{}, nil, nil))
-
-	ctx := context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true)
-	execution, err := h.authorized(ctx, types.AgentSession{Id: "session", Token: "token"})
-
-	s.Require().NoError(err)
-	s.Same(first, execution.Sandbox)
-}
-
-func (s *MCPSuite) TestExecutionRegistrationRequiresSessionAndSandbox() {
-	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: nil}, http.NewServeMux())
-
-	s.Error(h.RegisterExecution("", &daytona.Sandbox{}, nil, nil))
-	s.Error(h.RegisterExecution("session", nil, nil, nil))
-}
-
 func (s *MCPSuite) TestAllGitToolsRejectInvalidExecutionBeforeDaytonaOperation() {
-	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(_ context.Context, id string) (string, error) {
+	h := newTestMCPServer("api", func(_ context.Context, id string) (string, error) {
 		if id == "active" {
 			return "token", nil
 		}
 
 		return "", nil
-	}}, http.NewServeMux())
-	s.Require().NoError(h.RegisterExecution("active", &daytona.Sandbox{}, nil, nil))
+	})
 	ctx := context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	serverSession, err := h.server.Connect(ctx, serverTransport, nil)
@@ -251,8 +224,7 @@ func (s *MCPSuite) TestAllGitToolsRejectInvalidExecutionBeforeDaytonaOperation()
 }
 
 func (s *MCPSuite) TestAuthenticatedCloneRejectsCredentialBearingURL() {
-	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(context.Context, string) (string, error) { return "token", nil }}, http.NewServeMux())
-	s.Require().NoError(h.RegisterExecution("session", &daytona.Sandbox{}, nil, nil))
+	h := newTestMCPServer("api", func(context.Context, string) (string, error) { return "token", nil })
 	ctx := context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true)
 
 	_, _, err := h.gitClone(ctx, nil, types.GitCloneInput{
@@ -273,56 +245,12 @@ func (s *MCPSuite) TestTokenLookupFailureRejectsExecution() {
 		func(context.Context, string) (string, error) { return "", nil },
 		func(context.Context, string) (string, error) { return "token", errors.New("database unavailable") },
 	} {
-		h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: lookup}, http.NewServeMux())
-		s.Require().NoError(h.RegisterExecution("session", &daytona.Sandbox{}, nil, nil))
+		h := newTestMCPServer("api", lookup)
 
 		_, err := h.authorized(ctx, types.AgentSession{Id: "session", Token: "token"})
 
 		s.ErrorContains(err, "active agent session required")
 	}
-}
-
-func (s *MCPSuite) TestConcurrentExecutionIsolation() {
-	stored := make(map[string]string)
-	sandboxes := make(map[string]*daytona.Sandbox)
-
-	for index := range 16 {
-		id := fmt.Sprintf("session-%d", index)
-		stored[id] = fmt.Sprintf("token-%d", index)
-		sandboxes[id] = &daytona.Sandbox{}
-	}
-
-	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(_ context.Context, id string) (string, error) { return stored[id], nil }}, http.NewServeMux())
-	ctx := context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true)
-	results := make(chan error, len(stored))
-	var executions sync.WaitGroup
-
-	for id, sandbox := range sandboxes {
-		executions.Go(func() {
-			if err := h.RegisterExecution(id, sandbox, nil, nil); err != nil {
-				results <- err
-				return
-			}
-
-			execution, err := h.authorized(ctx, types.AgentSession{Id: id, Token: stored[id]})
-
-			if err == nil && execution.Sandbox != sandbox {
-				err = errors.New("execution received another session's sandbox")
-			}
-
-			h.RemoveExecution(id)
-			results <- err
-		})
-	}
-
-	executions.Wait()
-	close(results)
-
-	for err := range results {
-		s.NoError(err)
-	}
-
-	s.Empty(h.sessions)
 }
 
 type mcpGitHandler struct {
@@ -367,13 +295,18 @@ func (s *MCPSuite) TestAllRemoteToolsRejectMissingOrDeniedGitAccess() {
 		{name: "handler error", err: errors.New("private handler details")},
 	} {
 		s.Run(test.name, func() {
-			h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(context.Context, string) (string, error) { return "token", nil }}, http.NewServeMux())
+			h := newTestMCPServer("api", func(context.Context, string) (string, error) { return "token", nil })
 			calls := 0
 			gitHandler := &mcpGitHandler{getAccess: func(context.Context, *agentTypes.GitConnection) (*interfaces.GitAccess, error) {
 				calls++
 				return test.access, test.err
 			}}
-			s.Require().NoError(h.RegisterExecution("session", &daytona.Sandbox{}, gitHandler, &agentTypes.GitConnection{}))
+			h.Configure(&interfaces.SandboxMCPConfig{
+				TokenLookup: func(context.Context, string) (string, error) { return "token", nil },
+				GitLookup: func(context.Context, string) (interfaces.HandlerGit, *agentTypes.GitConnection, error) {
+					return gitHandler, &agentTypes.GitConnection{}, nil
+				},
+			})
 			ctx := context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true)
 			auth := types.AgentSession{Id: "session", Token: "token"}
 
@@ -409,8 +342,13 @@ func (s *MCPSuite) TestRejectedSessionNeverRequestsGitAccess() {
 		calls++
 		return &interfaces.GitAccess{Granted: true, Secret: "private"}, nil
 	}}
-	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(context.Context, string) (string, error) { return "token", nil }}, http.NewServeMux())
-	s.Require().NoError(h.RegisterExecution("session", &daytona.Sandbox{}, gitHandler, &agentTypes.GitConnection{}))
+	h := newTestMCPServer("api", func(context.Context, string) (string, error) { return "token", nil })
+	h.Configure(&interfaces.SandboxMCPConfig{
+		TokenLookup: func(context.Context, string) (string, error) { return "token", nil },
+		GitLookup: func(context.Context, string) (interfaces.HandlerGit, *agentTypes.GitConnection, error) {
+			return gitHandler, &agentTypes.GitConnection{}, nil
+		},
+	})
 
 	for _, ctx := range []context.Context{
 		context.Background(),
@@ -425,4 +363,96 @@ func (s *MCPSuite) TestRejectedSessionNeverRequestsGitAccess() {
 	}
 
 	s.Zero(calls)
+}
+
+func newTestMCPServer(apiKey string, lookup func(context.Context, string) (string, error)) *MCPServer {
+	h := NewMCPServer(types.Config{MCPApiKey: apiKey}, http.NewServeMux())
+	h.Configure(&interfaces.SandboxMCPConfig{
+		TokenLookup: lookup,
+		GitLookup: func(context.Context, string) (interfaces.HandlerGit, *agentTypes.GitConnection, error) {
+			return nil, nil, nil
+		},
+	})
+
+	return h
+}
+
+func (s *MCPSuite) TestReplicasAuthorizeSharedSessionWithoutLocalRegistration() {
+	stored := map[string]string{"first": "first-token", "second": "second-token"}
+	config := &interfaces.SandboxMCPConfig{
+		TokenLookup: func(_ context.Context, id string) (string, error) { return stored[id], nil },
+		GitLookup: func(_ context.Context, id string) (interfaces.HandlerGit, *agentTypes.GitConnection, error) {
+			return nil, &agentTypes.GitConnection{RepoFullName: id}, nil
+		},
+	}
+	ctx := context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true)
+
+	for range 2 {
+		replica := NewMCPServer(types.Config{MCPApiKey: "api"}, http.NewServeMux())
+		replica.Configure(config)
+
+		for id, token := range stored {
+			execution, err := replica.authorized(ctx, types.AgentSession{Id: id, Token: token})
+			s.Require().NoError(err)
+			s.Equal(id, execution.GitConnection.RepoFullName)
+			_, err = replica.authorized(ctx, types.AgentSession{Id: id, Token: "other-token"})
+			s.Error(err)
+		}
+	}
+}
+
+func (s *MCPSuite) TestEachToolInvocationFetchesSandboxWithoutCaching() {
+	h := NewMCPServer(types.Config{MCPApiKey: "api"}, http.NewServeMux())
+	h.Configure(&interfaces.SandboxMCPConfig{
+		TokenLookup: func(context.Context, string) (string, error) { return "token", nil },
+		GitLookup: func(context.Context, string) (interfaces.HandlerGit, *agentTypes.GitConnection, error) {
+			return &mcpGitHandler{getAccess: func(context.Context, *agentTypes.GitConnection) (*interfaces.GitAccess, error) {
+				return &interfaces.GitAccess{Granted: true, Secret: "private"}, nil
+			}}, &agentTypes.GitConnection{}, nil
+		},
+	})
+	calls := 0
+	h.getSandbox = func(_ context.Context, id string) (*daytona.Sandbox, func(), error) {
+		s.Equal("session", id)
+		calls++
+		return nil, nil, errors.New("sandbox unavailable")
+	}
+	ctx := context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true)
+	auth := types.AgentSession{Id: "session", Token: "token"}
+
+	for range 2 {
+		_, _, err := h.gitClone(ctx, nil, types.GitCloneInput{AgentSession: auth, URL: "https://github.com/workdock-dev/engine.git", Path: "/workspace"})
+		s.ErrorContains(err, "sandbox unavailable")
+		_, _, err = h.gitPush(ctx, nil, types.GitPushInput{AgentSession: auth, Path: "/workspace"})
+		s.ErrorContains(err, "sandbox unavailable")
+		_, _, err = h.gitPull(ctx, nil, types.GitPullInput{AgentSession: auth, Path: "/workspace"})
+		s.ErrorContains(err, "sandbox unavailable")
+	}
+
+	s.Equal(6, calls)
+	_, _, err := h.gitPull(ctx, nil, types.GitPullInput{AgentSession: types.AgentSession{Id: "session", Token: "wrong"}, Path: "/workspace"})
+	s.Error(err)
+	s.Equal(6, calls)
+}
+
+func (s *MCPSuite) TestMissingConfigurationAndGitLookupRejectInvocation() {
+	h := NewMCPServer(types.Config{MCPApiKey: "api"}, http.NewServeMux())
+	ctx := context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true)
+	auth := types.AgentSession{Id: "session", Token: "token"}
+	_, err := h.authorized(ctx, auth)
+	s.ErrorContains(err, "active agent session required")
+
+	h.Configure(&interfaces.SandboxMCPConfig{TokenLookup: func(context.Context, string) (string, error) { return "token", nil }})
+	_, err = h.authorized(ctx, auth)
+	s.ErrorContains(err, "Git access required")
+
+	h.Configure(&interfaces.SandboxMCPConfig{
+		TokenLookup: func(context.Context, string) (string, error) { return "token", nil },
+		GitLookup: func(context.Context, string) (interfaces.HandlerGit, *agentTypes.GitConnection, error) {
+			return nil, nil, errors.New("private lookup details")
+		},
+	})
+	_, err = h.authorized(ctx, auth)
+	s.ErrorContains(err, "Git access required")
+	s.NotContains(err.Error(), "private")
 }

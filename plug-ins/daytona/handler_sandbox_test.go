@@ -24,9 +24,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/daytona/clients/sdk-go/pkg/daytona"
 	"github.com/stretchr/testify/suite"
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
+	agent_session_types "github.com/workdock-dev/engine/features/agent_session/types"
 	"github.com/workdock-dev/engine/plug-ins/daytona/types"
 )
 
@@ -111,14 +111,16 @@ func (s *SandboxSuite) TestNewUUIDStartingWithLetter_FormattedLikeProductionUsag
 func (s *SandboxSuite) TestConstructorConfiguresAndRegistersGitMCP() {
 	mux := http.NewServeMux()
 	stored := map[string]string{"session": "token"}
-	handler := NewSandboxHandler(types.Config{
-		MCPApiKey: "api-key",
-		MCPTokenLookup: func(_ context.Context, id string) (string, error) {
+	handler := NewSandboxHandler(types.Config{MCPApiKey: "api-key"}, mux).(*SandboxHandler)
+	handler.ConfigureMCP(&agent_session_interfaces.SandboxMCPConfig{
+		TokenLookup: func(_ context.Context, id string) (string, error) {
 			return stored[id], nil
 		},
-	}, mux).(*SandboxHandler)
+		GitLookup: func(context.Context, string) (agent_session_interfaces.HandlerGit, *agent_session_types.GitConnection, error) {
+			return nil, nil, nil
+		},
+	})
 	s.Require().NotNil(handler.mcp)
-	s.Require().NoError(handler.mcp.RegisterExecution("session", &daytona.Sandbox{}, nil, nil))
 	invocations := 0
 	handler.mcp.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, err := handler.mcp.authorized(r.Context(), types.AgentSession{Id: "session", Token: "token"})

@@ -46,8 +46,7 @@ type SandboxConfig struct {
 	HarnessCommand      string
 	GitName             string
 	GitEmail            string
-	GitHandler          HandlerGit
-	GitConnection       *types.GitConnection
+	MCP                 *SandboxMCPConfig
 }
 
 // HandlerSandbox is the interfaces through which the sandbox will be
@@ -67,4 +66,13 @@ type HandlerSandbox interface {
 
 	// Archive a given sandbox
 	Archive(ctx context.Context, config *SandboxConfig) error
+}
+
+type SandboxMCPConfig struct {
+	TokenLookup func(context.Context, string) (string, error)
+	GitLookup   func(context.Context, string) (HandlerGit, *types.GitConnection, error)
+}
+
+type HandlerSandboxMCP interface {
+	ConfigureMCP(config *SandboxMCPConfig)
 }

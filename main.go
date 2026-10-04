@@ -240,7 +240,6 @@ func main() {
 	postgres, err := pgxpool.New(context.Background(), cfg.Postgres.DatabaseUrl)
 	exit(err)
 	agentSessionPostgres := agent_session_infrastructure.NewPostgres(postgres)
-	cfg.Daytona.MCPTokenLookup = agentSessionPostgres.GetMCPToken
 
 	postgresRawConn, err := pgx.Connect(ctx, cfg.Postgres.DatabaseUrl)
 	exit(err)

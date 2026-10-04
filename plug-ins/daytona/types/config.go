@@ -14,8 +14,6 @@
 
 package types
 
-import "context"
-
 type Secret struct {
 	Name  string   `yaml:"name"`
 	Value string   `yaml:"value"`
@@ -29,6 +27,4 @@ type Config struct {
 	MCPApiKey    string   `yaml:"mcp_api_key"`
 	MCPServerURL string   `yaml:"mcp_server_url"`
 	Secrets      []Secret `yaml:"secrets"`
-
-	MCPTokenLookup func(context.Context, string) (string, error) `yaml:"-"`
 }

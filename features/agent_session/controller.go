@@ -157,6 +157,12 @@ func (c *controller) init() error {
 		return err
 	}
 
+	for _, handler := range c.sandboxHandlerRegistry {
+		if mcpHandler, ok := handler.(interfaces.HandlerSandboxMCP); ok {
+			mcpHandler.ConfigureMCP(c.sandboxMCPConfig())
+		}
+	}
+
 	c.taskScheduler = taskScheduler
 	c.onAgentSessionPrompt()
 	c.onAgentSessionResume()
@@ -1053,10 +1059,6 @@ func (c *controller) verifyGitAccess(
 		return nil, err
 	}
 
-	if access != nil {
-		access.Connection = connection
-	}
-
 	return access, nil
 }
 
@@ -1158,12 +1160,6 @@ func (c *controller) sandbox(
 		}
 	}
 
-	var gitConnection *types.GitConnection
-
-	if gitAccess != nil && gitAccess.Granted {
-		gitConnection = gitAccess.Connection
-	}
-
 	shutdown, err := sandboxHandler.Run(
 		ctx,
 		&interfaces.SandboxConfig{
@@ -1177,8 +1173,7 @@ func (c *controller) sandbox(
 			Secrets:             secrets,
 			GitName:             "workdock[bot]",
 			GitEmail:            "no-reply@workdock.dev",
-			GitHandler:          gitHandler,
-			GitConnection:       gitConnection,
+			MCP:                 c.sandboxMCPConfig(),
 			HarnessCommand:      harnessHandler.RunCommand(),
 		},
 		stdout,
@@ -1462,4 +1457,37 @@ func (c *controller) harness(
 	}
 
 	return nil
+}
+
+func (c *controller) sandboxMCPConfig() *interfaces.SandboxMCPConfig {
+	return &interfaces.SandboxMCPConfig{
+		TokenLookup: c.session.GetMCPToken,
+		GitLookup: func(ctx context.Context, sessionID string) (interfaces.HandlerGit, *types.GitConnection, error) {
+			session, err := c.session.GetAgentSession(ctx, sessionID)
+
+			if err != nil {
+				return nil, nil, err
+			}
+
+			if session == nil || session.RepoFullName == nil {
+				slog.Error("[agent_session] MCP execution requires a repository")
+				return nil, nil, errors.New("Git access required")
+			}
+
+			connection, err := c.git.GetConnection(ctx, *session.RepoFullName)
+
+			if err != nil {
+				return nil, nil, err
+			}
+
+			gitHandler := c.gitHostingHandlerRegistry[string(shared.PlatformProvider_GitHub)]
+
+			if gitHandler == nil || connection == nil || !connection.Connected || connection.InstallationId == nil {
+				slog.Error("[agent_session] MCP execution has no active Git connection")
+				return nil, nil, errors.New("Git access required")
+			}
+
+			return gitHandler, connection, nil
+		},
+	}
 }

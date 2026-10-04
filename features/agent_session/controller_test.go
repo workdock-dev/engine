@@ -1922,13 +1922,11 @@ func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
 			{Name: "linear", AuthSecretEnvVar: "LINEAR_KEY", AuthSecret: "linear-secret", Hosts: []string{"api.linear.app"}},
 		}
 	}
-	connection := &types.GitConnection{RepoFullName: "workdock-dev/engine"}
 	gitAccess := &interfaces.GitAccess{
 		EnvVarName: "WORKDOCK_GITHUB_API_TOKEN",
 		Secret:     "git-secret",
 		Hosts:      []string{"github.com"},
 		Granted:    true,
-		Connection: connection,
 	}
 
 	_, _, _, _, err := s.c.sandbox(
@@ -1943,8 +1941,9 @@ func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
 	s.Equal("linear-secret", config.Secrets[0].Value)
 	s.Equal("WORKDOCK_GITHUB_API_TOKEN", config.Secrets[3].Name)
 	s.Equal("git-secret", config.Secrets[3].Value)
-	s.Same(s.gitHdl, config.GitHandler)
-	s.Same(connection, config.GitConnection)
+	s.Require().NotNil(config.MCP)
+	s.NotNil(config.MCP.TokenLookup)
+	s.NotNil(config.MCP.GitLookup)
 }
 
 func (s *ControllerSuite) TestSandbox_GitAccessNotGranted_NotInSecrets() {
@@ -3202,4 +3201,76 @@ func (s *ControllerSuite) TestExecute_MCPTokenIsRevokedAfterHarnessFailure() {
 	s.Equal("sess-1", s.sessionRep.createdMCPToken)
 	s.Equal("sess-1", s.sessionRep.deletedMCPToken)
 	s.Empty(s.sessionRep.mcpTokens)
+}
+
+func (s *ControllerSuite) TestMCPDependenciesConfiguredBeforeAnyExecution() {
+	s.initController()
+	s.Require().NotNil(s.sandboxHdl.mcpConfig)
+	s.Nil(s.sandboxHdl.runConfig)
+	s.sessionRep.mcpTokens = map[string]string{"remote-session": "remote-token"}
+
+	token, err := s.sandboxHdl.mcpConfig.TokenLookup(context.Background(), "remote-session")
+
+	s.Require().NoError(err)
+	s.Equal("remote-token", token)
+}
+
+func (s *ControllerSuite) TestSandboxMCPLooksUpCurrentConnectionForEachSession() {
+	installation := "installation"
+	s.sessionRep.getAgentSessionFn = func(_ context.Context, id string) (*types.Session, error) {
+		return &types.Session{Identifier: id, RepoFullName: &id}, nil
+	}
+	s.gitRepo.getConnectionFn = func(_ context.Context, repo string) (*types.GitConnection, error) {
+		return &types.GitConnection{RepoFullName: repo, Connected: true, InstallationId: &installation}, nil
+	}
+	config := s.c.sandboxMCPConfig()
+
+	for _, id := range []string{"first-repo", "second-repo"} {
+		handler, connection, err := config.GitLookup(context.Background(), id)
+		s.Require().NoError(err)
+		s.Same(s.gitHdl, handler)
+		s.Equal(id, connection.RepoFullName)
+		s.Equal("installation", *connection.InstallationId)
+	}
+
+	s.gitRepo.getConnectionFn = func(context.Context, string) (*types.GitConnection, error) { return nil, nil }
+	_, _, err := config.GitLookup(context.Background(), "first-repo")
+	s.ErrorContains(err, "Git access required")
+}
+
+func (s *ControllerSuite) TestSandboxMCPLookupRejectsMissingAndInvalidRepository() {
+	config := s.c.sandboxMCPConfig()
+	_, _, err := config.GitLookup(context.Background(), "unknown")
+	s.ErrorContains(err, "Git access required")
+
+	s.sessionRep.getAgentSessionFn = func(context.Context, string) (*types.Session, error) {
+		return &types.Session{}, nil
+	}
+	_, _, err = config.GitLookup(context.Background(), "no-repo")
+	s.ErrorContains(err, "Git access required")
+
+	s.sessionRep.getAgentSessionFn = func(context.Context, string) (*types.Session, error) {
+		return nil, errors.New("session lookup failed")
+	}
+	_, _, err = config.GitLookup(context.Background(), "session")
+	s.ErrorContains(err, "session lookup failed")
+
+	repo := "repo"
+	s.sessionRep.getAgentSessionFn = func(context.Context, string) (*types.Session, error) {
+		return &types.Session{RepoFullName: &repo}, nil
+	}
+	s.gitRepo.getConnectionFn = func(context.Context, string) (*types.GitConnection, error) {
+		return nil, errors.New("connection lookup failed")
+	}
+	_, _, err = config.GitLookup(context.Background(), "session")
+	s.ErrorContains(err, "connection lookup failed")
+
+	for _, connection := range []*types.GitConnection{
+		{},
+		{Connected: true},
+	} {
+		s.gitRepo.getConnectionFn = func(context.Context, string) (*types.GitConnection, error) { return connection, nil }
+		_, _, err = config.GitLookup(context.Background(), "session")
+		s.ErrorContains(err, "Git access required")
+	}
 }

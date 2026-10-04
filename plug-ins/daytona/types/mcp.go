@@ -15,7 +15,6 @@
 package types
 
 import (
-	"github.com/daytona/clients/sdk-go/pkg/daytona"
 	"github.com/workdock-dev/engine/features/agent_session/interfaces"
 	agentTypes "github.com/workdock-dev/engine/features/agent_session/types"
 )
@@ -23,7 +22,6 @@ import (
 type MCPAuthenticatedKey struct{}
 
 type MCPExecution struct {
-	Sandbox       *daytona.Sandbox
 	GitHandler    interfaces.HandlerGit
 	GitConnection *agentTypes.GitConnection
 }
