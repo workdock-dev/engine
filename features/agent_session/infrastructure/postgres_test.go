@@ -44,6 +44,38 @@ func (s *PostgresSuite) SetupTest() {
 	s.Require().IsType(&postgres{}, s.repo)
 }
 
+func (s *PostgresSuite) TestCreateMCPToken() {
+	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+		s.Contains(sql, "INSERT INTO sessions_mcp_tokens")
+		s.Equal([]any{"session-1", "0123456789abcdef"}, args)
+		return pgconn.CommandTag{}, nil
+	}
+	s.NoError(s.repo.CreateMCPToken(context.Background(), "session-1", "0123456789abcdef"))
+}
+
+func (s *PostgresSuite) TestCreateMCPToken_DuplicateError() {
+	s.pool.execFn = func(context.Context, string, ...any) (pgconn.CommandTag, error) { return pgconn.CommandTag{}, errors.New("duplicate key") }
+	s.Error(s.repo.CreateMCPToken(context.Background(), "session-1", "token"))
+}
+
+func (s *PostgresSuite) TestGetAndDeleteMCPToken() {
+	s.pool.queryRowFn = func(ctx context.Context, sql string, args ...any) pgx.Row {
+		s.Contains(sql, "FROM sessions_mcp_tokens")
+		s.Equal([]any{"session-1"}, args)
+		return &mockRow{scanFn: func(dest ...any) error { *dest[0].(*string) = "stored-token"; return nil }}
+	}
+	token, err := s.repo.GetMCPToken(context.Background(), "session-1")
+	s.Require().NoError(err)
+	s.Equal("stored-token", token)
+
+	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+		s.Contains(sql, "DELETE FROM sessions_mcp_tokens")
+		s.Equal([]any{"session-1"}, args)
+		return pgconn.CommandTag{}, nil
+	}
+	s.NoError(s.repo.DeleteMCPToken(context.Background(), "session-1"))
+}
+
 // --- GetOrganization ---
 
 func (s *PostgresSuite) TestGetOrganization_Success() {

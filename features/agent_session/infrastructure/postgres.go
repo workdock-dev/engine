@@ -80,6 +80,34 @@ type postgres struct {
 	client shared.PostgresPool
 }
 
+func (p *postgres) CreateMCPToken(ctx context.Context, sessionID, token string) error {
+	_, err := p.client.Exec(ctx, `INSERT INTO sessions_mcp_tokens (agent_session_id, agent_session_token) VALUES ($1, $2)`, sessionID, token)
+	if err != nil {
+		slog.Error("[agent_session] failed to create MCP execution token", "err", err, "session_id", sessionID)
+	}
+	return err
+}
+
+func (p *postgres) GetMCPToken(ctx context.Context, sessionID string) (string, error) {
+	var token string
+	err := p.client.QueryRow(ctx, `SELECT agent_session_token FROM sessions_mcp_tokens WHERE agent_session_id = $1`, sessionID).Scan(&token)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		slog.Error("[agent_session] failed to verify MCP execution token", "err", err, "session_id", sessionID)
+	}
+	return token, err
+}
+
+func (p *postgres) DeleteMCPToken(ctx context.Context, sessionID string) error {
+	_, err := p.client.Exec(ctx, `DELETE FROM sessions_mcp_tokens WHERE agent_session_id = $1`, sessionID)
+	if err != nil {
+		slog.Error("[agent_session] failed to delete MCP execution token", "err", err, "session_id", sessionID)
+	}
+	return err
+}
+
 func NewPostgres(client shared.PostgresPool) PostgresRepo {
 	return &postgres{
 		client: client,

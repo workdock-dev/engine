@@ -654,6 +654,19 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 		return types.EventJobStatus_Failed, err
 	}
 
+	mcpToken, err := newMCPToken()
+	if err != nil {
+		return types.EventJobStatus_Failed, err
+	}
+	if err := c.session.CreateMCPToken(ctx, session.Identifier, mcpToken); err != nil {
+		return types.EventJobStatus_Failed, err
+	}
+	defer func() {
+		if err := c.session.DeleteMCPToken(context.WithoutCancel(ctx), session.Identifier); err != nil {
+			slog.Error("[agent_session] failed to clean up MCP execution token", "session_id", session.Identifier, "err", err)
+		}
+	}()
+
 	// *-------------------------------------------------------------------------*
 	// * Get provider: work platform, git hosting, harness, sandbox              *
 	// *-------------------------------------------------------------------------*
@@ -744,6 +757,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 			contextFile,
 			session,
 			sessionEvent,
+			mcpToken,
 		)
 	})
 
@@ -1048,6 +1062,7 @@ func (c *controller) sandbox(
 	contextFile *interfaces.ContextFile,
 	session *types.Session,
 	sessionEvent *types.SessionEvent,
+	mcpTokens ...string,
 ) (
 	*interfaces.HarnessConfig,
 	<-chan string,
@@ -1075,12 +1090,11 @@ func (c *controller) sandbox(
 		}
 	}
 
-	if gitAccess != nil && gitAccess.Granted {
-		secrets = append(secrets, interfaces.SandboxSecret{
-			Name:  gitAccess.EnvVarName,
-			Value: gitAccess.Secret,
-			Hosts: gitAccess.Hosts,
-		})
+	if len(mcpTokens) > 0 && mcpTokens[0] != "" {
+		secrets = append(secrets,
+			interfaces.SandboxSecret{Name: "WORKDOCK_AGENT_SESSION_ID", Value: session.Identifier},
+			interfaces.SandboxSecret{Name: "WORKDOCK_AGENT_SESSION_TOKEN", Value: mcpTokens[0]},
+		)
 	}
 
 	// Get prompt file and prepare it for upload
@@ -1112,7 +1126,7 @@ func (c *controller) sandbox(
 	}
 
 	// Git commands and the pull request exit command only apply when git
-	// access was granted. Sessions without a repository get no GH_TOKEN, so
+	// access was granted. Sessions without a repository get no installation token, so
 	// running git-specific commands would fail the run.
 	commandsWhenCreated := harnessHandler.GetConfigurationCommands()
 	commands := harnessHandler.GetCommands()
@@ -1122,6 +1136,10 @@ func (c *controller) sandbox(
 		commandsWhenCreated = slices.Concat(gitHandler.GetConfigurationCommands(), commandsWhenCreated)
 		commands = slices.Concat(gitHandler.GetCommands(), commands)
 		exitCommand = gitHandler.GetLatestChangesCommand()
+	}
+	gitToken := ""
+	if gitAccess != nil && gitAccess.Granted {
+		gitToken = gitAccess.Secret
 	}
 
 	shutdown, err := sandboxHandler.Run(
@@ -1137,6 +1155,7 @@ func (c *controller) sandbox(
 			Secrets:             secrets,
 			GitName:             "workdock[bot]",
 			GitEmail:            "no-reply@workdock.dev",
+			GitToken:            gitToken,
 			HarnessCommand:      harnessHandler.RunCommand(),
 		},
 		stdout,

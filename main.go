@@ -20,6 +20,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"net/url"
 	"sync"
 	"syscall"
 	"time"
@@ -101,14 +102,10 @@ type MCPFromConfigFile struct {
 }
 
 func (m *MCPFromConfigFile) GetMCPList() []agent_session_interfaces.MCPConfig {
-	if m.config.MCPs == nil {
-		return nil
-	}
+	list := make([]agent_session_interfaces.MCPConfig, 0, len(m.config.MCPs)+1)
 
-	list := make([]agent_session_interfaces.MCPConfig, len(m.config.MCPs))
-
-	for i, mcp := range m.config.MCPs {
-		list[i] = agent_session_interfaces.MCPConfig{
+	for _, mcp := range m.config.MCPs {
+		list = append(list, agent_session_interfaces.MCPConfig{
 			Name:             mcp.Name,
 			Url:              mcp.Url,
 			AuthHeaderKey:    mcp.AuthHeaderKey,
@@ -116,7 +113,20 @@ func (m *MCPFromConfigFile) GetMCPList() []agent_session_interfaces.MCPConfig {
 			AuthSecretEnvVar: mcp.AuthSecretEnvVar,
 			AuthSecret:       mcp.AuthSecret,
 			Hosts:            mcp.Hosts,
-		}
+		})
+	}
+	if m.config.Daytona.MCPServerURL != "" && m.config.Daytona.MCPApiKey != "" {
+		host := ""
+		if parsed, err := url.Parse(m.config.Daytona.MCPServerURL); err == nil { host = parsed.Hostname() }
+		list = append(list, agent_session_interfaces.MCPConfig{
+			Name: "daytona", Url: m.config.Daytona.MCPServerURL,
+			AuthHeaderKey: "Authorization", AuthHeaderValue: "Bearer {env:WORKDOCK_DAYTONA_MCP_API_KEY}",
+			AuthSecretEnvVar: "WORKDOCK_DAYTONA_MCP_API_KEY", AuthSecret: m.config.Daytona.MCPApiKey,
+			Hosts: []string{host},
+		})
+	}
+	if len(list) == 0 {
+		return nil
 	}
 
 	return list
@@ -147,6 +157,11 @@ func main() {
 
 	if err != nil {
 		slog.Error("failed to load config", "err", err)
+		os.Exit(1)
+	}
+	mcpEndpoint, mcpEndpointErr := url.Parse(cfg.Daytona.MCPServerURL)
+	if cfg.Daytona.MCPApiKey == "" || mcpEndpointErr != nil || mcpEndpoint.Scheme != "https" || mcpEndpoint.Hostname() == "" {
+		slog.Error("[service] daytona MCP requires mcp_api_key and mcp_server_url configuration")
 		os.Exit(1)
 	}
 
@@ -220,12 +235,15 @@ func main() {
 
 	postgres, err := pgxpool.New(context.Background(), cfg.Postgres.DatabaseUrl)
 	exit(err)
+	agentSessionPostgres := agent_session_infrastructure.NewPostgres(postgres)
+	daytonaMCP := daytona.NewMCPServer(cfg.Daytona.MCPApiKey, agentSessionPostgres.GetMCPToken)
 
 	postgresRawConn, err := pgx.Connect(ctx, cfg.Postgres.DatabaseUrl)
 	exit(err)
 
 	server, err := server.New(cfg.ServerAddress)
 	exit(err)
+	server.Mux().Handle("/api/v1/mcp/daytona", daytonaMCP.Handler())
 
 	// *-------------------------------------------------------------------------*
 	// * Setup plug-ins                                                         *
@@ -233,7 +251,7 @@ func main() {
 
 	linearAgentSessionHandler := linear.NewAgentSessionHandler(linearClient, secretManager)
 	githubGitHandler := github.NewGitHandler(cfg.Github, githubClient, secretManager)
-	daytonaSandboxHandler := daytona.NewSandboxHandler(cfg.Daytona)
+	daytonaSandboxHandler := daytona.NewSandboxHandler(cfg.Daytona, daytonaMCP)
 	opencodeHarnessHandler := opencode.NewHarnessHandler(cfg.Opencode)
 	pidevHarnessHandler := pidev.NewHarnessHandler(cfg.Pidev)
 	codexHarnessHandler := codex.NewHarnessHandler(cfg.Codex)
@@ -281,7 +299,6 @@ func main() {
 		// * Setup core application feature                                          *
 		// *-------------------------------------------------------------------------*
 
-		agentSessionPostgres := agent_session_infrastructure.NewPostgres(postgres)
 		agentSessionPostgresQueue := agent_session_infrastructure.NewEventQueue(postgres, postgresRawConn)
 
 		err := agent_session.New(

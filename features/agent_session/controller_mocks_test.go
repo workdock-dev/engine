@@ -16,6 +16,7 @@ package agent_session
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/workdock-dev/engine/features/agent_session/interfaces"
@@ -375,6 +376,8 @@ type mockSessionRepository struct {
 	upsertAgentSessionFn           func(ctx context.Context, session *types.Session) error
 	updateSessionEventResultFn     func(ctx context.Context, event *types.SessionEvent) error
 	cancelSessionFn                func(ctx context.Context, queuedBy, reason string) (int, error)
+	createMCPTokenFn               func(ctx context.Context, sessionID, token string) error
+	deleteMCPTokenFn               func(ctx context.Context, sessionID string) error
 
 	upsertedSessions []*types.Session
 	createdEvents    []*types.SessionEvent
@@ -383,6 +386,9 @@ type mockSessionRepository struct {
 	cancelSession    string
 	cancelReason     string
 	issueLookups     []string
+	mcpTokens        map[string]string
+	createdMCPToken  string
+	deletedMCPToken  string
 }
 
 func (m *mockSessionRepository) GetAgentSession(ctx context.Context, identifier string) (*types.Session, error) {
@@ -453,6 +459,22 @@ func (m *mockSessionRepository) CancelSession(ctx context.Context, queuedBy, rea
 		return m.cancelSessionFn(ctx, queuedBy, reason)
 	}
 	return 1, nil
+}
+
+func (m *mockSessionRepository) CreateMCPToken(ctx context.Context, sessionID, token string) error {
+	if m.createMCPTokenFn != nil { return m.createMCPTokenFn(ctx, sessionID, token) }
+	if m.mcpTokens == nil { m.mcpTokens = make(map[string]string) }
+	if _, exists := m.mcpTokens[sessionID]; exists { return errors.New("duplicate MCP session token") }
+	m.mcpTokens[sessionID] = token
+	m.createdMCPToken = sessionID
+	return nil
+}
+func (m *mockSessionRepository) GetMCPToken(ctx context.Context, sessionID string) (string, error) { return m.mcpTokens[sessionID], nil }
+func (m *mockSessionRepository) DeleteMCPToken(ctx context.Context, sessionID string) error {
+	if m.deleteMCPTokenFn != nil { return m.deleteMCPTokenFn(ctx, sessionID) }
+	delete(m.mcpTokens, sessionID)
+	m.deletedMCPToken = sessionID
+	return nil
 }
 
 // --- RepositoryOrg mock ---

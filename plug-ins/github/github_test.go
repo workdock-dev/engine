@@ -341,18 +341,12 @@ func (s *GitHandlerSuite) TestGetInstallationUrl() {
 
 func (s *GitHandlerSuite) TestGetConfigurationCommands() {
 	commands := s.handler.GetConfigurationCommands()
-
-	s.Require().Len(commands, 1)
-	s.Equal(GH_CLI_INSTALL, commands[0])
-	s.NotEmpty(commands[0])
+	s.Empty(commands)
 }
 
 func (s *GitHandlerSuite) TestGetCommands() {
 	commands := s.handler.GetCommands()
-
-	s.Require().Len(commands, 1)
-	s.Equal(GH_GIT_SETUP, commands[0])
-	s.NotEmpty(commands[0])
+	s.Empty(commands)
 }
 
 func (s *GitHandlerSuite) TestGetLatestChangesCommand() {
@@ -370,7 +364,7 @@ func (s *GitHandlerSuite) TestGetGitAccess_Success() {
 	})
 
 	s.Require().NoError(err)
-	s.Equal(GITHUB_ACCESS_TOKEN_ENV_VAR, access.EnvVarName)
+	s.Empty(access.EnvVarName)
 	s.Equal("stored-token", access.Secret)
 	s.Equal([]string{"api.github.com", "github.com"}, access.Hosts)
 	s.True(access.Granted)

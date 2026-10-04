@@ -1874,8 +1874,7 @@ func (s *ControllerSuite) TestSandbox_NoMcpNoGitAccess() {
 }
 
 // TestSandbox_NoGitAccess_SkipsGitCommands ensures repo-less sessions run no
-// git-specific sandbox commands; without a repository there is no GH_TOKEN in
-// the sandbox and commands like the git setup would fail the run.
+	// git-specific sandbox commands; without a repository those operations do not apply.
 func (s *ControllerSuite) TestSandbox_NoGitAccess_SkipsGitCommands() {
 	s.gitHdl.getConfigCommandsFn = func() []string { return []string{"git-config-cmd"} }
 	s.gitHdl.getCommandsFn = func() []string { return []string{"git-cmd"} }
@@ -1937,11 +1936,10 @@ func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
 
 	s.Require().NoError(err)
 	config := s.sandboxHdl.runConfig
-	s.Require().Len(config.Secrets, 2)
+	s.Require().Len(config.Secrets, 1)
 	s.Equal("LINEAR_KEY", config.Secrets[0].Name)
 	s.Equal("linear-secret", config.Secrets[0].Value)
-	s.Equal("GITHUB_TOKEN", config.Secrets[1].Name)
-	s.Equal("git-secret", config.Secrets[1].Value)
+	s.Equal("git-secret", config.GitToken)
 }
 
 func (s *ControllerSuite) TestSandbox_GitAccessNotGranted_NotInSecrets() {
@@ -2224,6 +2222,7 @@ func (s *ControllerSuite) TestExecute_AwaitingAction() {
 	s.Require().NoError(err)
 	s.Equal(types.EventJobStatus_AwaitingAction, status)
 	s.Len(s.agentHdl.gitRequests, 1, "the user should have been asked to grant git access")
+	s.Equal("sess-1", s.sessionRep.deletedMCPToken)
 }
 
 func (s *ControllerSuite) TestExecute_SandboxError() {
@@ -2238,6 +2237,7 @@ func (s *ControllerSuite) TestExecute_SandboxError() {
 	s.ErrorContains(err, "sandbox failed")
 	s.Equal(types.EventJobStatus_Failed, status)
 	s.Equal([]error{errServerInternal}, s.agentHdl.sentErrors, "the user must be notified with the internal server error")
+	s.Equal("sess-1", s.sessionRep.deletedMCPToken)
 }
 
 func (s *ControllerSuite) TestExecute_SandboxCannotStart_Retriable() {
@@ -2350,6 +2350,8 @@ func (s *ControllerSuite) TestExecute_HarnessError_ContextCancelled_NoErrorMessa
 	s.Error(err)
 	s.Equal(types.EventJobStatus_Failed, status)
 	s.Empty(s.agentHdl.sentErrors, "cancelled jobs must not notify an error to the user")
+	s.Equal("sess-1", s.sessionRep.deletedMCPToken, "cancellation must clean up the execution token")
+	s.Empty(s.sessionRep.mcpTokens)
 }
 
 func (s *ControllerSuite) TestExecute_Success_WithPullRequestResult() {
@@ -2391,6 +2393,10 @@ func (s *ControllerSuite) TestExecute_Success_NoPullRequest() {
 	s.prepareExecutable()
 
 	s.sandboxHdl.runFn = func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
+		s.Require().Equal("sess-1", config.Secrets[0].Value)
+		s.Equal("WORKDOCK_AGENT_SESSION_ID", config.Secrets[0].Name)
+		s.Equal("WORKDOCK_AGENT_SESSION_TOKEN", config.Secrets[1].Name)
+		s.Regexp(`^[0-9a-f]{64}$`, config.Secrets[1].Value)
 		go func() {
 			close(stdout)
 			close(stderr)
@@ -2409,6 +2415,9 @@ func (s *ControllerSuite) TestExecute_Success_NoPullRequest() {
 	s.Require().NoError(err)
 	s.Equal(types.EventJobStatus_Succeeded, status)
 	s.Empty(s.sessionRep.updatedResults, "no PR means no result update")
+	s.Equal("sess-1", s.sessionRep.createdMCPToken)
+	s.Equal("sess-1", s.sessionRep.deletedMCPToken)
+	s.Empty(s.sessionRep.mcpTokens)
 }
 
 // runSandboxToCompletion configures the sandbox mock to close its output

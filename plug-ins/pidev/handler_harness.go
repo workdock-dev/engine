@@ -51,8 +51,8 @@ const (
 var NPM_COMMAND = []string{"npm", "--no-fund", "--no-audit", "--loglevel=silent"}
 
 // defaultTools are the pi built-in tools enabled when the config does not
-// provide any. bash is included so the agent can clone the repository and
-// drive git and the gh cli.
+// provide any. bash remains available for workspace utilities; repository
+// operations are exposed through configured MCP servers.
 var defaultTools = []string{"read", "bash", "edit", "grep", "find", "ls", "write"}
 
 var (

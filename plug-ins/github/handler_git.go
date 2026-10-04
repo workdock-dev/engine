@@ -27,17 +27,7 @@ import (
 	"github.com/workdock-dev/engine/shared"
 )
 
-const (
-	GITHUB_ACCESS_TOKEN_ENV_VAR = "GH_TOKEN"
-)
-
 var (
-	//go:embed scripts/gh_cli_install.sh
-	GH_CLI_INSTALL string
-
-	//go:embed scripts/gh_git_setup.sh
-	GH_GIT_SETUP string
-
 	//go:embed scripts/get_changes.sh
 	GET_CHANGES string
 )
@@ -65,15 +55,11 @@ func (h *GitHandler) GetInstallationUrl() string {
 }
 
 func (h *GitHandler) GetConfigurationCommands() []string {
-	return []string{
-		GH_CLI_INSTALL,
-	}
+	return nil
 }
 
 func (h *GitHandler) GetCommands() []string {
-	return []string{
-		GH_GIT_SETUP,
-	}
+	return nil
 }
 
 func (h *GitHandler) GetLatestChangesCommand() string {
@@ -88,7 +74,6 @@ func (h *GitHandler) GetGitAccess(ctx context.Context, connection *agent_session
 	}
 
 	return &agent_session_interfaces.GitAccess{
-		EnvVarName: GITHUB_ACCESS_TOKEN_ENV_VAR,
 		Secret:     token,
 		Hosts:      []string{"api.github.com", "github.com"},
 		Granted:    true,

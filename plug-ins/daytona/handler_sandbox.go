@@ -39,11 +39,15 @@ const (
 
 type SandboxHandler struct {
 	config types.Config
+	mcp    *MCPServer
 }
 
-func NewSandboxHandler(config types.Config) agent_session_interfaces.HandlerSandbox {
+func NewSandboxHandler(config types.Config, mcpServer ...*MCPServer) agent_session_interfaces.HandlerSandbox {
+	var mcp *MCPServer
+	if len(mcpServer) > 0 { mcp = mcpServer[0] }
 	return &SandboxHandler{
 		config: config,
+		mcp: mcp,
 	}
 }
 
@@ -91,6 +95,7 @@ func (h *SandboxHandler) Run(
 
 	shutdown := func(ctx context.Context) string {
 		out := ""
+		if h.mcp != nil { h.mcp.RemoveExecution(config.Session.Identifier) }
 
 		if sandbox != nil && !deleting {
 
@@ -176,6 +181,9 @@ func (h *SandboxHandler) Run(
 
 	if err != nil {
 		return shutdown, err
+	}
+	if h.mcp != nil {
+		h.mcp.RegisterExecution(config.Session.Identifier, sandbox, config.GitToken)
 	}
 
 	// *-------------------------------------------------------------------------*
