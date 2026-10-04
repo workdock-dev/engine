@@ -1053,6 +1053,10 @@ func (c *controller) verifyGitAccess(
 		return nil, err
 	}
 
+	if access != nil {
+		access.Connection = connection
+	}
+
 	return access, nil
 }
 
@@ -1094,12 +1098,10 @@ func (c *controller) sandbox(
 		}
 	}
 
-	if mcpToken != "" {
-		secrets = append(secrets,
-			interfaces.SandboxSecret{Name: "WORKDOCK_AGENT_SESSION_ID", Value: session.Identifier},
-			interfaces.SandboxSecret{Name: "WORKDOCK_AGENT_SESSION_TOKEN", Value: mcpToken},
-		)
-	}
+	secrets = append(secrets,
+		interfaces.SandboxSecret{Name: "WORKDOCK_AGENT_SESSION_ID", Value: session.Identifier},
+		interfaces.SandboxSecret{Name: "WORKDOCK_AGENT_SESSION_TOKEN", Value: mcpToken},
+	)
 
 	// Get prompt file and prepare it for upload
 	promptFilePath, promptData := harnessHandler.GetPromptFile(prompt)
@@ -1156,10 +1158,10 @@ func (c *controller) sandbox(
 		}
 	}
 
-	gitToken := ""
+	var gitConnection *types.GitConnection
 
 	if gitAccess != nil && gitAccess.Granted {
-		gitToken = gitAccess.Secret
+		gitConnection = gitAccess.Connection
 	}
 
 	shutdown, err := sandboxHandler.Run(
@@ -1175,7 +1177,8 @@ func (c *controller) sandbox(
 			Secrets:             secrets,
 			GitName:             "workdock[bot]",
 			GitEmail:            "no-reply@workdock.dev",
-			GitToken:            gitToken,
+			GitHandler:          gitHandler,
+			GitConnection:       gitConnection,
 			HarnessCommand:      harnessHandler.RunCommand(),
 		},
 		stdout,

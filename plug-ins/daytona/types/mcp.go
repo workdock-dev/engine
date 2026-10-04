@@ -14,13 +14,18 @@
 
 package types
 
-import "github.com/daytona/clients/sdk-go/pkg/daytona"
+import (
+	"github.com/daytona/clients/sdk-go/pkg/daytona"
+	"github.com/workdock-dev/engine/features/agent_session/interfaces"
+	agentTypes "github.com/workdock-dev/engine/features/agent_session/types"
+)
 
 type MCPAuthenticatedKey struct{}
 
 type MCPExecution struct {
-	Sandbox  *daytona.Sandbox
-	GitToken string
+	Sandbox       *daytona.Sandbox
+	GitHandler    interfaces.HandlerGit
+	GitConnection *agentTypes.GitConnection
 }
 
 type AgentSession struct {
@@ -36,54 +41,6 @@ type GitCloneInput struct {
 	CommitID string `json:"commitId,omitempty"`
 }
 
-type GitStatusInput struct {
-	AgentSession
-	Path string `json:"path"`
-}
-
-type GitBranchesInput struct {
-	AgentSession
-	Path string `json:"path"`
-}
-
-type GitHistoryInput struct {
-	AgentSession
-	Path string `json:"path"`
-}
-
-type GitCreateBranchInput struct {
-	AgentSession
-	Path string `json:"path"`
-	Name string `json:"name"`
-}
-
-type GitCheckoutInput struct {
-	AgentSession
-	Path string `json:"path"`
-	Name string `json:"name"`
-}
-
-type GitDeleteBranchInput struct {
-	AgentSession
-	Path  string `json:"path"`
-	Name  string `json:"name"`
-	Force bool   `json:"force,omitempty"`
-}
-
-type GitAddInput struct {
-	AgentSession
-	Path  string   `json:"path"`
-	Files []string `json:"files"`
-}
-
-type GitCommitInput struct {
-	AgentSession
-	Path    string `json:"path"`
-	Message string `json:"message"`
-	Author  string `json:"author"`
-	Email   string `json:"email"`
-}
-
 type GitPushInput struct {
 	AgentSession
 	Path   string `json:"path"`
@@ -96,28 +53,4 @@ type GitPullInput struct {
 	Path   string `json:"path"`
 	Branch string `json:"branch,omitempty"`
 	Remote string `json:"remote,omitempty"`
-}
-
-type GitInitInput struct {
-	AgentSession
-	Path          string `json:"path"`
-	Bare          bool   `json:"bare,omitempty"`
-	InitialBranch string `json:"initialBranch,omitempty"`
-}
-
-type GitResetInput struct {
-	AgentSession
-	Path   string   `json:"path"`
-	Mode   string   `json:"mode,omitempty"`
-	Target string   `json:"target,omitempty"`
-	Files  []string `json:"files,omitempty"`
-}
-
-type GitRestoreInput struct {
-	AgentSession
-	Path     string   `json:"path"`
-	Files    []string `json:"files"`
-	Staged   bool     `json:"staged,omitempty"`
-	Worktree bool     `json:"worktree,omitempty"`
-	Source   string   `json:"source,omitempty"`
 }

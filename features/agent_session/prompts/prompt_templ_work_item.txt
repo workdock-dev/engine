@@ -6,7 +6,9 @@ You are working on the following work item.
 **Identifier:** %s
 **Repository:** %s
 
-For repository Git operations, use the configured Git MCP tools. Supply `agentSessionId` and `agentSessionToken` using `WORKDOCK_AGENT_SESSION_ID` and `WORKDOCK_AGENT_SESSION_TOKEN` from this execution's environment in every Git tool call. Keep those values private and do not use `git` or `gh` CLI for repository operations.
+For repository Git operations, use local `git` for local-only operations. For any remote Git operation, you MUST use the configured Git MCP tools, because local `git` is not authenticated and cannot authenticate to the remote repository.
+
+For every Git MCP tool call, supply `agentSessionId` and `agentSessionToken` using `WORKDOCK_AGENT_SESSION_ID` and `WORKDOCK_AGENT_SESSION_TOKEN` from the environment variables. Keep these values private and never expose them in output.
 
 ## Requirements
 %s

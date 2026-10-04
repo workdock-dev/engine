@@ -27,6 +27,8 @@ import (
 	"github.com/daytona/clients/sdk-go/pkg/daytona"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/suite"
+	"github.com/workdock-dev/engine/features/agent_session/interfaces"
+	agentTypes "github.com/workdock-dev/engine/features/agent_session/types"
 	"github.com/workdock-dev/engine/plug-ins/daytona/types"
 )
 
@@ -122,17 +124,12 @@ func (s *MCPSuite) TestToolCallRejectsUnassociatedExecutionBeforeDaytonaOperatio
 			s.NotContains(schema.Properties, prohibited, tool.Name)
 		}
 	}
-	s.ElementsMatch([]string{
-		"git_clone", "git_status", "git_branches", "git_history",
-		"git_create_branch", "git_checkout", "git_delete_branch",
-		"git_add", "git_commit", "git_push", "git_pull",
-		"git_init", "git_reset", "git_restore",
-	}, registered)
-	for _, prohibited := range []string{"git_get_config", "git_set_config", "git_authenticate", "git_configure_user", "git_remotes", "git_remote_get"} {
+	s.ElementsMatch([]string{"git_clone", "git_push", "git_pull"}, registered)
+	for _, prohibited := range []string{"git_status", "git_branches", "git_history", "git_create_branch", "git_checkout", "git_delete_branch", "git_add", "git_commit", "git_init", "git_reset", "git_restore", "git_get_config", "git_set_config", "git_authenticate", "git_configure_user", "git_remotes", "git_remote_get"} {
 		s.NotContains(registered, prohibited)
 	}
 	result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
-		Name:      "git_status",
+		Name:      "git_push",
 		Arguments: map[string]any{"agentSessionId": "not-active", "agentSessionToken": "stored", "path": "/workspace/repo"},
 	})
 	s.Require().NoError(err)
@@ -144,8 +141,8 @@ func (s *MCPSuite) TestExecutionSessionAuthenticationAndIsolation() {
 	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(_ context.Context, id string) (string, error) { return stored[id], nil }}, http.NewServeMux())
 	first := &daytona.Sandbox{}
 	second := &daytona.Sandbox{}
-	s.Require().NoError(h.RegisterExecution("session-one", first, ""))
-	s.Require().NoError(h.RegisterExecution("session-two", second, ""))
+	s.Require().NoError(h.RegisterExecution("session-one", first, nil, nil))
+	s.Require().NoError(h.RegisterExecution("session-two", second, nil, nil))
 
 	authorized, err := h.authorized(context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true), types.AgentSession{Id: "session-one", Token: "token-one"})
 	s.Require().NoError(err)
@@ -171,7 +168,7 @@ func (s *MCPSuite) TestExecutionSessionAuthenticationAndIsolation() {
 
 func (s *MCPSuite) TestExecutionRequiresAPIKeyAuthentication() {
 	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(context.Context, string) (string, error) { return "token", nil }}, http.NewServeMux())
-	s.Require().NoError(h.RegisterExecution("session", &daytona.Sandbox{}, ""))
+	s.Require().NoError(h.RegisterExecution("session", &daytona.Sandbox{}, nil, nil))
 
 	_, err := h.authorized(context.Background(), types.AgentSession{Id: "session", Token: "token"})
 
@@ -181,8 +178,8 @@ func (s *MCPSuite) TestExecutionRequiresAPIKeyAuthentication() {
 func (s *MCPSuite) TestDuplicateExecutionDoesNotReplaceSandbox() {
 	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(context.Context, string) (string, error) { return "token", nil }}, http.NewServeMux())
 	first := &daytona.Sandbox{}
-	s.Require().NoError(h.RegisterExecution("session", first, ""))
-	s.Error(h.RegisterExecution("session", &daytona.Sandbox{}, ""))
+	s.Require().NoError(h.RegisterExecution("session", first, nil, nil))
+	s.Error(h.RegisterExecution("session", &daytona.Sandbox{}, nil, nil))
 
 	ctx := context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true)
 	execution, err := h.authorized(ctx, types.AgentSession{Id: "session", Token: "token"})
@@ -194,8 +191,8 @@ func (s *MCPSuite) TestDuplicateExecutionDoesNotReplaceSandbox() {
 func (s *MCPSuite) TestExecutionRegistrationRequiresSessionAndSandbox() {
 	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: nil}, http.NewServeMux())
 
-	s.Error(h.RegisterExecution("", &daytona.Sandbox{}, ""))
-	s.Error(h.RegisterExecution("session", nil, ""))
+	s.Error(h.RegisterExecution("", &daytona.Sandbox{}, nil, nil))
+	s.Error(h.RegisterExecution("session", nil, nil, nil))
 }
 
 func (s *MCPSuite) TestAllGitToolsRejectInvalidExecutionBeforeDaytonaOperation() {
@@ -206,7 +203,7 @@ func (s *MCPSuite) TestAllGitToolsRejectInvalidExecutionBeforeDaytonaOperation()
 
 		return "", nil
 	}}, http.NewServeMux())
-	s.Require().NoError(h.RegisterExecution("active", &daytona.Sandbox{}, ""))
+	s.Require().NoError(h.RegisterExecution("active", &daytona.Sandbox{}, nil, nil))
 	ctx := context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true)
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	serverSession, err := h.server.Connect(ctx, serverTransport, nil)
@@ -236,14 +233,6 @@ func (s *MCPSuite) TestAllGitToolsRejectInvalidExecutionBeforeDaytonaOperation()
 				switch tool.Name {
 				case "git_clone":
 					arguments["url"] = "https://github.com/workdock-dev/engine.git"
-				case "git_create_branch", "git_checkout", "git_delete_branch":
-					arguments["name"] = "feature"
-				case "git_add", "git_restore":
-					arguments["files"] = []string{"file.txt"}
-				case "git_commit":
-					arguments["message"] = "commit"
-					arguments["author"] = "workdock"
-					arguments["email"] = "no-reply@workdock.dev"
 				}
 
 				result, err := clientSession.CallTool(ctx, &mcp.CallToolParams{
@@ -263,7 +252,7 @@ func (s *MCPSuite) TestAllGitToolsRejectInvalidExecutionBeforeDaytonaOperation()
 
 func (s *MCPSuite) TestAuthenticatedCloneRejectsCredentialBearingURL() {
 	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(context.Context, string) (string, error) { return "token", nil }}, http.NewServeMux())
-	s.Require().NoError(h.RegisterExecution("session", &daytona.Sandbox{}, ""))
+	s.Require().NoError(h.RegisterExecution("session", &daytona.Sandbox{}, nil, nil))
 	ctx := context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true)
 
 	_, _, err := h.gitClone(ctx, nil, types.GitCloneInput{
@@ -285,7 +274,7 @@ func (s *MCPSuite) TestTokenLookupFailureRejectsExecution() {
 		func(context.Context, string) (string, error) { return "token", errors.New("database unavailable") },
 	} {
 		h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: lookup}, http.NewServeMux())
-		s.Require().NoError(h.RegisterExecution("session", &daytona.Sandbox{}, ""))
+		s.Require().NoError(h.RegisterExecution("session", &daytona.Sandbox{}, nil, nil))
 
 		_, err := h.authorized(ctx, types.AgentSession{Id: "session", Token: "token"})
 
@@ -310,7 +299,7 @@ func (s *MCPSuite) TestConcurrentExecutionIsolation() {
 
 	for id, sandbox := range sandboxes {
 		executions.Go(func() {
-			if err := h.RegisterExecution(id, sandbox, ""); err != nil {
+			if err := h.RegisterExecution(id, sandbox, nil, nil); err != nil {
 				results <- err
 				return
 			}
@@ -334,4 +323,106 @@ func (s *MCPSuite) TestConcurrentExecutionIsolation() {
 	}
 
 	s.Empty(h.sessions)
+}
+
+type mcpGitHandler struct {
+	interfaces.HandlerGit
+	getAccess func(context.Context, *agentTypes.GitConnection) (*interfaces.GitAccess, error)
+}
+
+func (h *mcpGitHandler) GetGitAccess(ctx context.Context, connection *agentTypes.GitConnection) (*interfaces.GitAccess, error) {
+	return h.getAccess(ctx, connection)
+}
+
+func (s *MCPSuite) TestGitAccessIsRefreshedForEveryInvocation() {
+	h := NewMCPServer(types.Config{}, http.NewServeMux())
+	connection := &agentTypes.GitConnection{RepoFullName: "workdock-dev/engine"}
+	calls := 0
+	gitHandler := &mcpGitHandler{getAccess: func(_ context.Context, got *agentTypes.GitConnection) (*interfaces.GitAccess, error) {
+		s.Same(connection, got)
+		calls++
+		return &interfaces.GitAccess{Granted: true, Secret: fmt.Sprintf("fresh-%d", calls)}, nil
+	}}
+	execution := &types.MCPExecution{GitHandler: gitHandler, GitConnection: connection}
+
+	first, err := h.gitAccess(context.Background(), execution)
+	s.Require().NoError(err)
+	second, err := h.gitAccess(context.Background(), execution)
+	s.Require().NoError(err)
+
+	s.Equal("fresh-1", first.Secret)
+	s.Equal("fresh-2", second.Secret)
+	s.Equal(2, calls)
+}
+
+func (s *MCPSuite) TestAllRemoteToolsRejectMissingOrDeniedGitAccess() {
+	for _, test := range []struct {
+		name   string
+		access *interfaces.GitAccess
+		err    error
+	}{
+		{name: "missing access"},
+		{name: "denied", access: &interfaces.GitAccess{Secret: "private"}},
+		{name: "missing token", access: &interfaces.GitAccess{Granted: true}},
+		{name: "handler error", err: errors.New("private handler details")},
+	} {
+		s.Run(test.name, func() {
+			h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(context.Context, string) (string, error) { return "token", nil }}, http.NewServeMux())
+			calls := 0
+			gitHandler := &mcpGitHandler{getAccess: func(context.Context, *agentTypes.GitConnection) (*interfaces.GitAccess, error) {
+				calls++
+				return test.access, test.err
+			}}
+			s.Require().NoError(h.RegisterExecution("session", &daytona.Sandbox{}, gitHandler, &agentTypes.GitConnection{}))
+			ctx := context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true)
+			auth := types.AgentSession{Id: "session", Token: "token"}
+
+			_, _, cloneErr := h.gitClone(ctx, nil, types.GitCloneInput{AgentSession: auth, URL: "https://github.com/workdock-dev/engine.git", Path: "/workspace"})
+			_, _, pushErr := h.gitPush(ctx, nil, types.GitPushInput{AgentSession: auth, Path: "/workspace"})
+			_, _, pullErr := h.gitPull(ctx, nil, types.GitPullInput{AgentSession: auth, Path: "/workspace"})
+
+			for _, err := range []error{cloneErr, pushErr, pullErr} {
+				s.Require().Error(err)
+				s.NotContains(err.Error(), "private")
+			}
+			s.Equal(3, calls)
+		})
+	}
+}
+
+func (s *MCPSuite) TestMissingGitHandlerOrConnectionRejectsAccess() {
+	h := NewMCPServer(types.Config{}, http.NewServeMux())
+
+	for _, execution := range []*types.MCPExecution{
+		{},
+		{GitHandler: &mcpGitHandler{}},
+		{GitConnection: &agentTypes.GitConnection{}},
+	} {
+		_, err := h.gitAccess(context.Background(), execution)
+		s.ErrorContains(err, "Git access required")
+	}
+}
+
+func (s *MCPSuite) TestRejectedSessionNeverRequestsGitAccess() {
+	calls := 0
+	gitHandler := &mcpGitHandler{getAccess: func(context.Context, *agentTypes.GitConnection) (*interfaces.GitAccess, error) {
+		calls++
+		return &interfaces.GitAccess{Granted: true, Secret: "private"}, nil
+	}}
+	h := NewMCPServer(types.Config{MCPApiKey: "api", MCPTokenLookup: func(context.Context, string) (string, error) { return "token", nil }}, http.NewServeMux())
+	s.Require().NoError(h.RegisterExecution("session", &daytona.Sandbox{}, gitHandler, &agentTypes.GitConnection{}))
+
+	for _, ctx := range []context.Context{
+		context.Background(),
+		context.WithValue(context.Background(), types.MCPAuthenticatedKey{}, true),
+	} {
+		_, _, err := h.gitClone(ctx, nil, types.GitCloneInput{
+			AgentSession: types.AgentSession{Id: "session", Token: "wrong"},
+			URL:          "https://github.com/workdock-dev/engine.git",
+			Path:         "/workspace",
+		})
+		s.Error(err)
+	}
+
+	s.Zero(calls)
 }

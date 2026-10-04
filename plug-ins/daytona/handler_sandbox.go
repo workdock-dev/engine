@@ -187,8 +187,7 @@ func (h *SandboxHandler) Run(
 	}
 
 	if h.mcp != nil {
-		if err := h.mcp.RegisterExecution(config.Session.Identifier, sandbox, config.GitToken); err != nil {
-			slog.Error("[daytona] failed to register MCP execution", "err", err, "session_id", config.Session.Identifier)
+		if err := h.mcp.RegisterExecution(config.Session.Identifier, sandbox, config.GitHandler, config.GitConnection); err != nil {
 			return shutdown, err
 		}
 

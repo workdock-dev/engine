@@ -46,7 +46,8 @@ type SandboxConfig struct {
 	HarnessCommand      string
 	GitName             string
 	GitEmail            string
-	GitToken            string
+	GitHandler          HandlerGit
+	GitConnection       *types.GitConnection
 }
 
 // HandlerSandbox is the interfaces through which the sandbox will be

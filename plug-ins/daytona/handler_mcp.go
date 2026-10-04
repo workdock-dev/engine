@@ -18,6 +18,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -26,6 +27,8 @@ import (
 	"github.com/daytona/clients/sdk-go/pkg/daytona"
 	"github.com/daytona/clients/sdk-go/pkg/options"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/workdock-dev/engine/features/agent_session/interfaces"
+	agentTypes "github.com/workdock-dev/engine/features/agent_session/types"
 	"github.com/workdock-dev/engine/plug-ins/daytona/types"
 )
 
@@ -51,22 +54,28 @@ func NewMCPServer(config types.Config, mux *http.ServeMux) *MCPServer {
 
 	mux.Handle("/api/v1/mcp/git", h.Handler())
 
+	slog.Debug("[daytona] Git MCP server configured")
+
 	return h
 }
 
-func (h *MCPServer) RegisterExecution(sessionID string, sandbox *daytona.Sandbox, gitToken string) error {
+func (h *MCPServer) RegisterExecution(sessionID string, sandbox *daytona.Sandbox, gitHandler interfaces.HandlerGit, connection *agentTypes.GitConnection) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	if sessionID == "" || sandbox == nil {
+		slog.Error("[daytona] MCP execution requires a session and sandbox")
 		return errors.New("MCP execution requires a session and sandbox")
 	}
 
 	if _, exists := h.sessions[sessionID]; exists {
+		slog.Error("[daytona] MCP execution is already active")
 		return errors.New("MCP execution is already active")
 	}
 
-	h.sessions[sessionID] = types.MCPExecution{Sandbox: sandbox, GitToken: gitToken}
+	h.sessions[sessionID] = types.MCPExecution{Sandbox: sandbox, GitHandler: gitHandler, GitConnection: connection}
+
+	slog.Debug("[daytona] MCP execution registered", "session_id", sessionID)
 
 	return nil
 }
@@ -76,6 +85,7 @@ func (h *MCPServer) RemoveExecution(sessionID string) {
 	defer h.mu.Unlock()
 
 	delete(h.sessions, sessionID)
+	slog.Debug("[daytona] MCP execution removed", "session_id", sessionID)
 }
 
 func (h *MCPServer) Handler() http.Handler {
@@ -83,6 +93,7 @@ func (h *MCPServer) Handler() http.Handler {
 		key, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 
 		if !ok || h.apiKey == "" || subtle.ConstantTimeCompare([]byte(key), []byte(h.apiKey)) != 1 {
+			slog.Error("[daytona] MCP API key authentication rejected")
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -94,16 +105,19 @@ func (h *MCPServer) Handler() http.Handler {
 
 func (h *MCPServer) authorized(ctx context.Context, auth types.AgentSession) (*types.MCPExecution, error) {
 	if ctx.Value(types.MCPAuthenticatedKey{}) != true {
+		slog.Error("[daytona] MCP API key authentication required")
 		return nil, errors.New("MCP API key authentication required")
 	}
 
 	if auth.Id == "" || auth.Token == "" || h.lookupToken == nil {
+		slog.Error("[daytona] active agent session required")
 		return nil, errors.New("active agent session required")
 	}
 
 	token, err := h.lookupToken(ctx, auth.Id)
 
 	if err != nil || token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(auth.Token)) != 1 {
+		slog.Error("[daytona] active agent session required")
 		return nil, errors.New("active agent session required")
 	}
 
@@ -113,6 +127,7 @@ func (h *MCPServer) authorized(ctx context.Context, auth types.AgentSession) (*t
 	execution, ok := h.sessions[auth.Id]
 
 	if !ok || execution.Sandbox == nil {
+		slog.Error("[daytona] active agent session required")
 		return nil, errors.New("active agent session required")
 	}
 
@@ -133,10 +148,12 @@ func (h *MCPServer) authorizeRemote(ctx context.Context, execution *types.MCPExe
 	remoteURL, err := execution.Sandbox.Git.RemoteGet(ctx, path, remote)
 
 	if err != nil {
-		return err
+		slog.Error("[daytona] failed to validate Git remote")
+		return errors.New("failed to validate Git remote")
 	}
 
 	if !isGitHubHTTPSURL(remoteURL) {
+		slog.Error("[daytona] GitHub installation authentication is restricted to github.com remotes")
 		return errors.New("GitHub installation authentication is restricted to github.com remotes")
 	}
 
@@ -145,19 +162,8 @@ func (h *MCPServer) authorizeRemote(ctx context.Context, execution *types.MCPExe
 
 func (h *MCPServer) registerTools() {
 	mcp.AddTool(h.server, &mcp.Tool{Name: "git_clone", Description: "Clone a repository."}, h.gitClone)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "git_status", Description: "Get repository status."}, h.gitStatus)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "git_branches", Description: "List repository branches."}, h.gitBranches)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "git_history", Description: "Get repository commit history."}, h.gitHistory)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "git_create_branch", Description: "Create a repository branch."}, h.gitCreateBranch)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "git_checkout", Description: "Check out a branch or commit."}, h.gitCheckout)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "git_delete_branch", Description: "Delete a branch."}, h.gitDeleteBranch)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "git_add", Description: "Stage files in a repository."}, h.gitAdd)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "git_commit", Description: "Commit staged changes."}, h.gitCommit)
 	mcp.AddTool(h.server, &mcp.Tool{Name: "git_push", Description: "Push repository commits."}, h.gitPush)
 	mcp.AddTool(h.server, &mcp.Tool{Name: "git_pull", Description: "Pull repository changes."}, h.gitPull)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "git_init", Description: "Initialize a repository."}, h.gitInit)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "git_reset", Description: "Reset repository changes."}, h.gitReset)
-	mcp.AddTool(h.server, &mcp.Tool{Name: "git_restore", Description: "Restore repository files."}, h.gitRestore)
 }
 
 func (h *MCPServer) gitClone(ctx context.Context, _ *mcp.CallToolRequest, in types.GitCloneInput) (*mcp.CallToolResult, any, error) {
@@ -168,14 +174,17 @@ func (h *MCPServer) gitClone(ctx context.Context, _ *mcp.CallToolRequest, in typ
 	}
 
 	if !isGitHubHTTPSURL(in.URL) {
+		slog.Error("[daytona] repository URL must be an HTTPS GitHub URL without embedded credentials")
 		return nil, nil, errors.New("repository URL must be an HTTPS GitHub URL without embedded credentials")
 	}
 
-	var opts []func(*options.GitClone)
+	access, err := h.gitAccess(ctx, execution)
 
-	if execution.GitToken != "" {
-		opts = append(opts, options.WithUsername("x-access-token"), options.WithPassword(execution.GitToken))
+	if err != nil {
+		return nil, nil, err
 	}
+
+	opts := []func(*options.GitClone){options.WithUsername("x-access-token"), options.WithPassword(access.Secret)}
 
 	if in.Branch != "" {
 		opts = append(opts, options.WithBranch(in.Branch))
@@ -185,111 +194,15 @@ func (h *MCPServer) gitClone(ctx context.Context, _ *mcp.CallToolRequest, in typ
 		opts = append(opts, options.WithCommitId(in.CommitID))
 	}
 
+	slog.Debug("[daytona] executing Git MCP clone", "session_id", in.Id)
 	err = execution.Sandbox.Git.Clone(ctx, in.URL, in.Path, opts...)
 
-	return nil, map[string]bool{"success": err == nil}, err
-}
-
-func (h *MCPServer) gitStatus(ctx context.Context, _ *mcp.CallToolRequest, in types.GitStatusInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.AgentSession)
-
 	if err != nil {
-		return nil, nil, err
+		slog.Error("[daytona] Git MCP clone failed", "session_id", in.Id)
+		return nil, nil, errors.New("Git clone failed")
 	}
-
-	out, err := execution.Sandbox.Git.Status(ctx, in.Path)
-
-	return nil, out, err
-}
-
-func (h *MCPServer) gitBranches(ctx context.Context, _ *mcp.CallToolRequest, in types.GitBranchesInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.AgentSession)
-
-	if err != nil {
-		return nil, nil, err
-	}
-
-	out, err := execution.Sandbox.Git.Branches(ctx, in.Path)
-
-	return nil, map[string]any{"branches": out}, err
-}
-
-func (h *MCPServer) gitHistory(ctx context.Context, _ *mcp.CallToolRequest, in types.GitHistoryInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.AgentSession)
-
-	if err != nil {
-		return nil, nil, err
-	}
-
-	out, _, err := execution.Sandbox.ToolboxClient.GitAPI.GetCommitHistory(ctx).Path(in.Path).Execute()
-
-	return nil, map[string]any{"commits": out}, err
-}
-
-func (h *MCPServer) gitCreateBranch(ctx context.Context, _ *mcp.CallToolRequest, in types.GitCreateBranchInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.AgentSession)
-
-	if err != nil {
-		return nil, nil, err
-	}
-
-	err = execution.Sandbox.Git.CreateBranch(ctx, in.Path, in.Name)
 
 	return nil, map[string]bool{"success": err == nil}, err
-}
-
-func (h *MCPServer) gitCheckout(ctx context.Context, _ *mcp.CallToolRequest, in types.GitCheckoutInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.AgentSession)
-
-	if err != nil {
-		return nil, nil, err
-	}
-
-	err = execution.Sandbox.Git.Checkout(ctx, in.Path, in.Name)
-
-	return nil, map[string]bool{"success": err == nil}, err
-}
-
-func (h *MCPServer) gitDeleteBranch(ctx context.Context, _ *mcp.CallToolRequest, in types.GitDeleteBranchInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.AgentSession)
-
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var opts []func(*options.GitDeleteBranch)
-
-	if in.Force {
-		opts = append(opts, options.WithForce(true))
-	}
-
-	err = execution.Sandbox.Git.DeleteBranch(ctx, in.Path, in.Name, opts...)
-
-	return nil, map[string]bool{"success": err == nil}, err
-}
-
-func (h *MCPServer) gitAdd(ctx context.Context, _ *mcp.CallToolRequest, in types.GitAddInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.AgentSession)
-
-	if err != nil {
-		return nil, nil, err
-	}
-
-	err = execution.Sandbox.Git.Add(ctx, in.Path, in.Files)
-
-	return nil, map[string]bool{"success": err == nil}, err
-}
-
-func (h *MCPServer) gitCommit(ctx context.Context, _ *mcp.CallToolRequest, in types.GitCommitInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.AgentSession)
-
-	if err != nil {
-		return nil, nil, err
-	}
-
-	out, err := execution.Sandbox.Git.Commit(ctx, in.Path, in.Message, in.Author, in.Email)
-
-	return nil, out, err
 }
 
 func (h *MCPServer) gitPush(ctx context.Context, _ *mcp.CallToolRequest, in types.GitPushInput) (*mcp.CallToolResult, any, error) {
@@ -299,15 +212,17 @@ func (h *MCPServer) gitPush(ctx context.Context, _ *mcp.CallToolRequest, in type
 		return nil, nil, err
 	}
 
+	access, err := h.gitAccess(ctx, execution)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
 	if err := h.authorizeRemote(ctx, execution, in.Path, in.Remote); err != nil {
 		return nil, nil, err
 	}
 
-	var opts []func(*options.GitPush)
-
-	if execution.GitToken != "" {
-		opts = append(opts, options.WithPushUsername("x-access-token"), options.WithPushPassword(execution.GitToken))
-	}
+	opts := []func(*options.GitPush){options.WithPushUsername("x-access-token"), options.WithPushPassword(access.Secret)}
 
 	if in.Branch != "" {
 		opts = append(opts, options.WithPushBranch(in.Branch))
@@ -317,7 +232,13 @@ func (h *MCPServer) gitPush(ctx context.Context, _ *mcp.CallToolRequest, in type
 		opts = append(opts, options.WithPushRemote(in.Remote))
 	}
 
+	slog.Debug("[daytona] executing Git MCP push", "session_id", in.Id)
 	err = execution.Sandbox.Git.Push(ctx, in.Path, opts...)
+
+	if err != nil {
+		slog.Error("[daytona] Git MCP push failed", "session_id", in.Id)
+		return nil, nil, errors.New("Git push failed")
+	}
 
 	return nil, map[string]bool{"success": err == nil}, err
 }
@@ -329,15 +250,17 @@ func (h *MCPServer) gitPull(ctx context.Context, _ *mcp.CallToolRequest, in type
 		return nil, nil, err
 	}
 
+	access, err := h.gitAccess(ctx, execution)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
 	if err := h.authorizeRemote(ctx, execution, in.Path, in.Remote); err != nil {
 		return nil, nil, err
 	}
 
-	var opts []func(*options.GitPull)
-
-	if execution.GitToken != "" {
-		opts = append(opts, options.WithPullUsername("x-access-token"), options.WithPullPassword(execution.GitToken))
-	}
+	opts := []func(*options.GitPull){options.WithPullUsername("x-access-token"), options.WithPullPassword(access.Secret)}
 
 	if in.Branch != "" {
 		opts = append(opts, options.WithPullBranch(in.Branch))
@@ -347,69 +270,33 @@ func (h *MCPServer) gitPull(ctx context.Context, _ *mcp.CallToolRequest, in type
 		opts = append(opts, options.WithPullRemote(in.Remote))
 	}
 
+	slog.Debug("[daytona] executing Git MCP pull", "session_id", in.Id)
 	err = execution.Sandbox.Git.Pull(ctx, in.Path, opts...)
 
-	return nil, map[string]bool{"success": err == nil}, err
-}
-
-func (h *MCPServer) gitInit(ctx context.Context, _ *mcp.CallToolRequest, in types.GitInitInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.AgentSession)
-
 	if err != nil {
-		return nil, nil, err
+		slog.Error("[daytona] Git MCP pull failed", "session_id", in.Id)
+		return nil, nil, errors.New("Git pull failed")
 	}
-
-	opts := []func(*options.GitInit){options.WithBare(in.Bare)}
-
-	if in.InitialBranch != "" {
-		opts = append(opts, options.WithInitialBranch(in.InitialBranch))
-	}
-
-	err = execution.Sandbox.Git.Init(ctx, in.Path, opts...)
 
 	return nil, map[string]bool{"success": err == nil}, err
 }
 
-func (h *MCPServer) gitReset(ctx context.Context, _ *mcp.CallToolRequest, in types.GitResetInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.AgentSession)
+func (h *MCPServer) gitAccess(ctx context.Context, execution *types.MCPExecution) (*interfaces.GitAccess, error) {
+	if execution.GitHandler == nil || execution.GitConnection == nil {
+		slog.Error("[daytona] Git access unavailable for MCP execution")
+		return nil, errors.New("Git access required")
+	}
+
+	access, err := execution.GitHandler.GetGitAccess(ctx, execution.GitConnection)
 
 	if err != nil {
-		return nil, nil, err
+		return nil, errors.New("failed to obtain Git access")
 	}
 
-	var opts []func(*options.GitReset)
-
-	if in.Mode != "" {
-		opts = append(opts, options.WithResetMode(in.Mode))
+	if access == nil || !access.Granted || access.Secret == "" {
+		slog.Error("[daytona] Git access denied for MCP execution")
+		return nil, errors.New("Git access required")
 	}
 
-	if in.Target != "" {
-		opts = append(opts, options.WithResetTarget(in.Target))
-	}
-
-	if len(in.Files) > 0 {
-		opts = append(opts, options.WithResetFiles(in.Files))
-	}
-
-	err = execution.Sandbox.Git.Reset(ctx, in.Path, opts...)
-
-	return nil, map[string]bool{"success": err == nil}, err
-}
-
-func (h *MCPServer) gitRestore(ctx context.Context, _ *mcp.CallToolRequest, in types.GitRestoreInput) (*mcp.CallToolResult, any, error) {
-	execution, err := h.authorized(ctx, in.AgentSession)
-
-	if err != nil {
-		return nil, nil, err
-	}
-
-	opts := []func(*options.GitRestore){options.WithRestoreStaged(in.Staged), options.WithRestoreWorktree(in.Worktree)}
-
-	if in.Source != "" {
-		opts = append(opts, options.WithRestoreSource(in.Source))
-	}
-
-	err = execution.Sandbox.Git.Restore(ctx, in.Path, in.Files, opts...)
-
-	return nil, map[string]bool{"success": err == nil}, err
+	return access, nil
 }

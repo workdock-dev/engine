@@ -118,7 +118,7 @@ func (s *SandboxSuite) TestConstructorConfiguresAndRegistersGitMCP() {
 		},
 	}, mux).(*SandboxHandler)
 	s.Require().NotNil(handler.mcp)
-	s.Require().NoError(handler.mcp.RegisterExecution("session", &daytona.Sandbox{}, ""))
+	s.Require().NoError(handler.mcp.RegisterExecution("session", &daytona.Sandbox{}, nil, nil))
 	invocations := 0
 	handler.mcp.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, err := handler.mcp.authorized(r.Context(), types.AgentSession{Id: "session", Token: "token"})

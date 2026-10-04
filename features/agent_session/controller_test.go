@@ -1867,7 +1867,7 @@ func (s *ControllerSuite) TestSandbox_NoMcpNoGitAccess() {
 	s.Equal(5, config.AutoStopInterval)
 	s.NotNil(config.Session)
 	s.Same(testSessionEvent, config.SessionEvent)
-	s.Empty(config.Secrets)
+	s.Len(config.Secrets, 2)
 	s.Equal([]string{"harness-config-cmd"}, config.CommandsWhenCreated[len(config.CommandsWhenCreated)-1:])
 	s.Equal("opencode run", config.HarnessCommand)
 	s.Len(config.FileUploads, 2)
@@ -1922,11 +1922,13 @@ func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
 			{Name: "linear", AuthSecretEnvVar: "LINEAR_KEY", AuthSecret: "linear-secret", Hosts: []string{"api.linear.app"}},
 		}
 	}
+	connection := &types.GitConnection{RepoFullName: "workdock-dev/engine"}
 	gitAccess := &interfaces.GitAccess{
 		EnvVarName: "WORKDOCK_GITHUB_API_TOKEN",
 		Secret:     "git-secret",
 		Hosts:      []string{"github.com"},
 		Granted:    true,
+		Connection: connection,
 	}
 
 	_, _, _, _, err := s.c.sandbox(
@@ -1936,12 +1938,13 @@ func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
 
 	s.Require().NoError(err)
 	config := s.sandboxHdl.runConfig
-	s.Require().Len(config.Secrets, 2)
+	s.Require().Len(config.Secrets, 4)
 	s.Equal("LINEAR_KEY", config.Secrets[0].Name)
 	s.Equal("linear-secret", config.Secrets[0].Value)
-	s.Equal("WORKDOCK_GITHUB_API_TOKEN", config.Secrets[1].Name)
-	s.Equal("git-secret", config.Secrets[1].Value)
-	s.Equal("git-secret", config.GitToken)
+	s.Equal("WORKDOCK_GITHUB_API_TOKEN", config.Secrets[3].Name)
+	s.Equal("git-secret", config.Secrets[3].Value)
+	s.Same(s.gitHdl, config.GitHandler)
+	s.Same(connection, config.GitConnection)
 }
 
 func (s *ControllerSuite) TestSandbox_GitAccessNotGranted_NotInSecrets() {
@@ -1953,7 +1956,7 @@ func (s *ControllerSuite) TestSandbox_GitAccessNotGranted_NotInSecrets() {
 	)
 
 	s.Require().NoError(err)
-	s.Empty(s.sandboxHdl.runConfig.Secrets)
+	s.Len(s.sandboxHdl.runConfig.Secrets, 2)
 }
 
 func (s *ControllerSuite) TestSandbox_NilMcpHandler() {
@@ -1965,7 +1968,7 @@ func (s *ControllerSuite) TestSandbox_NilMcpHandler() {
 	)
 
 	s.Require().NoError(err)
-	s.Empty(s.sandboxHdl.runConfig.Secrets)
+	s.Len(s.sandboxHdl.runConfig.Secrets, 2)
 }
 
 func (s *ControllerSuite) TestSandbox_GetConfigFileError() {
