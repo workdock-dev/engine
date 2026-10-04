@@ -1622,7 +1622,7 @@ func (s *ControllerSuite) TestGetPrompt_AssemblesPrompt() {
 func (s *ControllerSuite) TestVerifyGitAccess_NoRepo() {
 	access, err := s.c.verifyGitAccess(
 		context.Background(), s.agentHdl, "token", s.gitHdl,
-		&types.Session{RepoFullName: nil}, testSessionEvent, "",
+		&types.Session{RepoFullName: nil}, testSessionEvent,
 	)
 
 	s.Require().NoError(err)
@@ -1638,7 +1638,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_ConnectionLookupError() {
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
 	)
 
 	s.Error(err)
@@ -1653,7 +1653,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_RequiresConnection_RequestsAccess(
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
 	)
 
 	s.Require().NoError(err)
@@ -1678,7 +1678,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_UpsertError() {
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
 	)
 
 	s.Error(err)
@@ -1693,7 +1693,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_SendGitConnectionRequestError() {
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
 	)
 
 	s.Error(err)
@@ -1715,7 +1715,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_GetGitAccessError() {
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
 	)
 
 	s.Error(err)
@@ -1737,7 +1737,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_InstallationUnavailable_ResetsAndR
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
 	)
 
 	s.Require().NoError(err)
@@ -1766,7 +1766,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_ResetError() {
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
 	)
 
 	s.Error(err)
@@ -1791,7 +1791,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_SecretDeleteError() {
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
 	)
 
 	s.Error(err)
@@ -1816,7 +1816,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_InstallationUnavailable_ReRequestS
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
 	)
 
 	s.Error(err)
@@ -1839,7 +1839,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_Success() {
 	}
 
 	access, err := s.c.verifyGitAccess(
-		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent, "",
+		context.Background(), s.agentHdl, "token", s.gitHdl, session, testSessionEvent,
 	)
 
 	s.Require().NoError(err)
