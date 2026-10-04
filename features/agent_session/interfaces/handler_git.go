@@ -44,7 +44,7 @@ type HandlerGit interface {
 
 	// GetLatestChangesCommand returns the command to verify if a pull request or commit with push
 	// was created
-	GetLatestChangesCommand() string
+	GetLatestChangesCommand(repoFullName string) string
 
 	// GetGitAccess returns the git access configuration for the given provider
 	GetGitAccess(ctx context.Context, connection *types.GitConnection) (*GitAccess, error)

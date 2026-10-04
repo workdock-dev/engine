@@ -44,10 +44,14 @@ type SandboxHandler struct {
 
 func NewSandboxHandler(config types.Config, mcpServer ...*MCPServer) agent_session_interfaces.HandlerSandbox {
 	var mcp *MCPServer
-	if len(mcpServer) > 0 { mcp = mcpServer[0] }
+
+	if len(mcpServer) > 0 {
+		mcp = mcpServer[0]
+	}
+
 	return &SandboxHandler{
 		config: config,
-		mcp: mcp,
+		mcp:    mcp,
 	}
 }
 
@@ -92,10 +96,14 @@ func (h *SandboxHandler) Run(
 	var deleting bool
 	var listening bool
 	var execSessionCreated bool
+	var mcpRegistered bool
 
 	shutdown := func(ctx context.Context) string {
 		out := ""
-		if h.mcp != nil { h.mcp.RemoveExecution(config.Session.Identifier) }
+
+		if mcpRegistered {
+			h.mcp.RemoveExecution(config.Session.Identifier)
+		}
 
 		if sandbox != nil && !deleting {
 
@@ -182,8 +190,14 @@ func (h *SandboxHandler) Run(
 	if err != nil {
 		return shutdown, err
 	}
+
 	if h.mcp != nil {
-		h.mcp.RegisterExecution(config.Session.Identifier, sandbox, config.GitToken)
+		if err := h.mcp.RegisterExecution(config.Session.Identifier, sandbox, config.GitToken); err != nil {
+			slog.Error("[daytona] failed to register MCP execution", "err", err, "session_id", config.Session.Identifier)
+			return shutdown, err
+		}
+
+		mcpRegistered = true
 	}
 
 	// *-------------------------------------------------------------------------*
@@ -244,11 +258,11 @@ func (h *SandboxHandler) Run(
 	}
 
 	// *-------------------------------------------------------------------------*
-	// * Run the session configuration commands (e.g. git credential setup)      *
+	// * Run the session configuration commands                                 *
 	// *                                                                         *
 	// * Unlike CommandsWhenCreated these must run on every session since        *
 	// * sandboxes are reused and the configuration is required before the       *
-	// * harness starts issuing git commands                                     *
+	// * harness starts running its commands                                     *
 	// *-------------------------------------------------------------------------*
 
 	slog.Debug("[sandbox][daytona] session commands")

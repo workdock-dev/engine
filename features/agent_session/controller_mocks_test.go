@@ -200,7 +200,7 @@ func (m *mockGitHandler) GetCommands() []string {
 	return nil
 }
 
-func (m *mockGitHandler) GetLatestChangesCommand() string {
+func (m *mockGitHandler) GetLatestChangesCommand(repoFullName string) string {
 	if m.getLatestChangesCmdFn != nil {
 		return m.getLatestChangesCmdFn()
 	}
@@ -462,16 +462,32 @@ func (m *mockSessionRepository) CancelSession(ctx context.Context, queuedBy, rea
 }
 
 func (m *mockSessionRepository) CreateMCPToken(ctx context.Context, sessionID, token string) error {
-	if m.createMCPTokenFn != nil { return m.createMCPTokenFn(ctx, sessionID, token) }
-	if m.mcpTokens == nil { m.mcpTokens = make(map[string]string) }
-	if _, exists := m.mcpTokens[sessionID]; exists { return errors.New("duplicate MCP session token") }
+	if m.createMCPTokenFn != nil {
+		return m.createMCPTokenFn(ctx, sessionID, token)
+	}
+
+	if m.mcpTokens == nil {
+		m.mcpTokens = make(map[string]string)
+	}
+
+	if _, exists := m.mcpTokens[sessionID]; exists {
+		return errors.New("duplicate MCP session token")
+	}
+
 	m.mcpTokens[sessionID] = token
 	m.createdMCPToken = sessionID
 	return nil
 }
-func (m *mockSessionRepository) GetMCPToken(ctx context.Context, sessionID string) (string, error) { return m.mcpTokens[sessionID], nil }
+
+func (m *mockSessionRepository) GetMCPToken(ctx context.Context, sessionID string) (string, error) {
+	return m.mcpTokens[sessionID], nil
+}
+
 func (m *mockSessionRepository) DeleteMCPToken(ctx context.Context, sessionID string) error {
-	if m.deleteMCPTokenFn != nil { return m.deleteMCPTokenFn(ctx, sessionID) }
+	if m.deleteMCPTokenFn != nil {
+		return m.deleteMCPTokenFn(ctx, sessionID)
+	}
+
 	delete(m.mcpTokens, sessionID)
 	m.deletedMCPToken = sessionID
 	return nil

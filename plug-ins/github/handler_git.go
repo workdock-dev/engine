@@ -19,6 +19,8 @@ import (
 	_ "embed"
 	"encoding/json"
 	"log/slog"
+	"strconv"
+	"strings"
 
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
 	agent_session_types "github.com/workdock-dev/engine/features/agent_session/types"
@@ -27,10 +29,8 @@ import (
 	"github.com/workdock-dev/engine/shared"
 )
 
-var (
-	//go:embed scripts/get_changes.sh
-	GET_CHANGES string
-)
+//go:embed scripts/get_changes.sh
+var GET_CHANGES string
 
 type GitHandler struct {
 	client          interfaces.Client
@@ -62,8 +62,8 @@ func (h *GitHandler) GetCommands() []string {
 	return nil
 }
 
-func (h *GitHandler) GetLatestChangesCommand() string {
-	return GET_CHANGES
+func (h *GitHandler) GetLatestChangesCommand(repoFullName string) string {
+	return strings.ReplaceAll(GET_CHANGES, "REPO_FULL_NAME_ARG", strconv.Quote(repoFullName))
 }
 
 func (h *GitHandler) GetGitAccess(ctx context.Context, connection *agent_session_types.GitConnection) (*agent_session_interfaces.GitAccess, error) {
@@ -74,6 +74,7 @@ func (h *GitHandler) GetGitAccess(ctx context.Context, connection *agent_session
 	}
 
 	return &agent_session_interfaces.GitAccess{
+		EnvVarName: "WORKDOCK_GITHUB_API_TOKEN",
 		Secret:     token,
 		Hosts:      []string{"api.github.com", "github.com"},
 		Granted:    true,

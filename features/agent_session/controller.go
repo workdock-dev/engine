@@ -655,12 +655,16 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	}
 
 	mcpToken, err := newMCPToken()
+
 	if err != nil {
+		slog.Error("[agent_session] failed to generate MCP execution token", "err", err, "session_id", session.Identifier)
 		return types.EventJobStatus_Failed, err
 	}
+
 	if err := c.session.CreateMCPToken(ctx, session.Identifier, mcpToken); err != nil {
 		return types.EventJobStatus_Failed, err
 	}
+
 	defer func() {
 		if err := c.session.DeleteMCPToken(context.WithoutCancel(ctx), session.Identifier); err != nil {
 			slog.Error("[agent_session] failed to clean up MCP execution token", "session_id", session.Identifier, "err", err)
@@ -1135,9 +1139,25 @@ func (c *controller) sandbox(
 	if gitAccess != nil && gitAccess.Granted {
 		commandsWhenCreated = slices.Concat(gitHandler.GetConfigurationCommands(), commandsWhenCreated)
 		commands = slices.Concat(gitHandler.GetCommands(), commands)
-		exitCommand = gitHandler.GetLatestChangesCommand()
+		repoFullName := ""
+
+		if session.RepoFullName != nil {
+			repoFullName = *session.RepoFullName
+		}
+
+		exitCommand = gitHandler.GetLatestChangesCommand(repoFullName)
+
+		if gitAccess.EnvVarName != "" {
+			secrets = append(secrets, interfaces.SandboxSecret{
+				Name:  gitAccess.EnvVarName,
+				Value: gitAccess.Secret,
+				Hosts: gitAccess.Hosts,
+			})
+		}
 	}
+
 	gitToken := ""
+
 	if gitAccess != nil && gitAccess.Granted {
 		gitToken = gitAccess.Secret
 	}

@@ -1874,7 +1874,7 @@ func (s *ControllerSuite) TestSandbox_NoMcpNoGitAccess() {
 }
 
 // TestSandbox_NoGitAccess_SkipsGitCommands ensures repo-less sessions run no
-	// git-specific sandbox commands; without a repository those operations do not apply.
+// git-specific sandbox commands; without a repository those operations do not apply.
 func (s *ControllerSuite) TestSandbox_NoGitAccess_SkipsGitCommands() {
 	s.gitHdl.getConfigCommandsFn = func() []string { return []string{"git-config-cmd"} }
 	s.gitHdl.getCommandsFn = func() []string { return []string{"git-cmd"} }
@@ -1923,7 +1923,7 @@ func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
 		}
 	}
 	gitAccess := &interfaces.GitAccess{
-		EnvVarName: "GITHUB_TOKEN",
+		EnvVarName: "WORKDOCK_GITHUB_API_TOKEN",
 		Secret:     "git-secret",
 		Hosts:      []string{"github.com"},
 		Granted:    true,
@@ -1936,9 +1936,11 @@ func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
 
 	s.Require().NoError(err)
 	config := s.sandboxHdl.runConfig
-	s.Require().Len(config.Secrets, 1)
+	s.Require().Len(config.Secrets, 2)
 	s.Equal("LINEAR_KEY", config.Secrets[0].Name)
 	s.Equal("linear-secret", config.Secrets[0].Value)
+	s.Equal("WORKDOCK_GITHUB_API_TOKEN", config.Secrets[1].Name)
+	s.Equal("git-secret", config.Secrets[1].Value)
 	s.Equal("git-secret", config.GitToken)
 }
 
@@ -3086,4 +3088,115 @@ func (s *ControllerSuite) sessionWithRepo() {
 		session.RepoFullName = &repo
 		return &session, nil
 	}
+}
+
+func (s *ControllerSuite) TestExecute_DuplicateMCPTokenPreservesActiveExecution() {
+	s.prepareExecutable()
+	s.sessionRep.mcpTokens = map[string]string{"sess-1": "active-token"}
+
+	status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
+
+	s.ErrorContains(err, "duplicate MCP session token")
+	s.Equal(types.EventJobStatus_Failed, status)
+	s.Equal("active-token", s.sessionRep.mcpTokens["sess-1"])
+	s.Empty(s.sessionRep.deletedMCPToken)
+	s.Nil(s.sandboxHdl.runConfig)
+}
+
+func (s *ControllerSuite) TestExecute_MCPTokenCreationErrorPreventsDispatch() {
+	s.prepareExecutable()
+	s.sessionRep.createMCPTokenFn = func(context.Context, string, string) error {
+		return errors.New("token insert failed")
+	}
+
+	status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
+
+	s.ErrorContains(err, "token insert failed")
+	s.Equal(types.EventJobStatus_Failed, status)
+	s.Empty(s.sessionRep.deletedMCPToken)
+	s.Nil(s.sandboxHdl.runConfig)
+}
+
+func (s *ControllerSuite) TestSandbox_MCPDispatchScopesCredentialsToExecution() {
+	mcps := []interfaces.MCPConfig{{
+		Name:             "daytona",
+		Url:              "https://engine.example.com/api/v1/mcp/daytona",
+		AuthHeaderKey:    "Authorization",
+		AuthHeaderValue:  "Bearer {env:WORKDOCK_DAYTONA_MCP_API_KEY}",
+		AuthSecretEnvVar: "WORKDOCK_DAYTONA_MCP_API_KEY",
+		AuthSecret:       "api-key",
+		Hosts:            []string{"engine.example.com"},
+	}}
+
+	s.mcpHdl.getMCPListFn = func() []interfaces.MCPConfig { return mcps }
+	s.harnessHdl.getConfigFileFn = func(config *interfaces.HarnessConfig) (string, []byte, error) {
+		s.Equal(mcps, config.Mcps)
+		return "/tmp/config.json", []byte("{}"), nil
+	}
+
+	config, _, _, _, err := s.c.sandbox(
+		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		nil, "prompt", nil, newTestSession(), testSessionEvent, "execution-token",
+	)
+
+	s.Require().NoError(err)
+	s.Equal(mcps, config.Mcps)
+	s.Require().Len(s.sandboxHdl.runConfig.Secrets, 3)
+	s.Equal("api-key", s.sandboxHdl.runConfig.Secrets[0].Value)
+	s.Equal("sess-1", s.sandboxHdl.runConfig.Secrets[1].Value)
+	s.Equal("execution-token", s.sandboxHdl.runConfig.Secrets[2].Value)
+
+	for _, data := range s.sandboxHdl.runConfig.FileUploads {
+		s.NotContains(string(data), "execution-token")
+	}
+}
+
+func (s *ControllerSuite) TestExecute_MCPTokenCleanupUsesUncancelledContext() {
+	s.prepareExecutable()
+	ctx, cancel := context.WithCancel(context.Background())
+	deleted := false
+	s.sessionRep.deleteMCPTokenFn = func(cleanupCtx context.Context, sessionID string) error {
+		s.NoError(cleanupCtx.Err())
+		s.Equal("sess-1", sessionID)
+		delete(s.sessionRep.mcpTokens, sessionID)
+		deleted = true
+		return nil
+	}
+	s.sandboxHdl.runFn = func(context.Context, *interfaces.SandboxConfig, chan<- string, chan<- string) (interfaces.SandboxShutdown, error) {
+		cancel()
+		return nil, context.Canceled
+	}
+
+	status, err := s.c.execute(ctx, &types.EventJob{SessionEventIdentifier: "evt-1"})
+
+	s.ErrorIs(err, context.Canceled)
+	s.Equal(types.EventJobStatus_Failed, status)
+	s.True(deleted)
+	s.Empty(s.sessionRep.mcpTokens)
+}
+
+func (s *ControllerSuite) TestExecute_MCPTokenIsRevokedAfterHarnessFailure() {
+	s.prepareExecutable()
+	s.harnessHdl.parseFn = func(
+		context.Context,
+		*interfaces.HarnessConfig,
+		<-chan []byte,
+		string,
+		func(context.Context, string) error,
+		func(context.Context, string) error,
+		func(context.Context, types.AgentAction) error,
+		func(context.Context, types.AgentElicitation) error,
+		func(context.Context) error,
+	) error {
+		return errors.New("harness failed")
+	}
+	s.runSandboxToCompletion()
+
+	status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
+
+	s.ErrorContains(err, "harness failed")
+	s.Equal(types.EventJobStatus_Failed, status)
+	s.Equal("sess-1", s.sessionRep.createdMCPToken)
+	s.Equal("sess-1", s.sessionRep.deletedMCPToken)
+	s.Empty(s.sessionRep.mcpTokens)
 }

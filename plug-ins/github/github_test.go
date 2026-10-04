@@ -350,8 +350,13 @@ func (s *GitHandlerSuite) TestGetCommands() {
 }
 
 func (s *GitHandlerSuite) TestGetLatestChangesCommand() {
-	s.Equal(GET_CHANGES, s.handler.GetLatestChangesCommand())
-	s.NotEmpty(GET_CHANGES)
+	command := s.handler.GetLatestChangesCommand("workdock-dev/engine")
+
+	s.Contains(command, `repository = "workdock-dev/engine"`)
+	s.NotContains(command, "REPO_FULL_NAME_ARG")
+	s.NotContains(command, "gh pr")
+	s.NotContains(command, "gh auth")
+	s.Contains(command, "WORKDOCK_GITHUB_API_TOKEN")
 }
 
 func (s *GitHandlerSuite) TestGetGitAccess_Success() {
@@ -364,7 +369,7 @@ func (s *GitHandlerSuite) TestGetGitAccess_Success() {
 	})
 
 	s.Require().NoError(err)
-	s.Empty(access.EnvVarName)
+	s.Equal("WORKDOCK_GITHUB_API_TOKEN", access.EnvVarName)
 	s.Equal("stored-token", access.Secret)
 	s.Equal([]string{"api.github.com", "github.com"}, access.Hosts)
 	s.True(access.Granted)

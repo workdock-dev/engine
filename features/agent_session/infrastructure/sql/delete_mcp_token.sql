@@ -12,11 +12,7 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
-CREATE TABLE public.sessions_mcp_tokens (
-    agent_session_id TEXT PRIMARY KEY,
-    agent_session_token CHAR(64) NOT NULL
-);
-
----- create above / drop below ----
-
-DROP TABLE public.sessions_mcp_tokens;
+delete from
+    public.sessions_mcp_tokens
+where
+    agent_session_id = $1;
