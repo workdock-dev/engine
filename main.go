@@ -169,7 +169,6 @@ func main() {
 		os.Exit(1)
 	}
 
-
 	serviceName := fmt.Sprintf("workdock-%s", uuid.NewString())
 
 	if cfg.ServiceName != "" {
