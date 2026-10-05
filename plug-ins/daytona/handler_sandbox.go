@@ -839,36 +839,6 @@ func (h *SandboxHandler) isContextCanceledOrDeadlineExceeded(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
-// func (h *SandboxHandler) ConfigureMCP(config *agent_session_interfaces.SandboxMCPConfig) {
-// 	h.mcp.Configure(config)
-// }
-
-// func (h *SandboxHandler) getMCPSandbox(ctx context.Context, sessionID string) (*daytona.Sandbox, func(), error) {
-// 	client, err := h.newClient()
-
-// 	if err != nil {
-// 		return nil, nil, errors.New("failed to get sandbox")
-// 	}
-
-// 	release := func() {
-// 		if err := client.Close(context.WithoutCancel(ctx)); err != nil {
-// 			slog.Error("[daytona] failed to close MCP client")
-// 		}
-// 	}
-
-// 	sandbox, err := helpers.RetryRateLimited(ctx, helpers.ThrottlerAuthenticated, "get MCP sandbox", func() (*daytona.Sandbox, error) {
-// 		return client.Get(ctx, sessionID)
-// 	})
-
-// 	if err != nil || sandbox == nil {
-// 		release()
-// 		slog.Error("[daytona] failed to get MCP sandbox")
-// 		return nil, nil, errors.New("failed to get sandbox")
-// 	}
-
-// 	return sandbox, release, nil
-// }
-
 func (h *SandboxHandler) validateGitURL(rawURL, sessionID string) error {
 	u, err := url.Parse(rawURL)
 
