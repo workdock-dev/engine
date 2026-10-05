@@ -18,6 +18,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -1867,7 +1869,7 @@ func (s *ControllerSuite) TestSandbox_NoMcpNoGitAccess() {
 	s.Equal(5, config.AutoStopInterval)
 	s.NotNil(config.Session)
 	s.Same(testSessionEvent, config.SessionEvent)
-	s.Len(config.Secrets, 2)
+	s.Len(config.Secrets, 1)
 	s.Equal([]string{"harness-config-cmd"}, config.CommandsWhenCreated[len(config.CommandsWhenCreated)-1:])
 	s.Equal("opencode run", config.HarnessCommand)
 	s.Len(config.FileUploads, 2)
@@ -1936,14 +1938,12 @@ func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
 
 	s.Require().NoError(err)
 	config := s.sandboxHdl.runConfig
-	s.Require().Len(config.Secrets, 4)
+	s.Require().Len(config.Secrets, 3)
 	s.Equal("LINEAR_KEY", config.Secrets[0].Name)
 	s.Equal("linear-secret", config.Secrets[0].Value)
-	s.Equal("WORKDOCK_GITHUB_API_TOKEN", config.Secrets[3].Name)
-	s.Equal("git-secret", config.Secrets[3].Value)
-	s.Require().NotNil(config.MCP)
-	s.NotNil(config.MCP.TokenLookup)
-	s.NotNil(config.MCP.GitLookup)
+	s.Equal("WORKDOCK_GITHUB_API_TOKEN", config.Secrets[2].Name)
+	s.Equal("git-secret", config.Secrets[2].Value)
+	s.Equal("sess-1|", config.Secrets[1].Value)
 }
 
 func (s *ControllerSuite) TestSandbox_GitAccessNotGranted_NotInSecrets() {
@@ -1955,7 +1955,7 @@ func (s *ControllerSuite) TestSandbox_GitAccessNotGranted_NotInSecrets() {
 	)
 
 	s.Require().NoError(err)
-	s.Len(s.sandboxHdl.runConfig.Secrets, 2)
+	s.Len(s.sandboxHdl.runConfig.Secrets, 1)
 }
 
 func (s *ControllerSuite) TestSandbox_NilMcpHandler() {
@@ -1967,7 +1967,7 @@ func (s *ControllerSuite) TestSandbox_NilMcpHandler() {
 	)
 
 	s.Require().NoError(err)
-	s.Len(s.sandboxHdl.runConfig.Secrets, 2)
+	s.Len(s.sandboxHdl.runConfig.Secrets, 1)
 }
 
 func (s *ControllerSuite) TestSandbox_GetConfigFileError() {
@@ -2397,10 +2397,10 @@ func (s *ControllerSuite) TestExecute_Success_NoPullRequest() {
 	s.prepareExecutable()
 
 	s.sandboxHdl.runFn = func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
-		s.Require().Equal("sess-1", config.Secrets[0].Value)
-		s.Equal("WORKDOCK_AGENT_SESSION_ID", config.Secrets[0].Name)
-		s.Equal("WORKDOCK_AGENT_SESSION_TOKEN", config.Secrets[1].Name)
-		s.Regexp(`^[0-9a-f]{64}$`, config.Secrets[1].Value)
+		s.Require().Len(config.Secrets, 1)
+		s.Equal("AGENT_SESSION_CONFIG ", config.Secrets[0].Name)
+		s.Regexp(`^sess-1\|[0-9a-f]{64}$`, config.Secrets[0].Value)
+		s.Equal("sess-1|"+s.sessionRep.mcpTokens["sess-1"], config.Secrets[0].Value)
 		go func() {
 			close(stdout)
 			close(stderr)
@@ -3143,10 +3143,10 @@ func (s *ControllerSuite) TestSandbox_MCPDispatchScopesCredentialsToExecution() 
 
 	s.Require().NoError(err)
 	s.Equal(mcps, config.Mcps)
-	s.Require().Len(s.sandboxHdl.runConfig.Secrets, 3)
+	s.Require().Len(s.sandboxHdl.runConfig.Secrets, 2)
 	s.Equal("api-key", s.sandboxHdl.runConfig.Secrets[0].Value)
-	s.Equal("sess-1", s.sandboxHdl.runConfig.Secrets[1].Value)
-	s.Equal("execution-token", s.sandboxHdl.runConfig.Secrets[2].Value)
+	s.Equal("AGENT_SESSION_CONFIG ", s.sandboxHdl.runConfig.Secrets[1].Name)
+	s.Equal("sess-1|execution-token", s.sandboxHdl.runConfig.Secrets[1].Value)
 
 	for _, data := range s.sandboxHdl.runConfig.FileUploads {
 		s.NotContains(string(data), "execution-token")
@@ -3204,18 +3204,53 @@ func (s *ControllerSuite) TestExecute_MCPTokenIsRevokedAfterHarnessFailure() {
 }
 
 func (s *ControllerSuite) TestMCPDependenciesConfiguredBeforeAnyExecution() {
-	s.initController()
-	s.Require().NotNil(s.sandboxHdl.mcpConfig)
+	mux := http.NewServeMux()
+	server := NewMCP(mux, "api-key", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
 	s.Nil(s.sandboxHdl.runConfig)
 	s.sessionRep.mcpTokens = map[string]string{"remote-session": "remote-token"}
+	invocations := 0
+	server.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id, err := server.authorized(r.Context(), "remote-session|remote-token")
+		if err != nil {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		s.Equal("remote-session", id)
+		invocations++
+		w.WriteHeader(http.StatusNoContent)
+	})
 
-	token, err := s.sandboxHdl.mcpConfig.TokenLookup(context.Background(), "remote-session")
-
-	s.Require().NoError(err)
-	s.Equal("remote-token", token)
+	for _, test := range []struct {
+		name   string
+		header string
+		status int
+	}{
+		{name: "missing API key", status: http.StatusUnauthorized},
+		{name: "invalid API key", header: "Bearer invalid", status: http.StatusUnauthorized},
+		{name: "valid execution", header: "Bearer api-key", status: http.StatusNoContent},
+	} {
+		s.Run(test.name, func() {
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/git", nil)
+			request.Header.Set("Authorization", test.header)
+			response := httptest.NewRecorder()
+			mux.ServeHTTP(response, request)
+			s.Equal(test.status, response.Code)
+		})
+	}
+	s.Equal(1, invocations)
+	delete(s.sessionRep.mcpTokens, "remote-session")
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/git", nil)
+	request.Header.Set("Authorization", "Bearer api-key")
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, request)
+	s.Equal(http.StatusForbidden, response.Code)
+	s.Equal(1, invocations)
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/mcp/daytona", nil))
+	s.Equal(http.StatusNotFound, response.Code)
 }
 
-func (s *ControllerSuite) TestSandboxMCPLooksUpCurrentConnectionForEachSession() {
+func (s *ControllerSuite) TestMCPGitAccessLooksUpCurrentConnectionForEachSession() {
 	installation := "installation"
 	s.sessionRep.getAgentSessionFn = func(_ context.Context, id string) (*types.Session, error) {
 		return &types.Session{Identifier: id, RepoFullName: &id}, nil
@@ -3223,38 +3258,35 @@ func (s *ControllerSuite) TestSandboxMCPLooksUpCurrentConnectionForEachSession()
 	s.gitRepo.getConnectionFn = func(_ context.Context, repo string) (*types.GitConnection, error) {
 		return &types.GitConnection{RepoFullName: repo, Connected: true, InstallationId: &installation}, nil
 	}
-	config := s.c.sandboxMCPConfig()
-
-	for _, id := range []string{"first-repo", "second-repo"} {
-		handler, connection, err := config.GitLookup(context.Background(), id)
-		s.Require().NoError(err)
-		s.Same(s.gitHdl, handler)
-		s.Equal(id, connection.RepoFullName)
-		s.Equal("installation", *connection.InstallationId)
+	s.gitHdl.getGitAccessFn = func(_ context.Context, connection *types.GitConnection) (*interfaces.GitAccess, error) {
+		s.Equal(installation, *connection.InstallationId)
+		return &interfaces.GitAccess{Granted: true, Secret: connection.RepoFullName}, nil
 	}
-
+	server := NewMCP(http.NewServeMux(), "api-key", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
+	for _, id := range []string{"first-repo", "second-repo"} {
+		token, err := server.gitAccess(context.Background(), id)
+		s.Require().NoError(err)
+		s.Equal(id, token)
+	}
 	s.gitRepo.getConnectionFn = func(context.Context, string) (*types.GitConnection, error) { return nil, nil }
-	_, _, err := config.GitLookup(context.Background(), "first-repo")
-	s.ErrorContains(err, "Git access required")
+	_, err := server.gitAccess(context.Background(), "first-repo")
+	s.ErrorContains(err, "git is not connected")
 }
 
-func (s *ControllerSuite) TestSandboxMCPLookupRejectsMissingAndInvalidRepository() {
-	config := s.c.sandboxMCPConfig()
-	_, _, err := config.GitLookup(context.Background(), "unknown")
-	s.ErrorContains(err, "Git access required")
-
+func (s *ControllerSuite) TestMCPGitAccessRejectsMissingAndInvalidRepository() {
+	server := NewMCP(http.NewServeMux(), "api-key", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
+	_, err := server.gitAccess(context.Background(), "unknown")
+	s.ErrorContains(err, "agent session repository not set")
 	s.sessionRep.getAgentSessionFn = func(context.Context, string) (*types.Session, error) {
 		return &types.Session{}, nil
 	}
-	_, _, err = config.GitLookup(context.Background(), "no-repo")
-	s.ErrorContains(err, "Git access required")
-
+	_, err = server.gitAccess(context.Background(), "no-repo")
+	s.ErrorContains(err, "agent session repository not set")
 	s.sessionRep.getAgentSessionFn = func(context.Context, string) (*types.Session, error) {
 		return nil, errors.New("session lookup failed")
 	}
-	_, _, err = config.GitLookup(context.Background(), "session")
+	_, err = server.gitAccess(context.Background(), "session")
 	s.ErrorContains(err, "session lookup failed")
-
 	repo := "repo"
 	s.sessionRep.getAgentSessionFn = func(context.Context, string) (*types.Session, error) {
 		return &types.Session{RepoFullName: &repo}, nil
@@ -3262,15 +3294,11 @@ func (s *ControllerSuite) TestSandboxMCPLookupRejectsMissingAndInvalidRepository
 	s.gitRepo.getConnectionFn = func(context.Context, string) (*types.GitConnection, error) {
 		return nil, errors.New("connection lookup failed")
 	}
-	_, _, err = config.GitLookup(context.Background(), "session")
+	_, err = server.gitAccess(context.Background(), "session")
 	s.ErrorContains(err, "connection lookup failed")
-
-	for _, connection := range []*types.GitConnection{
-		{},
-		{Connected: true},
-	} {
+	for _, connection := range []*types.GitConnection{{}, {Connected: true}} {
 		s.gitRepo.getConnectionFn = func(context.Context, string) (*types.GitConnection, error) { return connection, nil }
-		_, _, err = config.GitLookup(context.Background(), "session")
-		s.ErrorContains(err, "Git access required")
+		_, err = server.gitAccess(context.Background(), "session")
+		s.ErrorContains(err, "git is not connected")
 	}
 }

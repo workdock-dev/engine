@@ -258,6 +258,18 @@ func (m *mockSandboxHandler) Archive(ctx context.Context, config *interfaces.San
 	return m.archiveErr
 }
 
+func (m *mockSandboxHandler) GitClone(ctx context.Context, input interfaces.GitCloneInput) error {
+	return nil
+}
+
+func (m *mockSandboxHandler) GitPush(ctx context.Context, input interfaces.GitPushInput) error {
+	return nil
+}
+
+func (m *mockSandboxHandler) GitPull(ctx context.Context, input interfaces.GitPullInput) error {
+	return nil
+}
+
 // --- HandlerHarness mock ---
 
 type mockHarnessHandler struct {
