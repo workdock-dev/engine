@@ -22,7 +22,7 @@ type CreatePullRequestInput struct {
 	Draft bool   `json:"draft"`
 }
 
-type PullRequest struct {
+type CreatePullRequestResponse struct {
 	URL    string `json:"html_url"`
 	Number int    `json:"number"`
 	Head   struct {

@@ -272,7 +272,7 @@ func (s *GitHubClient) CreateInstallationAccessToken(installationId int) (*types
 	return &token, nil
 }
 
-func (s *GitHubClient) CreatePullRequest(ctx context.Context, repo, token string, input types.CreatePullRequestInput) (*types.PullRequest, error) {
+func (s *GitHubClient) CreatePullRequest(ctx context.Context, repo, token string, input types.CreatePullRequestInput) (*types.CreatePullRequestResponse, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 
 	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
@@ -315,7 +315,7 @@ func (s *GitHubClient) CreatePullRequest(ctx context.Context, repo, token string
 		return nil, err
 	}
 
-	var pr types.PullRequest
+	var pr types.CreatePullRequestResponse
 
 	if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {
 		slog.Error("[github] failed to decode pull request", "err", err)
