@@ -360,6 +360,10 @@ func main() {
 	server.Run(ctx, nil)
 	wg.Wait()
 
+	if err := daytonaSandboxHandler.Close(context.Background()); err != nil {
+		slog.Error("[sandbox][daytona] failed to close client", "err", err, "event_identifier", "")
+	}
+
 	slog.Info("[service] stopped")
 }
 

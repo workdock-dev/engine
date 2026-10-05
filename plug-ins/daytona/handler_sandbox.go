@@ -43,7 +43,7 @@ type SandboxHandler struct {
 	client *daytona.Client
 }
 
-func NewSandboxHandler(config types.Config) (agent_session_interfaces.HandlerSandbox, error) {
+func NewSandboxHandler(config types.Config) (*SandboxHandler, error) {
 	target := config.Target
 
 	if target == "" {
@@ -128,10 +128,6 @@ func (h *SandboxHandler) Run(
 
 		for _, id := range secretIds {
 			h.deleteSecret(ctx, config, id)
-		}
-
-		if err := h.client.Close(ctx); err != nil {
-			slog.Error("[sandbox][daytona] failed to close client", "err", err, "event_identifier", config.SessionEvent.Identifier)
 		}
 
 		return out
@@ -368,6 +364,10 @@ func (h *SandboxHandler) Archive(ctx context.Context, config *agent_session_inte
 }
 
 func (h *SandboxHandler) GitClone(ctx context.Context, input agent_session_interfaces.GitCloneInput) error {
+	if err := h.validateGitURL(input.Url, input.SessionId); err != nil {
+		return err
+	}
+
 	sandbox, err := helpers.RetryRateLimited(ctx, helpers.ThrottlerAuthenticated, "get sandbox", func() (*daytona.Sandbox, error) {
 		return h.client.Get(ctx, input.SessionId)
 	})
@@ -460,21 +460,7 @@ func (h *SandboxHandler) GitPush(ctx context.Context, input agent_session_interf
 		return err
 	}
 
-	u, err := url.Parse(remoteURL)
-
-	if err != nil {
-		slog.Error("[sandbox][daytona] failed to validate git remote", "err", err)
-		return err
-	}
-
-	if u.Scheme != "https" ||
-		u.User == nil ||
-		u.RawQuery == "" ||
-		u.Fragment == "" ||
-		u.Host != "github.com" || // TODO: Support other hosts
-		u.Path == "" {
-		err := errors.New("GitHub installation authentication is restricted to github.com remotes")
-		slog.Error("[sandbox][daytona] failed to validate git remote", "err", err, "session_id", input.SessionId)
+	if err := h.validateGitURL(remoteURL, input.SessionId); err != nil {
 		return err
 	}
 
@@ -543,21 +529,7 @@ func (h *SandboxHandler) GitPull(ctx context.Context, input agent_session_interf
 		return err
 	}
 
-	u, err := url.Parse(remoteURL)
-
-	if err != nil {
-		slog.Error("[sandbox][daytona] failed to validate git remote", "err", err)
-		return err
-	}
-
-	if u.Scheme != "https" ||
-		u.User == nil ||
-		u.RawQuery == "" ||
-		u.Fragment == "" ||
-		u.Host != "github.com" || // TODO: Support other hosts
-		u.Path == "" {
-		err := errors.New("GitHub installation authentication is restricted to github.com remotes")
-		slog.Error("[sandbox][daytona] failed to validate git remote", "err", err, "session_id", input.SessionId)
+	if err := h.validateGitURL(remoteURL, input.SessionId); err != nil {
 		return err
 	}
 
@@ -896,3 +868,29 @@ func (h *SandboxHandler) isContextCanceledOrDeadlineExceeded(err error) bool {
 
 // 	return sandbox, release, nil
 // }
+
+func (h *SandboxHandler) validateGitURL(rawURL, sessionID string) error {
+	u, err := url.Parse(rawURL)
+
+	if err != nil {
+		slog.Error("[sandbox][daytona] failed to validate git remote", "err", err)
+		return err
+	}
+
+	if u.Scheme != "https" ||
+		u.User != nil ||
+		u.RawQuery != "" ||
+		u.Fragment != "" ||
+		u.Host != "github.com" || // TODO: Support other hosts
+		u.Path == "" {
+		err := errors.New("GitHub installation authentication is restricted to github.com remotes")
+		slog.Error("[sandbox][daytona] failed to validate git remote", "err", err, "session_id", sessionID)
+		return err
+	}
+
+	return nil
+}
+
+func (h *SandboxHandler) Close(ctx context.Context) error {
+	return h.client.Close(ctx)
+}

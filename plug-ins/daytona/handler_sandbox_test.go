@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/daytona/clients/sdk-go/pkg/daytona"
 	"github.com/stretchr/testify/suite"
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
 	"github.com/workdock-dev/engine/plug-ins/daytona/types"
@@ -42,7 +43,7 @@ func (s *SandboxSuite) TestNewSandboxHandler() {
 	var iface agent_session_interfaces.HandlerSandbox = handler
 	s.NotNil(iface)
 	s.IsType(&SandboxHandler{}, iface)
-	s.Equal(types.Config{Target: "eu", ApiKey: "key", ApiUrl: "https://api"}, handler.(*SandboxHandler).config)
+	s.Equal(types.Config{Target: "eu", ApiKey: "key", ApiUrl: "https://api"}, handler.config)
 }
 
 // ---------------------------------------------------------------------------
@@ -104,4 +105,45 @@ func (s *SandboxSuite) TestNewUUIDStartingWithLetter_FormattedLikeProductionUsag
 		name := handler.newUUIDStartingWithLetter()
 		s.False(strings.ContainsAny(name, "{}: "), "no braces, colons or spaces allowed: %s", name)
 	}
+}
+
+func (s *SandboxSuite) TestGitURLValidation() {
+	handler := &SandboxHandler{}
+	s.NoError(handler.validateGitURL("https://github.com/workdock-dev/engine.git", "session"))
+
+	for _, rawURL := range []string{
+		"http://github.com/workdock-dev/engine.git",
+		"https://example.com/workdock-dev/engine.git",
+		"https://github.com.attacker.example/workdock-dev/engine.git",
+		"https://credential@github.com/workdock-dev/engine.git",
+		"https://github.com/workdock-dev/engine.git?token=secret",
+		"https://github.com/workdock-dev/engine.git#secret",
+		"https://github.com:443/workdock-dev/engine.git",
+		"https://github.com",
+		"git@github.com:workdock-dev/engine.git",
+		"https://%invalid",
+	} {
+		s.Error(handler.validateGitURL(rawURL, "session"), rawURL)
+	}
+}
+
+func (s *SandboxSuite) TestCloneRejectsUntrustedURLBeforeAccessingClient() {
+	handler := &SandboxHandler{}
+
+	err := handler.GitClone(context.Background(), agent_session_interfaces.GitCloneInput{
+		SessionId:   "session",
+		AccessToken: "private",
+		Url:         "https://attacker.example/repo.git",
+		Path:        "/workspace",
+	})
+
+	s.ErrorContains(err, "GitHub installation authentication is restricted to github.com remotes")
+}
+
+func (s *SandboxSuite) TestCloseSharedClient() {
+	client := &daytona.Client{}
+	handler := &SandboxHandler{client: client}
+
+	s.NoError(handler.Close(context.Background()))
+	s.Same(client, handler.client)
 }

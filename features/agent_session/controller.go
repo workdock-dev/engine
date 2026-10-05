@@ -1095,7 +1095,7 @@ func (c *controller) sandbox(
 	}
 
 	secrets = append(secrets,
-		interfaces.SandboxSecret{Name: "AGENT_SESSION_CONFIG ", Value: fmt.Sprintf("%s|%s", session.Identifier, mcpToken)},
+		interfaces.SandboxSecret{Name: "AGENT_SESSION_CONFIG", Value: fmt.Sprintf("%s|%s", session.Identifier, mcpToken)},
 	)
 
 	// Get prompt file and prepare it for upload

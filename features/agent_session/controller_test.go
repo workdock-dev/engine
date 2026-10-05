@@ -2398,7 +2398,7 @@ func (s *ControllerSuite) TestExecute_Success_NoPullRequest() {
 
 	s.sandboxHdl.runFn = func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
 		s.Require().Len(config.Secrets, 1)
-		s.Equal("AGENT_SESSION_CONFIG ", config.Secrets[0].Name)
+		s.Equal("AGENT_SESSION_CONFIG", config.Secrets[0].Name)
 		s.Regexp(`^sess-1\|[0-9a-f]{64}$`, config.Secrets[0].Value)
 		s.Equal("sess-1|"+s.sessionRep.mcpTokens["sess-1"], config.Secrets[0].Value)
 		go func() {
@@ -3145,7 +3145,7 @@ func (s *ControllerSuite) TestSandbox_MCPDispatchScopesCredentialsToExecution() 
 	s.Equal(mcps, config.Mcps)
 	s.Require().Len(s.sandboxHdl.runConfig.Secrets, 2)
 	s.Equal("api-key", s.sandboxHdl.runConfig.Secrets[0].Value)
-	s.Equal("AGENT_SESSION_CONFIG ", s.sandboxHdl.runConfig.Secrets[1].Name)
+	s.Equal("AGENT_SESSION_CONFIG", s.sandboxHdl.runConfig.Secrets[1].Name)
 	s.Equal("sess-1|execution-token", s.sandboxHdl.runConfig.Secrets[1].Value)
 
 	for _, data := range s.sandboxHdl.runConfig.FileUploads {
@@ -3301,4 +3301,61 @@ func (s *ControllerSuite) TestMCPGitAccessRejectsMissingAndInvalidRepository() {
 		_, err = server.gitAccess(context.Background(), "session")
 		s.ErrorContains(err, "git is not connected")
 	}
+}
+
+func (s *ControllerSuite) TestMCPRejectsEmptyMissingAndDeletedCredentials() {
+	s.sessionRep.mcpTokens = map[string]string{"active": "token"}
+	server := NewMCP(http.NewServeMux(), "api-key", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
+	ctx := context.WithValue(context.Background(), AuthenticatedKey, true)
+
+	for _, input := range []string{"", "|", "unknown|", "active|", "|token", "active|token|extra"} {
+		_, err := server.authorized(ctx, input)
+		s.ErrorContains(err, "invalid agent session configuration format", input)
+	}
+
+	for _, input := range []string{"unknown|token", "active|wrong"} {
+		_, err := server.authorized(ctx, input)
+		s.ErrorContains(err, "invalid agent session mcp token", input)
+	}
+
+	id, err := server.authorized(ctx, "active|token")
+	s.Require().NoError(err)
+	s.Equal("active", id)
+	delete(s.sessionRep.mcpTokens, "active")
+	_, err = server.authorized(ctx, "active|token")
+	s.ErrorContains(err, "invalid agent session mcp token")
+}
+
+func (s *ControllerSuite) TestMCPGitAccessPropagatesErrorsAndRejectsEmptyTokens() {
+	repo := "workdock-dev/engine"
+	installation := "installation"
+	s.sessionRep.getAgentSessionFn = func(context.Context, string) (*types.Session, error) {
+		return &types.Session{RepoFullName: &repo}, nil
+	}
+	s.gitRepo.getConnectionFn = func(context.Context, string) (*types.GitConnection, error) {
+		return &types.GitConnection{Connected: true, InstallationId: &installation}, nil
+	}
+	server := NewMCP(http.NewServeMux(), "api-key", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
+	expected := errors.New("access failed")
+
+	for _, access := range []*interfaces.GitAccess{nil, {Granted: true, Secret: "private"}} {
+		s.gitHdl.getGitAccessFn = func(context.Context, *types.GitConnection) (*interfaces.GitAccess, error) { return access, expected }
+		token, err := server.gitAccess(context.Background(), "session")
+		s.ErrorIs(err, expected)
+		s.Empty(token)
+	}
+
+	for _, access := range []*interfaces.GitAccess{nil, {Granted: false, Secret: "private"}, {Granted: true}} {
+		s.gitHdl.getGitAccessFn = func(context.Context, *types.GitConnection) (*interfaces.GitAccess, error) { return access, nil }
+		token, err := server.gitAccess(context.Background(), "session")
+		s.ErrorContains(err, "git access not granded")
+		s.Empty(token)
+	}
+}
+
+func (s *ControllerSuite) TestPromptUsesCurrentMCPCredentialContract() {
+	s.Contains(PromptTemplate_WorkItem, "`session` argument")
+	s.Contains(PromptTemplate_WorkItem, "`AGENT_SESSION_CONFIG`")
+	s.NotContains(PromptTemplate_WorkItem, "WORKDOCK_AGENT_SESSION_ID")
+	s.NotContains(PromptTemplate_WorkItem, "WORKDOCK_AGENT_SESSION_TOKEN")
 }

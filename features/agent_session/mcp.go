@@ -131,7 +131,7 @@ func (m *AgentSessionMCP) authorized(ctx context.Context, session string) (strin
 
 	config := strings.Split(session, "|")
 
-	if len(config) != 2 {
+	if len(config) != 2 || config[0] == "" || config[1] == "" {
 		err := errors.New("invalid agent session configuration format")
 		slog.Error("[agent_session][mcp] failed to authorize request", "err", err)
 		return "", err
@@ -146,7 +146,7 @@ func (m *AgentSessionMCP) authorized(ctx context.Context, session string) (strin
 		return "", err
 	}
 
-	if subtle.ConstantTimeCompare([]byte(token), []byte(sessionToken)) != 1 {
+	if token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(sessionToken)) != 1 {
 		err := errors.New("invalid agent session mcp token")
 		slog.Error("[agent_session][mcp] failed to authorize request", "err", err, "session_id", sessionId)
 		return "", err
@@ -192,7 +192,11 @@ func (m *AgentSessionMCP) gitAccess(ctx context.Context, sessionId string) (stri
 
 	access, err := gitHandler.GetGitAccess(ctx, connection)
 
-	if access != nil && access.Granted {
+	if err != nil {
+		return "", err
+	}
+
+	if access != nil && access.Granted && access.Secret != "" {
 		return access.Secret, nil
 	}
 

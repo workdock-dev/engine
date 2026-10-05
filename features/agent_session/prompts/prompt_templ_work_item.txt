@@ -8,7 +8,7 @@ You are working on the following work item.
 
 For repository Git operations, use local `git` for local-only operations. For any remote Git operation, you MUST use the configured Git MCP tools, because local `git` is not authenticated and cannot authenticate to the remote repository.
 
-For every Git MCP tool call, supply `agentSessionId` and `agentSessionToken` using `WORKDOCK_AGENT_SESSION_ID` and `WORKDOCK_AGENT_SESSION_TOKEN` from the environment variables. Keep these values private and never expose them in output.
+For every Git MCP tool call, supply the `session` argument using the exact value of the `AGENT_SESSION_CONFIG` environment variable. Do not generate, infer, split, or modify this value. Keep it private and never expose it in output.
 
 ## Requirements
 %s
