@@ -12,10 +12,10 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
-update
-    public.sessions_events
-set
-    git_ref = $2,
-    result = coalesce(result, '{}'::jsonb) || jsonb_build_object('PullRequest', $3::jsonb -> 'PullRequest')
-where identifier = $1;
+ALTER TABLE public.sessions_mcp_tokens ADD COLUMN agent_session_event_id TEXT;
+DELETE FROM public.sessions_mcp_tokens;
+ALTER TABLE public.sessions_mcp_tokens ALTER COLUMN agent_session_event_id SET NOT NULL;
 
+---- create above / drop below ----
+
+ALTER TABLE public.sessions_mcp_tokens DROP COLUMN agent_session_event_id;

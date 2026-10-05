@@ -17,6 +17,7 @@ package infrastructure
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"log/slog"
 
@@ -71,6 +72,12 @@ var (
 
 	//go:embed sql/get_mcp_token.sql
 	GetMCPTokenSql string
+
+	//go:embed sql/save_mcp_report.sql
+	SaveMCPReportSql string
+
+	//go:embed sql/save_mcp_pull_request.sql
+	SaveMCPPullRequestSql string
 
 	//go:embed sql/delete_mcp_token.sql
 	DeleteMCPTokenSql string
@@ -413,8 +420,8 @@ func (p *postgres) CancelSession(ctx context.Context, queuedBy, reason string) (
 	return int(tags.RowsAffected()), nil
 }
 
-func (p *postgres) CreateMCPToken(ctx context.Context, sessionID, token string) error {
-	_, err := p.client.Exec(ctx, CreateMCPTokenSql, sessionID, token)
+func (p *postgres) CreateMCPToken(ctx context.Context, sessionID, token, eventID string) error {
+	_, err := p.client.Exec(ctx, CreateMCPTokenSql, sessionID, token, eventID)
 
 	if err != nil {
 		slog.Error("[agent_session][postgres] failed to create MCP execution token", "err", err, "session_id", sessionID)
@@ -446,6 +453,46 @@ func (p *postgres) DeleteMCPToken(ctx context.Context, sessionID string) error {
 
 	if err != nil {
 		slog.Error("[agent_session][postgres] failed to delete MCP execution token", "err", err, "session_id", sessionID)
+		return err
+	}
+
+	return nil
+}
+
+func (p *postgres) SaveMCPReport(ctx context.Context, sessionID, token string, result *types.SessionEventResult) error {
+	commits, err := json.Marshal(result.Commits)
+
+	if err != nil {
+		return err
+	}
+
+	updated, err := p.client.Exec(ctx, SaveMCPReportSql, sessionID, token, result.LinesAdded, result.LinesRemoved, string(commits), result.Report)
+
+	if err != nil {
+		slog.Error("[agent_session][postgres] failed to save work report", "err", err)
+		return err
+	}
+
+	if updated.RowsAffected() != 1 {
+		err := errors.New("active agent execution required")
+		slog.Error("[agent_session][postgres] failed to save work report", "err", err)
+		return err
+	}
+
+	return nil
+}
+
+func (p *postgres) SaveMCPPullRequest(ctx context.Context, sessionID, token string, pr *types.PullRequest) error {
+	updated, err := p.client.Exec(ctx, SaveMCPPullRequestSql, sessionID, token, pr.HeadRefName, pr)
+
+	if err != nil {
+		slog.Error("[agent_session][postgres] failed to save pull request", "err", err)
+		return err
+	}
+
+	if updated.RowsAffected() != 1 {
+		err := errors.New("active agent execution required")
+		slog.Error("[agent_session][postgres] failed to save pull request", "err", err)
 		return err
 	}
 

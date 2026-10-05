@@ -10,6 +10,10 @@ For repository Git operations, use local `git` for local-only operations. For an
 
 For every Git MCP tool call, supply the `session` argument using the exact value of the `AGENT_SESSION_CONFIG` environment variable. Do not generate, infer, split, or modify this value. Keep it private and never expose it in output.
 
+Before finishing every execution, you MUST call `work_report` with the session configuration, lines added and removed (zero when none), commit SHAs (an empty list when none), and a report of at most 280 characters describing the work, next action, or questions. This includes executions that only answer a question or make no changes. An execution without a work report cannot complete successfully.
+
+When the user requests a pull request, use `create_pull_request` with the session configuration, title, body, head branch, base branch, and optional draft flag. Do not create a pull request unless requested. Push its commits through the Git MCP tools first, then include the work in your final `work_report`.
+
 ## Requirements
 %s
 

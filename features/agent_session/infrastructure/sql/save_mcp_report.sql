@@ -12,10 +12,15 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
-update
-    public.sessions_events
-set
-    git_ref = $2,
-    result = coalesce(result, '{}'::jsonb) || jsonb_build_object('PullRequest', $3::jsonb -> 'PullRequest')
-where identifier = $1;
-
+update public.sessions_events as event
+set result = coalesce(event.result, '{}'::jsonb) || jsonb_build_object(
+    'LinesAdded', $3::integer,
+    'LinesRemoved', $4::integer,
+    'Commits', $5::jsonb,
+    'Report', $6::text
+)
+from public.sessions_mcp_tokens as token
+where token.agent_session_id = $1
+    and token.agent_session_token = $2
+    and event.identifier = token.agent_session_event_id
+    and event.session_identifier = token.agent_session_id;

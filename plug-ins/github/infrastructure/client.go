@@ -26,6 +26,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -269,4 +270,57 @@ func (s *GitHubClient) CreateInstallationAccessToken(installationId int) (*types
 
 	slog.Debug("[github-client] installation access token created", "installation_id", installationId, "expires_at", token.ExpiresAt)
 	return &token, nil
+}
+
+func (s *GitHubClient) CreatePullRequest(ctx context.Context, repo, token string, input types.CreatePullRequestInput) (*types.PullRequest, error) {
+	owner, name, ok := strings.Cut(repo, "/")
+
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+		err := errors.New("invalid repository format: expected owner/repo")
+		slog.Error("[github] failed to create pull request", "err", err)
+		return nil, err
+	}
+
+	body, err := json.Marshal(input)
+
+	if err != nil {
+		return nil, err
+	}
+
+	endpoint := fmt.Sprintf("%s/repos/%s/%s/pulls", s.baseURL(), url.PathEscape(owner), url.PathEscape(name))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+
+	if err != nil {
+		slog.Error("[github] failed to create pull request request", "err", err)
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	resp, err := s.httpClient.Do(req)
+
+	if err != nil {
+		err := errors.New("GitHub pull request request failed")
+		slog.Error("[github] failed to create pull request", "err", err)
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		err := fmt.Errorf("GitHub pull request creation failed with status %d", resp.StatusCode)
+		slog.Error("[github] failed to create pull request", "err", err)
+		return nil, err
+	}
+
+	var pr types.PullRequest
+
+	if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {
+		slog.Error("[github] failed to decode pull request", "err", err)
+		return nil, err
+	}
+
+	return &pr, nil
 }

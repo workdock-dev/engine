@@ -12,10 +12,15 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
-insert into
-    public.sessions_mcp_tokens (
+with token as (
+    insert into public.sessions_mcp_tokens (
         agent_session_id,
-        agent_session_token
-    )
-values
-    ($1, $2);
+        agent_session_token,
+        agent_session_event_id
+    ) values ($1, $2, $3)
+    returning agent_session_event_id
+)
+update public.sessions_events as event
+set result = event.result - 'Report'
+from token
+where event.identifier = token.agent_session_event_id;
