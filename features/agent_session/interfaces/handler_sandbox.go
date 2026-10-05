@@ -46,7 +46,31 @@ type SandboxConfig struct {
 	HarnessCommand      string
 	GitName             string
 	GitEmail            string
-	MCP                 *SandboxMCPConfig
+}
+
+type GitCloneInput struct {
+	SessionId   string
+	AccessToken string
+	Url         string
+	Path        string
+	Branch      string
+	CommitId    string
+}
+
+type GitPullInput struct {
+	SessionId   string
+	AccessToken string
+	Path        string
+	Remote      string
+	Branch      string
+}
+
+type GitPushInput struct {
+	SessionId   string
+	AccessToken string
+	Path        string
+	Remote      string
+	Branch      string
 }
 
 // HandlerSandbox is the interfaces through which the sandbox will be
@@ -66,13 +90,13 @@ type HandlerSandbox interface {
 
 	// Archive a given sandbox
 	Archive(ctx context.Context, config *SandboxConfig) error
-}
 
-type SandboxMCPConfig struct {
-	TokenLookup func(context.Context, string) (string, error)
-	GitLookup   func(context.Context, string) (HandlerGit, *types.GitConnection, error)
-}
+	// GitClone perform a git clone operation
+	GitClone(ctx context.Context, input GitCloneInput) error
 
-type HandlerSandboxMCP interface {
-	ConfigureMCP(config *SandboxMCPConfig)
+	// GitPull perform a git push operation
+	GitPush(ctx context.Context, input GitPushInput) error
+
+	// GitPull perform a git pull operation
+	GitPull(ctx context.Context, input GitPullInput) error
 }

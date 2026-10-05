@@ -21,10 +21,8 @@ type Secret struct {
 }
 
 type Config struct {
-	ApiUrl       string   `yaml:"api_url"`
-	ApiKey       string   `yaml:"api_key"`
-	Target       string   `yaml:"target"`
-	MCPApiKey    string   `yaml:"mcp_api_key"`
-	MCPServerURL string   `yaml:"mcp_server_url"`
-	Secrets      []Secret `yaml:"secrets"`
+	ApiUrl  string   `yaml:"api_url"`
+	ApiKey  string   `yaml:"api_key"`
+	Target  string   `yaml:"target"`
+	Secrets []Secret `yaml:"secrets"`
 }

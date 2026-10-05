@@ -417,7 +417,7 @@ func (p *postgres) CreateMCPToken(ctx context.Context, sessionID, token string) 
 	_, err := p.client.Exec(ctx, CreateMCPTokenSql, sessionID, token)
 
 	if err != nil {
-		slog.Error("[agent_session] failed to create MCP execution token", "err", err, "session_id", sessionID)
+		slog.Error("[agent_session][postgres] failed to create MCP execution token", "err", err, "session_id", sessionID)
 		return err
 	}
 
@@ -434,7 +434,7 @@ func (p *postgres) GetMCPToken(ctx context.Context, sessionID string) (string, e
 	}
 
 	if err != nil {
-		slog.Error("[agent_session] failed to verify MCP execution token", "err", err, "session_id", sessionID)
+		slog.Error("[agent_session][postgres] failed to get MCP execution token", "err", err, "session_id", sessionID)
 		return "", err
 	}
 
@@ -445,7 +445,7 @@ func (p *postgres) DeleteMCPToken(ctx context.Context, sessionID string) error {
 	_, err := p.client.Exec(ctx, DeleteMCPTokenSql, sessionID)
 
 	if err != nil {
-		slog.Error("[agent_session] failed to delete MCP execution token", "err", err, "session_id", sessionID)
+		slog.Error("[agent_session][postgres] failed to delete MCP execution token", "err", err, "session_id", sessionID)
 		return err
 	}
 

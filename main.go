@@ -77,6 +77,8 @@ type MCPConfig struct {
 type Config struct {
 	ServiceName          string                                         `yaml:"service_name"`
 	ServerAddress        string                                         `yaml:"server_address"`
+	MCPServerUrl         string                                         `yaml:"mcp_server_url"`
+	MCPApiKey            string                                         `yaml:"mcp_api_key"`
 	TaskScheduler        agent_session_types.TaskSchedulerConfig        `yaml:"task_scheduler"`
 	HarnessLivenessProbe agent_session_types.HarnessLivenessProbeConfig `yaml:"harness_liveness_probe"`
 	MCPs                 []MCPConfig                                    `yaml:"mcps"`
@@ -116,20 +118,20 @@ func (m *MCPFromConfigFile) GetMCPList() []agent_session_interfaces.MCPConfig {
 		})
 	}
 
-	if m.config.Daytona.MCPServerURL != "" && m.config.Daytona.MCPApiKey != "" {
+	if m.config.MCPServerUrl != "" && m.config.MCPApiKey != "" {
 		host := ""
 
-		if parsed, err := url.Parse(m.config.Daytona.MCPServerURL); err == nil {
+		if parsed, err := url.Parse(m.config.MCPServerUrl); err == nil {
 			host = parsed.Hostname()
 		}
 
 		list = append(list, agent_session_interfaces.MCPConfig{
 			Name:             "git",
-			Url:              m.config.Daytona.MCPServerURL,
+			Url:              m.config.MCPServerUrl,
 			AuthHeaderKey:    "Authorization",
 			AuthHeaderValue:  "Bearer {env:WORKDOCK_GIT_MCP_API_KEY}",
 			AuthSecretEnvVar: "WORKDOCK_GIT_MCP_API_KEY",
-			AuthSecret:       m.config.Daytona.MCPApiKey,
+			AuthSecret:       m.config.MCPApiKey,
 			Hosts:            []string{host},
 		})
 	}
@@ -253,7 +255,10 @@ func main() {
 
 	linearAgentSessionHandler := linear.NewAgentSessionHandler(linearClient, secretManager)
 	githubGitHandler := github.NewGitHandler(cfg.Github, githubClient, secretManager)
-	daytonaSandboxHandler := daytona.NewSandboxHandler(cfg.Daytona, server.Mux())
+
+	daytonaSandboxHandler, err := daytona.NewSandboxHandler(cfg.Daytona)
+	exit(err)
+
 	opencodeHarnessHandler := opencode.NewHarnessHandler(cfg.Opencode)
 	pidevHarnessHandler := pidev.NewHarnessHandler(cfg.Pidev)
 	codexHarnessHandler := codex.NewHarnessHandler(cfg.Codex)
@@ -261,6 +266,30 @@ func main() {
 	// *-------------------------------------------------------------------------*
 	// * Setup application                                                       *
 	// *-------------------------------------------------------------------------*
+
+	agentHandlerRegistry := agent_session.AgentHandlerRegistry{
+		string(shared.PlatformProvider_Linear): linearAgentSessionHandler,
+	}
+	gitHandlerRegistry := agent_session.GitHandlerRegistry{
+		string(shared.PlatformProvider_GitHub): githubGitHandler,
+	}
+	sandboxHandlerRegistry := agent_session.SandboxHandlerRegistry{
+		string(shared.PlatformProvider_Daytona): daytonaSandboxHandler,
+	}
+	harnessHandlerRegistry := agent_session.HarnessHandlerRegistry{
+		string(shared.HarnessProvider_OpenCode): opencodeHarnessHandler,
+		string(shared.HarnessProvider_PiDev):    pidevHarnessHandler,
+		string(shared.HarnessProvider_Codex):    codexHarnessHandler,
+	}
+
+	agent_session.NewMCP(
+		server.Mux(),
+		cfg.MCPApiKey,
+		agentSessionPostgres,
+		agentSessionPostgres,
+		sandboxHandlerRegistry,
+		gitHandlerRegistry,
+	)
 
 	webhook.New(
 		"POST /api/v1/github/webhook",
@@ -307,20 +336,10 @@ func main() {
 			ctx,
 			cfg.TaskScheduler,
 			cfg.HarnessLivenessProbe,
-			agent_session.AgentHandlerRegistry{
-				string(shared.PlatformProvider_Linear): linearAgentSessionHandler,
-			},
-			agent_session.GitHandlerRegistry{
-				string(shared.PlatformProvider_GitHub): githubGitHandler,
-			},
-			agent_session.SandboxHandlerRegistry{
-				string(shared.PlatformProvider_Daytona): daytonaSandboxHandler,
-			},
-			agent_session.HarnessHandlerRegistry{
-				string(shared.HarnessProvider_OpenCode): opencodeHarnessHandler,
-				string(shared.HarnessProvider_PiDev):    pidevHarnessHandler,
-				string(shared.HarnessProvider_Codex):    codexHarnessHandler,
-			},
+			agentHandlerRegistry,
+			gitHandlerRegistry,
+			sandboxHandlerRegistry,
+			harnessHandlerRegistry,
 			&MCPFromConfigFile{config: cfg},
 			eventBus,
 			secretManager,

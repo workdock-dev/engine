@@ -224,8 +224,6 @@ func (m *mockGitHandler) ParseLatestChangesResult(changes string) *types.PullReq
 // --- HandlerSandbox mock ---
 
 type mockSandboxHandler struct {
-	mcpConfig *interfaces.SandboxMCPConfig
-
 	runFn func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error)
 	// archiveFn overrides the default archive behaviour; when nil, archiving
 	// succeeds and is recorded.
@@ -644,7 +642,6 @@ func (m *mockQueue) Listen(ctx context.Context) (<-chan struct{}, <-chan string,
 var (
 	_ interfaces.HandlerAgentSession = (*mockAgentHandler)(nil)
 	_ interfaces.HandlerGit          = (*mockGitHandler)(nil)
-	_ interfaces.HandlerSandbox      = (*mockSandboxHandler)(nil)
 	_ interfaces.HandlerHarness      = (*mockHarnessHandler)(nil)
 	_ interfaces.HandlerMCP          = (*mockMcpHandler)(nil)
 	_ interfaces.Repository          = (*mockSessionRepository)(nil)
@@ -653,7 +650,3 @@ var (
 	_ shared.SecretManager           = (*mockSecretManager)(nil)
 	_ interfaces.Queue               = (*mockQueue)(nil)
 )
-
-func (m *mockSandboxHandler) ConfigureMCP(config *interfaces.SandboxMCPConfig) {
-	m.mcpConfig = config
-}
