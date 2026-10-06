@@ -375,7 +375,6 @@ func (m *AgentSessionMCP) createPullRequest(ctx context.Context, _ *mcp.CallTool
 		return nil, nil, errors.New("pull request creation returned no result")
 	}
 
-
 	if err := m.session.SaveMCPPullRequest(ctx, sessionID, pr); err != nil {
 		return nil, nil, err
 	}
