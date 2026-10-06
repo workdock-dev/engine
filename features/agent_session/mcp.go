@@ -324,10 +324,21 @@ func (m *AgentSessionMCP) workReport(ctx context.Context, _ *mcp.CallToolRequest
 		input.Commits = []string{}
 	}
 
-	err = m.session.SaveMCPReport(ctx, sessionID, &types.SessionEventResult{
-		LinesAdded: input.LinesAdded, LinesRemoved: input.LinesRemoved,
-		Commits: input.Commits, Report: input.Report,
-	})
+	event, err := m.session.GetExecutingSessionEvent(ctx, sessionID)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if event.Result == nil {
+		event.Result = &types.SessionEventResult{}
+	}
+
+	event.Result.LinesAdded = input.LinesAdded
+	event.Result.LinesRemoved = input.LinesRemoved
+	event.Result.Commits = input.Commits
+	event.Result.Report = input.Report
+	err = m.session.UpdateSessionEventResult(ctx, event)
 
 	return nil, map[string]bool{"success": err == nil}, err
 }
@@ -375,7 +386,20 @@ func (m *AgentSessionMCP) createPullRequest(ctx context.Context, _ *mcp.CallTool
 		return nil, nil, errors.New("pull request creation returned no result")
 	}
 
-	if err := m.session.SaveMCPPullRequest(ctx, sessionID, pr); err != nil {
+	event, err := m.session.GetExecutingSessionEvent(ctx, sessionID)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if event.Result == nil {
+		event.Result = &types.SessionEventResult{}
+	}
+
+	event.Result.PullRequest = pr
+	event.GitRef = &pr.HeadRefName
+
+	if err := m.session.UpdateSessionEventResult(ctx, event); err != nil {
 		return nil, nil, err
 	}
 

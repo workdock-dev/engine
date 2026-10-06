@@ -455,69 +455,19 @@ func (p *postgres) DeleteMCPToken(ctx context.Context, sessionID string) error {
 	return nil
 }
 
-func (p *postgres) SaveMCPReport(ctx context.Context, sessionID string, result *types.SessionEventResult) error {
-	err := p.updateMCPResult(ctx, sessionID, result, nil)
-
-	if err != nil {
-		slog.Error("[agent_session][postgres] failed to save work report", "err", err)
-	}
-
-	return err
-}
-
-func (p *postgres) SaveMCPPullRequest(ctx context.Context, sessionID string, pr *types.PullRequest) error {
-	err := p.updateMCPResult(ctx, sessionID, nil, pr)
-
-	if err != nil {
-		slog.Error("[agent_session][postgres] failed to save pull request", "err", err)
-	}
-
-	return err
-}
-
-func (p *postgres) updateMCPResult(ctx context.Context, sessionID string, report *types.SessionEventResult, pr *types.PullRequest) error {
-	tx, err := p.client.Begin(ctx)
-
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if err := tx.Rollback(context.WithoutCancel(ctx)); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			slog.Error("[agent_session][postgres] failed to rollback MCP result transaction", "err", err)
-		}
-	}()
-
+func (p *postgres) GetExecutingSessionEvent(ctx context.Context, sessionID string) (*types.SessionEvent, error) {
 	var event types.SessionEvent
-	err = tx.QueryRow(ctx, GetMCPSessionEventSql, sessionID).Scan(&event.Identifier, &event.GitRef, &event.Result)
+	err := p.client.QueryRow(ctx, GetMCPSessionEventSql, sessionID).Scan(&event.Identifier, &event.GitRef, &event.Result)
 
 	if errors.Is(err, pgx.ErrNoRows) {
-		return errors.New("active agent execution required")
+		err = errors.New("active agent execution required")
 	}
 
 	if err != nil {
-		return err
+		slog.Error("[agent_session][postgres] failed to get executing session event", "err", err)
+		return nil, err
 	}
 
-	if event.Result == nil {
-		event.Result = &types.SessionEventResult{}
-	}
-
-	if report != nil {
-		event.Result.LinesAdded = report.LinesAdded
-		event.Result.LinesRemoved = report.LinesRemoved
-		event.Result.Commits = report.Commits
-		event.Result.Report = report.Report
-	}
-
-	if pr != nil {
-		event.Result.PullRequest = pr
-		event.GitRef = &pr.HeadRefName
-	}
-
-	if _, err := tx.Exec(ctx, UpdateSessionEventResultSql, event.Identifier, event.GitRef, event.Result); err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
+	event.SessionIdentifier = sessionID
+	return &event, nil
 }

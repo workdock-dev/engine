@@ -31,8 +31,7 @@ type Repository interface {
 	UpdateSessionEventResult(ctx context.Context, event *types.SessionEvent) error
 	CancelSession(ctx context.Context, queuedBy, reason string) (int, error)
 	CreateMCPToken(ctx context.Context, sessionID, token string) error
-	SaveMCPReport(ctx context.Context, sessionID string, result *types.SessionEventResult) error
-	SaveMCPPullRequest(ctx context.Context, sessionID string, pr *types.PullRequest) error
+	GetExecutingSessionEvent(ctx context.Context, sessionID string) (*types.SessionEvent, error)
 	GetMCPToken(ctx context.Context, sessionID string) (string, error)
 	DeleteMCPToken(ctx context.Context, sessionID string) error
 }

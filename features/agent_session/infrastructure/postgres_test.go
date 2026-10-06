@@ -796,115 +796,28 @@ func (s *PostgresSuite) TestDeleteMCPToken_Error() {
 	s.ErrorContains(s.repo.DeleteMCPToken(context.Background(), "session-1"), "database unavailable")
 }
 
-func (s *PostgresSuite) TestMCPResultUpdatesPassTypedResultsAndPreserveOtherFields() {
-	pr := &types.PullRequest{HeadRefName: "feature", Number: 42}
-	stored := &types.SessionEventResult{PullRequest: pr}
-	for _, operation := range []string{"report", "pull request"} {
-		s.Run(operation, func() {
-			committed := false
-			s.pool.beginFn = func(context.Context) (pgx.Tx, error) {
-				return &mockTx{
-					queryRowFn: func(_ context.Context, sql string, args ...any) pgx.Row {
-						s.Equal(GetMCPSessionEventSql, sql)
-						s.Equal([]any{"session"}, args)
-						s.Contains(sql, "for update of event")
-						s.NotContains(sql, "sessions_mcp_tokens")
-						s.Contains(sql, "job.session_event_identifier = event.identifier")
-						return &mockRow{scanFn: func(dest ...any) error {
-							*dest[0].(*string) = "event"
-							*dest[1].(**string) = &pr.HeadRefName
-							copy := *stored
-							*dest[2].(**types.SessionEventResult) = &copy
-							return nil
-						}}
-					},
-					execFn: func(_ context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
-						s.Equal(UpdateSessionEventResultSql, sql)
-						s.Equal("event", args[0])
-						result, ok := args[2].(*types.SessionEventResult)
-						s.Require().True(ok, "pgx must receive a typed result")
-						s.Equal(pr, result.PullRequest)
-						s.Equal("No changes", result.Report)
-						s.Equal(0, result.LinesAdded)
-						s.Equal(0, result.LinesRemoved)
-						s.Equal([]string{}, result.Commits)
-						stored = result
-						return pgconn.NewCommandTag("UPDATE 1"), nil
-					},
-					commitFn: func(context.Context) error {
-						committed = true
-						return nil
-					},
-				}, nil
-			}
-			if operation == "report" {
-				s.NoError(s.repo.SaveMCPReport(context.Background(), "session", &types.SessionEventResult{Commits: []string{}, Report: "No changes"}))
-			} else {
-				s.NoError(s.repo.SaveMCPPullRequest(context.Background(), "session", pr))
-			}
-			s.True(committed)
-		})
+func (s *PostgresSuite) TestGetExecutingSessionEventReturnsTypedResultWithoutTokens() {
+	result := &types.SessionEventResult{Report: "Completed work", Commits: []string{}}
+	s.pool.queryRowFn = func(_ context.Context, sql string, args ...any) pgx.Row {
+		s.Equal(GetMCPSessionEventSql, sql)
+		s.Equal([]any{"session"}, args)
+		s.NotContains(sql, "sessions_mcp_tokens")
+		return &mockRow{scanFn: func(dest ...any) error {
+			*dest[0].(*string) = "event"
+			*dest[2].(**types.SessionEventResult) = result
+			return nil
+		}}
 	}
+	event, err := s.repo.GetExecutingSessionEvent(context.Background(), "session")
+	s.Require().NoError(err)
+	s.Same(result, event.Result)
+	s.Equal("session", event.SessionIdentifier)
 }
 
-func (s *PostgresSuite) TestMCPResultRejectsMissingExecutingEventAndRollsBack() {
-	rolledBack := false
-	s.pool.beginFn = func(context.Context) (pgx.Tx, error) {
-		return &mockTx{
-			queryRowFn: func(context.Context, string, ...any) pgx.Row {
-				return &mockRow{scanFn: func(...any) error { return pgx.ErrNoRows }}
-			},
-			execFn: func(context.Context, string, ...any) (pgconn.CommandTag, error) {
-				s.Fail("unauthorized execution must not write a result")
-				return pgconn.CommandTag{}, nil
-			},
-			rollbackFn: func(context.Context) error {
-				rolledBack = true
-				return nil
-			},
-		}, nil
+func (s *PostgresSuite) TestGetExecutingSessionEventRejectsMissingExecution() {
+	s.pool.queryRowFn = func(context.Context, string, ...any) pgx.Row {
+		return &mockRow{scanFn: func(...any) error { return pgx.ErrNoRows }}
 	}
-	s.ErrorContains(s.repo.SaveMCPReport(context.Background(), "session", &types.SessionEventResult{}), "active agent execution required")
-	s.True(rolledBack)
-}
-
-func (s *PostgresSuite) TestMCPResultTransactionFailuresDoNotCommit() {
-	for _, stage := range []string{"begin", "read", "write", "commit"} {
-		s.Run(stage, func() {
-			failure := errors.New(stage + " failed")
-			rolledBack := false
-			s.pool.beginFn = func(context.Context) (pgx.Tx, error) {
-				if stage == "begin" {
-					return nil, failure
-				}
-				return &mockTx{
-					queryRowFn: func(context.Context, string, ...any) pgx.Row {
-						return &mockRow{scanFn: func(dest ...any) error {
-							if stage == "read" {
-								return failure
-							}
-							*dest[0].(*string) = "event"
-							return nil
-						}}
-					},
-					execFn: func(context.Context, string, ...any) (pgconn.CommandTag, error) {
-						if stage == "write" {
-							return pgconn.CommandTag{}, failure
-						}
-						return pgconn.NewCommandTag("UPDATE 1"), nil
-					},
-					commitFn: func(context.Context) error {
-						s.Equal("commit", stage)
-						return failure
-					},
-					rollbackFn: func(context.Context) error {
-						rolledBack = true
-						return nil
-					},
-				}, nil
-			}
-			s.ErrorIs(s.repo.SaveMCPPullRequest(context.Background(), "session", &types.PullRequest{}), failure)
-			s.Equal(stage != "begin", rolledBack)
-		})
-	}
+	_, err := s.repo.GetExecutingSessionEvent(context.Background(), "session")
+	s.ErrorContains(err, "active agent execution required")
 }

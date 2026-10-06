@@ -791,7 +791,17 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 
 				if pr != nil {
 					slog.Debug("[agent-session] update session result")
-					c.session.SaveMCPPullRequest(ctx, session.Identifier, pr)
+					current, err := c.session.GetAgentSessionEvent(ctx, sessionEvent.Identifier)
+
+					if err == nil && current != nil {
+						if current.Result == nil {
+							current.Result = &types.SessionEventResult{}
+						}
+
+						current.Result.PullRequest = pr
+						current.GitRef = &pr.HeadRefName
+						c.session.UpdateSessionEventResult(ctx, current)
+					}
 				}
 
 				// DO NOT REMOVE!

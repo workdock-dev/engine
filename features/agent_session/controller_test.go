@@ -2390,7 +2390,9 @@ func (s *ControllerSuite) TestExecute_Success_WithPullRequestResult() {
 	}
 
 	saved := false
-	s.sessionRep.savePRFn = func(_ context.Context, sessionID string, result *types.PullRequest) error {
+	s.sessionRep.updateSessionEventResultFn = func(_ context.Context, event *types.SessionEvent) error {
+		sessionID := event.SessionIdentifier
+		result := event.Result.PullRequest
 		s.Equal("sess-1", sessionID)
 		s.Same(pr, result)
 		saved = true
@@ -3377,7 +3379,9 @@ func (s *ControllerSuite) TestWorkReportValidationAndPersistence() {
 	server := NewMCP(http.NewServeMux(), "api", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
 	ctx := context.WithValue(context.Background(), AuthenticatedKey, true)
 	calls := 0
-	s.sessionRep.saveReportFn = func(_ context.Context, id string, report *types.SessionEventResult) error {
+	s.sessionRep.updateSessionEventResultFn = func(_ context.Context, event *types.SessionEvent) error {
+		id := event.SessionIdentifier
+		report := event.Result
 		calls++
 		s.Equal("session", id)
 		s.Equal(0, report.LinesAdded)
@@ -3416,7 +3420,9 @@ func (s *ControllerSuite) TestWorkReportPreservesChangesAndPropagatesSaveError()
 	s.sessionRep.mcpTokens = map[string]string{"session": "token"}
 	server := NewMCP(http.NewServeMux(), "api", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
 	expected := errors.New("save failed")
-	s.sessionRep.saveReportFn = func(_ context.Context, id string, report *types.SessionEventResult) error {
+	s.sessionRep.updateSessionEventResultFn = func(_ context.Context, event *types.SessionEvent) error {
+		id := event.SessionIdentifier
+		report := event.Result
 		s.Equal(7, report.LinesAdded)
 		s.Equal(3, report.LinesRemoved)
 		s.Equal([]string{"commit-one", "commit-two"}, report.Commits)
@@ -3448,7 +3454,9 @@ func (s *ControllerSuite) TestCreatePullRequestUsesSessionRepositoryAndStoresRes
 		return pr, nil
 	}
 	stored := 0
-	s.sessionRep.savePRFn = func(_ context.Context, id string, got *types.PullRequest) error {
+	s.sessionRep.updateSessionEventResultFn = func(_ context.Context, event *types.SessionEvent) error {
+		id := event.SessionIdentifier
+		got := event.Result.PullRequest
 		stored++
 		s.Equal("session", id)
 		s.Same(pr, got)
@@ -3537,4 +3545,26 @@ func (s *ControllerSuite) TestExecuteClearsPreviousReportBeforeDispatch() {
 	s.ErrorContains(err, "agent must call work_report")
 	s.Equal(types.EventJobStatus_Failed, status)
 	s.Empty(s.sessionRep.mcpTokens)
+}
+
+func (s *ControllerSuite) TestWorkReportUsesExistingResultUpdateAndPreservesPullRequest() {
+	s.sessionRep.mcpTokens = map[string]string{"session": "token"}
+	pr := &types.PullRequest{Number: 42, HeadRefName: "feature"}
+	event := &types.SessionEvent{Identifier: "event", SessionIdentifier: "session", Result: &types.SessionEventResult{PullRequest: pr}}
+	s.sessionRep.getExecutingEventFn = func(_ context.Context, id string) (*types.SessionEvent, error) {
+		s.Equal("session", id)
+		return event, nil
+	}
+	updated := false
+	s.sessionRep.updateSessionEventResultFn = func(_ context.Context, got *types.SessionEvent) error {
+		s.Same(event, got)
+		s.Same(pr, got.Result.PullRequest)
+		s.Equal("Completed work", got.Result.Report)
+		updated = true
+		return nil
+	}
+	server := NewMCP(http.NewServeMux(), "api", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
+	_, _, err := server.workReport(context.WithValue(context.Background(), AuthenticatedKey, true), nil, types.WorkReportInput{Session: "session|token", Report: "Completed work"})
+	s.NoError(err)
+	s.True(updated)
 }

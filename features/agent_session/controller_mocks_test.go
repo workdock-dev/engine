@@ -381,8 +381,7 @@ func (m *mockMcpHandler) GetMCPList() []interfaces.MCPConfig {
 // --- Repository mock (session) ---
 
 type mockSessionRepository struct {
-	saveReportFn func(context.Context, string, *types.SessionEventResult) error
-	savePRFn     func(context.Context, string, *types.PullRequest) error
+	getExecutingEventFn func(context.Context, string) (*types.SessionEvent, error)
 
 	getAgentSessionFn              func(ctx context.Context, identifier string) (*types.Session, error)
 	getAgentSessionsByIssueIdFn    func(ctx context.Context, issueId string) ([]*types.Session, error)
@@ -676,18 +675,10 @@ func (m *mockGitHandler) CreatePullRequest(ctx context.Context, input interfaces
 	return nil, nil
 }
 
-func (m *mockSessionRepository) SaveMCPReport(ctx context.Context, sessionID string, result *types.SessionEventResult) error {
-	if m.saveReportFn != nil {
-		return m.saveReportFn(ctx, sessionID, result)
+func (m *mockSessionRepository) GetExecutingSessionEvent(ctx context.Context, sessionID string) (*types.SessionEvent, error) {
+	if m.getExecutingEventFn != nil {
+		return m.getExecutingEventFn(ctx, sessionID)
 	}
 
-	return nil
-}
-
-func (m *mockSessionRepository) SaveMCPPullRequest(ctx context.Context, sessionID string, pr *types.PullRequest) error {
-	if m.savePRFn != nil {
-		return m.savePRFn(ctx, sessionID, pr)
-	}
-
-	return nil
+	return &types.SessionEvent{Identifier: "event", SessionIdentifier: sessionID}, nil
 }

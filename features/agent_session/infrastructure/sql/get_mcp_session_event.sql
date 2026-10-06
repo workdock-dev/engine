@@ -16,5 +16,4 @@ select event.identifier, event.git_ref, event.result
 from public.sessions_events as event
 join public.jobs as job on job.session_event_identifier = event.identifier
 where event.session_identifier = $1
-    and job.status in ('running', 'cancelling')
-for update of event;
+    and job.status in ('running', 'cancelling');
