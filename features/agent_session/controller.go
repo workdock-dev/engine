@@ -661,7 +661,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 		return types.EventJobStatus_Failed, err
 	}
 
-	if err := c.session.CreateMCPToken(ctx, session.Identifier, mcpToken); err != nil {
+	if err := c.session.CreateMCPToken(ctx, session.Identifier, mcpToken, sessionEvent.Identifier); err != nil {
 		return types.EventJobStatus_Failed, err
 	}
 
@@ -670,6 +670,16 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 			slog.Error("[agent_session] failed to clean up MCP execution token", "session_id", session.Identifier, "err", err)
 		}
 	}()
+
+	if sessionEvent.Result != nil {
+		result := *sessionEvent.Result
+		result.Report = ""
+		sessionEvent.Result = &result
+
+		if err := c.session.UpdateSessionEventResult(ctx, sessionEvent); err != nil {
+			return types.EventJobStatus_Failed, err
+		}
+	}
 
 	// *-------------------------------------------------------------------------*
 	// * Get provider: work platform, git hosting, harness, sandbox              *
@@ -781,11 +791,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 
 				if pr != nil {
 					slog.Debug("[agent-session] update session result")
-					sessionEvent.Result = &types.SessionEventResult{
-						PullRequest: pr,
-					}
-					sessionEvent.GitRef = &pr.HeadRefName
-					c.session.UpdateSessionEventResult(ctx, sessionEvent)
+					c.session.SaveMCPPullRequest(ctx, session.Identifier, mcpToken, pr)
 				}
 
 				// DO NOT REMOVE!
@@ -830,6 +836,19 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 			sessionEvent,
 		)
 	}); err != nil {
+		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential, err)
+		return types.EventJobStatus_Failed, err
+	}
+
+	completedEvent, err := c.session.GetAgentSessionEvent(ctx, sessionEvent.Identifier)
+
+	if err != nil {
+		return types.EventJobStatus_Failed, err
+	}
+
+	if completedEvent == nil || completedEvent.Result == nil || completedEvent.Result.Report == "" {
+		err := errors.New("agent must call work_report before completing execution")
+		slog.Error("[agent_session] work report missing", "session_id", session.Identifier)
 		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential, err)
 		return types.EventJobStatus_Failed, err
 	}

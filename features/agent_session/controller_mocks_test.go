@@ -171,6 +171,8 @@ func (m *mockAgentHandler) TransitionIssueToInReview(ctx context.Context, issueI
 // --- HandlerGit mock ---
 
 type mockGitHandler struct {
+	createPRFn func(context.Context, interfaces.CreatePullRequestInput) (*types.PullRequest, error)
+
 	getInstallationUrlFn  func() string
 	getConfigCommandsFn   func() []string
 	getCommandsFn         func() []string
@@ -379,6 +381,9 @@ func (m *mockMcpHandler) GetMCPList() []interfaces.MCPConfig {
 // --- Repository mock (session) ---
 
 type mockSessionRepository struct {
+	saveReportFn func(context.Context, string, string, *types.SessionEventResult) error
+	savePRFn     func(context.Context, string, string, *types.PullRequest) error
+
 	getAgentSessionFn              func(ctx context.Context, identifier string) (*types.Session, error)
 	getAgentSessionsByIssueIdFn    func(ctx context.Context, issueId string) ([]*types.Session, error)
 	getAgentSessionEventFn         func(ctx context.Context, identifier string) (*types.SessionEvent, error)
@@ -473,7 +478,7 @@ func (m *mockSessionRepository) CancelSession(ctx context.Context, queuedBy, rea
 	return 1, nil
 }
 
-func (m *mockSessionRepository) CreateMCPToken(ctx context.Context, sessionID, token string) error {
+func (m *mockSessionRepository) CreateMCPToken(ctx context.Context, sessionID, token, eventID string) error {
 	if m.createMCPTokenFn != nil {
 		return m.createMCPTokenFn(ctx, sessionID, token)
 	}
@@ -662,3 +667,27 @@ var (
 	_ shared.SecretManager           = (*mockSecretManager)(nil)
 	_ interfaces.Queue               = (*mockQueue)(nil)
 )
+
+func (m *mockGitHandler) CreatePullRequest(ctx context.Context, input interfaces.CreatePullRequestInput) (*types.PullRequest, error) {
+	if m.createPRFn != nil {
+		return m.createPRFn(ctx, input)
+	}
+
+	return nil, nil
+}
+
+func (m *mockSessionRepository) SaveMCPReport(ctx context.Context, sessionID, token string, result *types.SessionEventResult) error {
+	if m.saveReportFn != nil {
+		return m.saveReportFn(ctx, sessionID, token, result)
+	}
+
+	return nil
+}
+
+func (m *mockSessionRepository) SaveMCPPullRequest(ctx context.Context, sessionID, token string, pr *types.PullRequest) error {
+	if m.savePRFn != nil {
+		return m.savePRFn(ctx, sessionID, token, pr)
+	}
+
+	return nil
+}

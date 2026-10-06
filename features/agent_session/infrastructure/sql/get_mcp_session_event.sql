@@ -12,11 +12,11 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
-insert into
-    public.sessions_mcp_tokens (
-        agent_session_id,
-        agent_session_token,
-        agent_session_event_id
-    )
-values
-    ($1, $2, $3);
+select event.identifier, event.git_ref, event.result
+from public.sessions_events as event
+join public.sessions_mcp_tokens as token
+    on event.identifier = token.agent_session_event_id
+    and event.session_identifier = token.agent_session_id
+where token.agent_session_id = $1
+    and token.agent_session_token = $2
+for update of event, token;

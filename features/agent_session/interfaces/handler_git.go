@@ -30,6 +30,8 @@ type GitAccess struct {
 // HandlerGit is the interface to interact with the git hosting provider
 // for the intial setup of the sandbox
 type HandlerGit interface {
+	CreatePullRequest(ctx context.Context, input CreatePullRequestInput) (*types.PullRequest, error)
+
 	// GetInstallationUrl returns the installation URL where user can
 	// grant access
 	GetInstallationUrl() string
@@ -52,4 +54,14 @@ type HandlerGit interface {
 	// ParseLatestChangesResult receives the changes procude by the latest changes command
 	// and parse it to a concrete domain type
 	ParseLatestChangesResult(changes string) *types.PullRequest
+}
+
+type CreatePullRequestInput struct {
+	RepoFullName string
+	AccessToken  string
+	Title        string
+	Body         string
+	Head         string
+	Base         string
+	Draft        bool
 }

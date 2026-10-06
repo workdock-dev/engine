@@ -18,6 +18,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -94,4 +95,24 @@ func (h *GitHandler) ParseLatestChangesResult(changes string) *agent_session_typ
 	}
 
 	return &pr
+}
+
+func (h *GitHandler) CreatePullRequest(ctx context.Context, input agent_session_interfaces.CreatePullRequestInput) (*agent_session_types.PullRequest, error) {
+	pr, err := h.client.CreatePullRequest(ctx, input.RepoFullName, input.AccessToken, types.CreatePullRequestInput{
+		Title: input.Title, Body: input.Body, Head: input.Head, Base: input.Base, Draft: input.Draft,
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	if pr == nil {
+		err := errors.New("pull request creation returned no result")
+		slog.Error("[github] failed to create pull request", "err", err)
+		return nil, err
+	}
+
+	return &agent_session_types.PullRequest{
+		URL: pr.URL, Number: pr.Number, HeadRefName: pr.Head.Ref, HeadRefOID: pr.Head.SHA,
+	}, nil
 }
