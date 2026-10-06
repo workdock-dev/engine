@@ -44,6 +44,43 @@ func (s *PostgresSuite) SetupTest() {
 	s.Require().IsType(&postgres{}, s.repo)
 }
 
+func (s *PostgresSuite) TestCreateMCPToken() {
+	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+		s.Equal(CreateMCPTokenSql, sql)
+		s.Equal([]any{"session-1", "0123456789abcdef"}, args)
+		return pgconn.CommandTag{}, nil
+	}
+	s.NoError(s.repo.CreateMCPToken(context.Background(), "session-1", "0123456789abcdef"))
+}
+
+func (s *PostgresSuite) TestCreateMCPToken_DuplicateError() {
+	s.pool.execFn = func(context.Context, string, ...any) (pgconn.CommandTag, error) {
+		return pgconn.CommandTag{}, errors.New("duplicate key")
+	}
+	s.Error(s.repo.CreateMCPToken(context.Background(), "session-1", "token"))
+}
+
+func (s *PostgresSuite) TestGetAndDeleteMCPToken() {
+	s.pool.queryRowFn = func(ctx context.Context, sql string, args ...any) pgx.Row {
+		s.Equal(GetMCPTokenSql, sql)
+		s.Equal([]any{"session-1"}, args)
+		return &mockRow{scanFn: func(dest ...any) error {
+			*dest[0].(*string) = "stored-token"
+			return nil
+		}}
+	}
+	token, err := s.repo.GetMCPToken(context.Background(), "session-1")
+	s.Require().NoError(err)
+	s.Equal("stored-token", token)
+
+	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+		s.Equal(DeleteMCPTokenSql, sql)
+		s.Equal([]any{"session-1"}, args)
+		return pgconn.CommandTag{}, nil
+	}
+	s.NoError(s.repo.DeleteMCPToken(context.Background(), "session-1"))
+}
+
 // --- GetOrganization ---
 
 func (s *PostgresSuite) TestGetOrganization_Success() {
@@ -710,4 +747,79 @@ func (s *PostgresSuite) TestCancelSession_Error() {
 
 	s.Error(err)
 	s.Equal(0, count)
+}
+
+func (s *PostgresSuite) TestGetMCPToken_DeletedExecution() {
+	s.pool.queryRowFn = func(ctx context.Context, sql string, args ...any) pgx.Row {
+		s.Equal(GetMCPTokenSql, sql)
+		s.Equal([]any{"session-1"}, args)
+
+		return &mockRow{scanFn: func(...any) error { return pgx.ErrNoRows }}
+	}
+
+	token, err := s.repo.GetMCPToken(context.Background(), "session-1")
+
+	s.Require().NoError(err)
+	s.Empty(token)
+}
+
+func (s *PostgresSuite) TestGetMCPToken_Error() {
+	s.pool.queryRowFn = func(context.Context, string, ...any) pgx.Row {
+		return &mockRow{scanFn: func(...any) error { return errors.New("database unavailable") }}
+	}
+
+	token, err := s.repo.GetMCPToken(context.Background(), "session-1")
+
+	s.ErrorContains(err, "database unavailable")
+	s.Empty(token)
+}
+
+func (s *PostgresSuite) TestDeleteMCPToken_CancelledExecution() {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+		s.Equal(DeleteMCPTokenSql, sql)
+		s.Equal([]any{"session-1"}, args)
+		s.NoError(ctx.Err())
+
+		return pgconn.CommandTag{}, nil
+	}
+
+	s.NoError(s.repo.DeleteMCPToken(context.WithoutCancel(ctx), "session-1"))
+}
+
+func (s *PostgresSuite) TestDeleteMCPToken_Error() {
+	s.pool.execFn = func(context.Context, string, ...any) (pgconn.CommandTag, error) {
+		return pgconn.CommandTag{}, errors.New("database unavailable")
+	}
+
+	s.ErrorContains(s.repo.DeleteMCPToken(context.Background(), "session-1"), "database unavailable")
+}
+
+func (s *PostgresSuite) TestGetAgentSessionEventReturnsTypedResultWithoutTokens() {
+	result := &types.SessionEventResult{Report: "Completed work", Commits: []string{}}
+	s.pool.queryRowFn = func(_ context.Context, sql string, args ...any) pgx.Row {
+		s.Equal(GetAgentSessionEventSql, sql)
+		s.Equal([]any{"event"}, args)
+		s.NotContains(sql, "sessions_mcp_tokens")
+		return &mockRow{scanFn: func(dest ...any) error {
+			*dest[0].(*string) = "session"
+			*dest[1].(*string) = "event"
+			*dest[5].(**types.SessionEventResult) = result
+			return nil
+		}}
+	}
+	event, err := s.repo.GetAgentSessionEvent(context.Background(), "event")
+	s.Require().NoError(err)
+	s.Same(result, event.Result)
+	s.Equal("session", event.SessionIdentifier)
+}
+
+func (s *PostgresSuite) TestGetAgentSessionEventReturnsNilWhenMissing() {
+	s.pool.queryRowFn = func(context.Context, string, ...any) pgx.Row {
+		return &mockRow{scanFn: func(...any) error { return pgx.ErrNoRows }}
+	}
+	event, err := s.repo.GetAgentSessionEvent(context.Background(), "event")
+	s.NoError(err)
+	s.Nil(event)
 }

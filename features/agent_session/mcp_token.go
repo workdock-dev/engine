@@ -12,16 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package interfaces
+package agent_session
 
 import (
-	"context"
-
-	"github.com/workdock-dev/engine/plug-ins/github/types"
+	"crypto/rand"
+	"encoding/hex"
 )
 
-type Client interface {
-	CreatePullRequest(ctx context.Context, repo, token string, input types.CreatePullRequestInput) (*types.CreatePullRequestResponse, error)
-	IsRepositoryPublic(ctx context.Context, repo string) (bool, error)
-	CreateInstallationAccessToken(installationId int) (*types.InstallationAccessToken, error)
+func newMCPToken() (string, error) {
+	var token [32]byte
+
+	if _, err := rand.Read(token[:]); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(token[:]), nil
 }

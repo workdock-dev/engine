@@ -12,16 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package interfaces
+package types
 
-import (
-	"context"
+type CreatePullRequestInput struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	Head  string `json:"head"`
+	Base  string `json:"base"`
+	Draft bool   `json:"draft"`
+}
 
-	"github.com/workdock-dev/engine/plug-ins/github/types"
-)
-
-type Client interface {
-	CreatePullRequest(ctx context.Context, repo, token string, input types.CreatePullRequestInput) (*types.CreatePullRequestResponse, error)
-	IsRepositoryPublic(ctx context.Context, repo string) (bool, error)
-	CreateInstallationAccessToken(installationId int) (*types.InstallationAccessToken, error)
+type CreatePullRequestResponse struct {
+	URL    string `json:"html_url"`
+	Number int    `json:"number"`
+	Head   struct {
+		Ref string `json:"ref"`
+		SHA string `json:"sha"`
+	} `json:"head"`
 }

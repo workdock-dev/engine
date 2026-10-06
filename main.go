@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/signal"
 	"sync"
@@ -76,6 +77,8 @@ type MCPConfig struct {
 type Config struct {
 	ServiceName          string                                         `yaml:"service_name"`
 	ServerAddress        string                                         `yaml:"server_address"`
+	MCPServerUrl         string                                         `yaml:"mcp_server_url"`
+	MCPApiKey            string                                         `yaml:"mcp_api_key"`
 	TaskScheduler        agent_session_types.TaskSchedulerConfig        `yaml:"task_scheduler"`
 	HarnessLivenessProbe agent_session_types.HarnessLivenessProbeConfig `yaml:"harness_liveness_probe"`
 	MCPs                 []MCPConfig                                    `yaml:"mcps"`
@@ -101,14 +104,10 @@ type MCPFromConfigFile struct {
 }
 
 func (m *MCPFromConfigFile) GetMCPList() []agent_session_interfaces.MCPConfig {
-	if m.config.MCPs == nil {
-		return nil
-	}
+	list := make([]agent_session_interfaces.MCPConfig, 0, len(m.config.MCPs)+1)
 
-	list := make([]agent_session_interfaces.MCPConfig, len(m.config.MCPs))
-
-	for i, mcp := range m.config.MCPs {
-		list[i] = agent_session_interfaces.MCPConfig{
+	for _, mcp := range m.config.MCPs {
+		list = append(list, agent_session_interfaces.MCPConfig{
 			Name:             mcp.Name,
 			Url:              mcp.Url,
 			AuthHeaderKey:    mcp.AuthHeaderKey,
@@ -116,7 +115,29 @@ func (m *MCPFromConfigFile) GetMCPList() []agent_session_interfaces.MCPConfig {
 			AuthSecretEnvVar: mcp.AuthSecretEnvVar,
 			AuthSecret:       mcp.AuthSecret,
 			Hosts:            mcp.Hosts,
+		})
+	}
+
+	if m.config.MCPServerUrl != "" && m.config.MCPApiKey != "" {
+		host := ""
+
+		if parsed, err := url.Parse(m.config.MCPServerUrl); err == nil {
+			host = parsed.Hostname()
 		}
+
+		list = append(list, agent_session_interfaces.MCPConfig{
+			Name:             "workdock",
+			Url:              m.config.MCPServerUrl,
+			AuthHeaderKey:    "Authorization",
+			AuthHeaderValue:  "Bearer {env:WORKDOCK_MCP_API_KEY}",
+			AuthSecretEnvVar: "WORKDOCK_MCP_API_KEY",
+			AuthSecret:       m.config.MCPApiKey,
+			Hosts:            []string{host},
+		})
+	}
+
+	if len(list) == 0 {
+		return nil
 	}
 
 	return list
@@ -220,6 +241,7 @@ func main() {
 
 	postgres, err := pgxpool.New(context.Background(), cfg.Postgres.DatabaseUrl)
 	exit(err)
+	agentSessionPostgres := agent_session_infrastructure.NewPostgres(postgres)
 
 	postgresRawConn, err := pgx.Connect(ctx, cfg.Postgres.DatabaseUrl)
 	exit(err)
@@ -233,7 +255,10 @@ func main() {
 
 	linearAgentSessionHandler := linear.NewAgentSessionHandler(linearClient, secretManager)
 	githubGitHandler := github.NewGitHandler(cfg.Github, githubClient, secretManager)
-	daytonaSandboxHandler := daytona.NewSandboxHandler(cfg.Daytona)
+
+	daytonaSandboxHandler, err := daytona.NewSandboxHandler(cfg.Daytona)
+	exit(err)
+
 	opencodeHarnessHandler := opencode.NewHarnessHandler(cfg.Opencode)
 	pidevHarnessHandler := pidev.NewHarnessHandler(cfg.Pidev)
 	codexHarnessHandler := codex.NewHarnessHandler(cfg.Codex)
@@ -241,6 +266,30 @@ func main() {
 	// *-------------------------------------------------------------------------*
 	// * Setup application                                                       *
 	// *-------------------------------------------------------------------------*
+
+	agentHandlerRegistry := agent_session.AgentHandlerRegistry{
+		string(shared.PlatformProvider_Linear): linearAgentSessionHandler,
+	}
+	gitHandlerRegistry := agent_session.GitHandlerRegistry{
+		string(shared.PlatformProvider_GitHub): githubGitHandler,
+	}
+	sandboxHandlerRegistry := agent_session.SandboxHandlerRegistry{
+		string(shared.PlatformProvider_Daytona): daytonaSandboxHandler,
+	}
+	harnessHandlerRegistry := agent_session.HarnessHandlerRegistry{
+		string(shared.HarnessProvider_OpenCode): opencodeHarnessHandler,
+		string(shared.HarnessProvider_PiDev):    pidevHarnessHandler,
+		string(shared.HarnessProvider_Codex):    codexHarnessHandler,
+	}
+
+	agent_session.NewMCP(
+		server.Mux(),
+		cfg.MCPApiKey,
+		agentSessionPostgres,
+		agentSessionPostgres,
+		sandboxHandlerRegistry,
+		gitHandlerRegistry,
+	)
 
 	webhook.New(
 		"POST /api/v1/github/webhook",
@@ -281,27 +330,16 @@ func main() {
 		// * Setup core application feature                                          *
 		// *-------------------------------------------------------------------------*
 
-		agentSessionPostgres := agent_session_infrastructure.NewPostgres(postgres)
 		agentSessionPostgresQueue := agent_session_infrastructure.NewEventQueue(postgres, postgresRawConn)
 
 		err := agent_session.New(
 			ctx,
 			cfg.TaskScheduler,
 			cfg.HarnessLivenessProbe,
-			agent_session.AgentHandlerRegistry{
-				string(shared.PlatformProvider_Linear): linearAgentSessionHandler,
-			},
-			agent_session.GitHandlerRegistry{
-				string(shared.PlatformProvider_GitHub): githubGitHandler,
-			},
-			agent_session.SandboxHandlerRegistry{
-				string(shared.PlatformProvider_Daytona): daytonaSandboxHandler,
-			},
-			agent_session.HarnessHandlerRegistry{
-				string(shared.HarnessProvider_OpenCode): opencodeHarnessHandler,
-				string(shared.HarnessProvider_PiDev):    pidevHarnessHandler,
-				string(shared.HarnessProvider_Codex):    codexHarnessHandler,
-			},
+			agentHandlerRegistry,
+			gitHandlerRegistry,
+			sandboxHandlerRegistry,
+			harnessHandlerRegistry,
 			&MCPFromConfigFile{config: cfg},
 			eventBus,
 			secretManager,
@@ -321,6 +359,10 @@ func main() {
 
 	server.Run(ctx, nil)
 	wg.Wait()
+
+	if err := daytonaSandboxHandler.Close(context.Background()); err != nil {
+		slog.Error("[sandbox][daytona] failed to close client", "err", err, "event_identifier", "")
+	}
 
 	slog.Info("[service] stopped")
 }

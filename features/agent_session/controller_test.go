@@ -18,10 +18,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/suite"
 	"github.com/workdock-dev/engine/features/agent_session/interfaces"
 	"github.com/workdock-dev/engine/features/agent_session/types"
@@ -1517,7 +1520,7 @@ func (s *ControllerSuite) TestCreatePrompt_Base() {
 	s.Contains(p, "**Identifier:** issue-1")
 	s.Contains(p, "**Repository:** workdock/repo")
 	s.Contains(p, "Description")
-	s.False(strings.Contains(p, "### Latest User Comment"))
+	s.False(strings.Contains(p, "## Latest User Comment (Highest Priority)"))
 }
 
 // TestCreatePrompt_Base_PointsAtContextFile asserts the provider context is
@@ -1569,7 +1572,7 @@ func (s *ControllerSuite) TestCreatePrompt_PRComment() {
 
 	p := s.c.createPrompt(newTestSession(), event, testPromptContext)
 
-	s.True(strings.Contains(p, "### Latest User Comment"))
+	s.True(strings.Contains(p, "## Latest User Comment (Highest Priority)"))
 	s.True(strings.Contains(p, "There are review comments on the pull request"))
 }
 
@@ -1597,7 +1600,7 @@ func (s *ControllerSuite) TestCreatePrompt_WithContext() {
 
 	p := s.c.createPrompt(newTestSession(), nil, promptContext)
 
-	s.True(strings.Contains(p, "### Latest User Comment"))
+	s.True(strings.Contains(p, "## Latest User Comment (Highest Priority)"))
 	s.True(strings.Contains(p, "additional user context"))
 }
 
@@ -1853,7 +1856,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_Success() {
 func (s *ControllerSuite) TestSandbox_NoMcpNoGitAccess() {
 	harnessConfig, stdout, stderr, shutdown, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt text", nil, newTestSession(), testSessionEvent,
+		"prompt text", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -1867,72 +1870,38 @@ func (s *ControllerSuite) TestSandbox_NoMcpNoGitAccess() {
 	s.Equal(5, config.AutoStopInterval)
 	s.NotNil(config.Session)
 	s.Same(testSessionEvent, config.SessionEvent)
-	s.Empty(config.Secrets)
+	s.Len(config.Secrets, 1)
 	s.Equal([]string{"harness-config-cmd"}, config.CommandsWhenCreated[len(config.CommandsWhenCreated)-1:])
 	s.Equal("opencode run", config.HarnessCommand)
 	s.Len(config.FileUploads, 2)
 }
 
-// TestSandbox_NoGitAccess_SkipsGitCommands ensures repo-less sessions run no
-// git-specific sandbox commands; without a repository there is no GH_TOKEN in
-// the sandbox and commands like the git setup would fail the run.
-func (s *ControllerSuite) TestSandbox_NoGitAccess_SkipsGitCommands() {
-	s.gitHdl.getConfigCommandsFn = func() []string { return []string{"git-config-cmd"} }
-	s.gitHdl.getCommandsFn = func() []string { return []string{"git-cmd"} }
-	s.gitHdl.getLatestChangesCmdFn = func() string { return "latest-changes-cmd" }
+func (s *ControllerSuite) TestSandbox_UsesHarnessCommands() {
+	s.harnessHdl.getConfigCommandsFn = func() []string { return []string{"configure-harness"} }
+	s.harnessHdl.getCommandsFn = func() []string { return []string{"prepare-harness"} }
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent,
+		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
 	config := s.sandboxHdl.runConfig
 	s.Require().NotNil(config)
-	s.Equal([]string{"harness-config-cmd"}, config.CommandsWhenCreated)
-	s.Equal([]string{"harness-cmd"}, config.Commands)
-	s.Empty(config.ExitCommand)
+	s.Equal([]string{"configure-harness"}, config.CommandsWhenCreated)
+	s.Equal([]string{"prepare-harness"}, config.Commands)
 }
 
-// TestSandbox_WithGitAccess_RunsGitCommands ensures sessions with granted git
-// access keep running the git configuration, setup commands and the pull
-// request exit command.
-func (s *ControllerSuite) TestSandbox_WithGitAccess_RunsGitCommands() {
-	s.gitHdl.getConfigCommandsFn = func() []string { return []string{"git-config-cmd"} }
-	s.gitHdl.getCommandsFn = func() []string { return []string{"git-cmd"} }
-	s.gitHdl.getLatestChangesCmdFn = func() string { return "latest-changes-cmd" }
-
-	gitAccess := &interfaces.GitAccess{Granted: true}
-
-	_, _, _, _, err := s.c.sandbox(
-		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		gitAccess, "prompt", nil, newTestSession(), testSessionEvent,
-	)
-
-	s.Require().NoError(err)
-	config := s.sandboxHdl.runConfig
-	s.Require().NotNil(config)
-	s.Equal([]string{"git-config-cmd", "harness-config-cmd"}, config.CommandsWhenCreated)
-	s.Equal([]string{"git-cmd", "harness-cmd"}, config.Commands)
-	s.Equal("latest-changes-cmd", config.ExitCommand)
-}
-
-func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
+func (s *ControllerSuite) TestSandbox_WithMcp() {
 	s.mcpHdl.getMCPListFn = func() []interfaces.MCPConfig {
 		return []interfaces.MCPConfig{
 			{Name: "linear", AuthSecretEnvVar: "LINEAR_KEY", AuthSecret: "linear-secret", Hosts: []string{"api.linear.app"}},
 		}
 	}
-	gitAccess := &interfaces.GitAccess{
-		EnvVarName: "GITHUB_TOKEN",
-		Secret:     "git-secret",
-		Hosts:      []string{"github.com"},
-		Granted:    true,
-	}
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		gitAccess, "prompt", nil, newTestSession(), testSessionEvent,
+		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -1940,20 +1909,7 @@ func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
 	s.Require().Len(config.Secrets, 2)
 	s.Equal("LINEAR_KEY", config.Secrets[0].Name)
 	s.Equal("linear-secret", config.Secrets[0].Value)
-	s.Equal("GITHUB_TOKEN", config.Secrets[1].Name)
-	s.Equal("git-secret", config.Secrets[1].Value)
-}
-
-func (s *ControllerSuite) TestSandbox_GitAccessNotGranted_NotInSecrets() {
-	gitAccess := &interfaces.GitAccess{Granted: false, Secret: "git-secret"}
-
-	_, _, _, _, err := s.c.sandbox(
-		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		gitAccess, "prompt", nil, newTestSession(), testSessionEvent,
-	)
-
-	s.Require().NoError(err)
-	s.Empty(s.sandboxHdl.runConfig.Secrets)
+	s.Equal("sess-1|evt-1|", config.Secrets[1].Value)
 }
 
 func (s *ControllerSuite) TestSandbox_NilMcpHandler() {
@@ -1961,11 +1917,11 @@ func (s *ControllerSuite) TestSandbox_NilMcpHandler() {
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent,
+		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
-	s.Empty(s.sandboxHdl.runConfig.Secrets)
+	s.Len(s.sandboxHdl.runConfig.Secrets, 1)
 }
 
 func (s *ControllerSuite) TestSandbox_GetConfigFileError() {
@@ -1975,7 +1931,7 @@ func (s *ControllerSuite) TestSandbox_GetConfigFileError() {
 
 	harnessConfig, stdout, stderr, shutdown, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent,
+		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Error(err)
@@ -1993,7 +1949,7 @@ func (s *ControllerSuite) TestSandbox_GetFilesError() {
 
 	harnessConfig, stdout, stderr, shutdown, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent,
+		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Error(err)
@@ -2014,7 +1970,7 @@ func (s *ControllerSuite) TestSandbox_GetFilesMergedIntoFileUploads() {
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent,
+		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -2032,8 +1988,8 @@ func (s *ControllerSuite) TestSandbox_GetFilesMergedIntoFileUploads() {
 func (s *ControllerSuite) TestSandbox_ContextFileUploaded() {
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", &interfaces.ContextFile{Content: "do the work", Summary: "summary of the context"},
-		newTestSession(), testSessionEvent,
+		"prompt", &interfaces.ContextFile{Content: "do the work", Summary: "summary of the context"},
+		newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -2049,7 +2005,7 @@ func (s *ControllerSuite) TestSandbox_ContextFileUploaded() {
 func (s *ControllerSuite) TestSandbox_NoContextFileUploaded() {
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent,
+		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -2065,7 +2021,7 @@ func (s *ControllerSuite) TestSandbox_RunError() {
 
 	_, _, _, shutdown, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent,
+		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Error(err)
@@ -2085,8 +2041,16 @@ type executeFixture struct {
 
 func (s *ControllerSuite) prepareExecutable() {
 	// Session event + session lookups succeed.
+	event := *testSessionEvent
+	event.Result = &types.SessionEventResult{Report: "Completed work"}
+	initialLookup := true
 	s.sessionRep.getAgentSessionEventFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
-		return testSessionEvent, nil
+		copy := event
+		if initialLookup {
+			copy.Result = nil
+			initialLookup = false
+		}
+		return &copy, nil
 	}
 	s.sessionRep.getAgentSessionFn = func(ctx context.Context, identifier string) (*types.Session, error) {
 		session := *newTestSession()
@@ -2224,6 +2188,7 @@ func (s *ControllerSuite) TestExecute_AwaitingAction() {
 	s.Require().NoError(err)
 	s.Equal(types.EventJobStatus_AwaitingAction, status)
 	s.Len(s.agentHdl.gitRequests, 1, "the user should have been asked to grant git access")
+	s.Equal("sess-1", s.sessionRep.deletedMCPToken)
 }
 
 func (s *ControllerSuite) TestExecute_SandboxError() {
@@ -2238,6 +2203,7 @@ func (s *ControllerSuite) TestExecute_SandboxError() {
 	s.ErrorContains(err, "sandbox failed")
 	s.Equal(types.EventJobStatus_Failed, status)
 	s.Equal([]error{errServerInternal}, s.agentHdl.sentErrors, "the user must be notified with the internal server error")
+	s.Equal("sess-1", s.sessionRep.deletedMCPToken)
 }
 
 func (s *ControllerSuite) TestExecute_SandboxCannotStart_Retriable() {
@@ -2350,58 +2316,43 @@ func (s *ControllerSuite) TestExecute_HarnessError_ContextCancelled_NoErrorMessa
 	s.Error(err)
 	s.Equal(types.EventJobStatus_Failed, status)
 	s.Empty(s.agentHdl.sentErrors, "cancelled jobs must not notify an error to the user")
+	s.Equal("sess-1", s.sessionRep.deletedMCPToken, "cancellation must clean up the execution token")
+	s.Empty(s.sessionRep.mcpTokens)
 }
 
 func (s *ControllerSuite) TestExecute_Success_WithPullRequestResult() {
 	s.prepareExecutable()
-
-	var shutdownResult string
-	s.sandboxHdl.runFn = func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
-		go func() {
-			// The harness emits one valid JSON message, then closes the channels.
-			stdout <- `{"type":"text","text":"working"}`
-			close(stdout)
-			close(stderr)
-		}()
-
-		return func(ctx context.Context) string {
-			shutdownResult = "pr created"
-			return shutdownResult
-		}, nil
-	}
 	pr := &types.PullRequest{HeadRefName: "workdock/main", Number: 1, URL: "https://github.com/workdock/repo/pull/1"}
-	s.gitHdl.parseLatestResultFn = func(changes string) *types.PullRequest {
-		return pr
+	event := *testSessionEvent
+	event.Result = &types.SessionEventResult{Report: "Completed work", PullRequest: pr}
+	s.sessionRep.getAgentSessionEventFn = func(context.Context, string) (*types.SessionEvent, error) {
+		return &event, nil
 	}
-
+	s.runSandboxToCompletion()
 	status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
-
 	s.Require().NoError(err)
 	s.Equal(types.EventJobStatus_Succeeded, status)
-
-	s.Require().Len(s.sessionRep.updatedResults, 1, "a parsed PR must be persisted as the session event result")
-	updated := s.sessionRep.updatedResults[0]
-	s.Require().NotNil(updated.Result)
-	s.Same(pr, updated.Result.PullRequest)
-	s.Require().NotNil(updated.GitRef)
-	s.Equal("workdock/main", *updated.GitRef)
+	s.Same(pr, event.Result.PullRequest)
+	s.Empty(s.sessionRep.updatedResults)
+	s.True(s.sandboxHdl.shutdownRan)
 }
 
 func (s *ControllerSuite) TestExecute_Success_NoPullRequest() {
 	s.prepareExecutable()
 
 	s.sandboxHdl.runFn = func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
+		s.Require().Len(config.Secrets, 1)
+		s.Equal("AGENT_SESSION_CONFIG", config.Secrets[0].Name)
+		s.Regexp(`^sess-1\|evt-1\|[0-9a-f]{64}$`, config.Secrets[0].Value)
+		s.Equal("sess-1|evt-1|"+s.sessionRep.mcpTokens["sess-1"], config.Secrets[0].Value)
 		go func() {
 			close(stdout)
 			close(stderr)
 		}()
 
-		return func(ctx context.Context) string {
-			return "no pr"
+		return func(ctx context.Context) {
+			s.sandboxHdl.shutdownRan = true
 		}, nil
-	}
-	s.gitHdl.parseLatestResultFn = func(changes string) *types.PullRequest {
-		return nil
 	}
 
 	status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
@@ -2409,11 +2360,13 @@ func (s *ControllerSuite) TestExecute_Success_NoPullRequest() {
 	s.Require().NoError(err)
 	s.Equal(types.EventJobStatus_Succeeded, status)
 	s.Empty(s.sessionRep.updatedResults, "no PR means no result update")
+	s.Equal("sess-1", s.sessionRep.createdMCPToken)
+	s.Equal("sess-1", s.sessionRep.deletedMCPToken)
+	s.Empty(s.sessionRep.mcpTokens)
 }
 
 // runSandboxToCompletion configures the sandbox mock to close its output
-// channels immediately (the harness produced no messages) and return a
-// no-result shutdown function.
+// channels immediately and record sandbox shutdown.
 func (s *ControllerSuite) runSandboxToCompletion() {
 	s.sandboxHdl.runFn = func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
 		go func() {
@@ -2421,12 +2374,9 @@ func (s *ControllerSuite) runSandboxToCompletion() {
 			close(stderr)
 		}()
 
-		return func(ctx context.Context) string {
-			return "no pr"
+		return func(ctx context.Context) {
+			s.sandboxHdl.shutdownRan = true
 		}, nil
-	}
-	s.gitHdl.parseLatestResultFn = func(changes string) *types.PullRequest {
-		return nil
 	}
 }
 
@@ -2476,8 +2426,8 @@ func (s *ControllerSuite) TestExecute_TransitionsIssueToInReview_AfterContextCan
 
 	s.Require().NotNil(transitionCtx, "the In Review transition must run even when the job context is cancelled")
 	s.Require().NotNil(responseCtx, "the response event must be sent even when the job context is cancelled")
-	s.NoError(transitionCtx.Err(), "the In Review transition must run on a non-cancelled context")
-	s.NoError(responseCtx.Err(), "the response event must be sent on a non-cancelled context")
+	s.ErrorIs(transitionCtx.Err(), context.Canceled)
+	s.ErrorIs(responseCtx.Err(), context.Canceled)
 	s.Equal([]string{"issue-1"}, s.agentHdl.transitionedInReview, "issue must still transition to In Review when the job context is cancelled")
 }
 
@@ -3077,4 +3027,481 @@ func (s *ControllerSuite) sessionWithRepo() {
 		session.RepoFullName = &repo
 		return &session, nil
 	}
+}
+
+func (s *ControllerSuite) TestExecute_DuplicateMCPTokenPreservesActiveExecution() {
+	s.prepareExecutable()
+	s.sessionRep.mcpTokens = map[string]string{"sess-1": "active-token"}
+
+	status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
+
+	s.ErrorContains(err, "duplicate MCP session token")
+	s.Equal(types.EventJobStatus_Failed, status)
+	s.Equal("active-token", s.sessionRep.mcpTokens["sess-1"])
+	s.Empty(s.sessionRep.deletedMCPToken)
+	s.Nil(s.sandboxHdl.runConfig)
+}
+
+func (s *ControllerSuite) TestExecute_MCPTokenCreationErrorPreventsDispatch() {
+	s.prepareExecutable()
+	s.sessionRep.createMCPTokenFn = func(context.Context, string, string) error {
+		return errors.New("token insert failed")
+	}
+
+	status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
+
+	s.ErrorContains(err, "token insert failed")
+	s.Equal(types.EventJobStatus_Failed, status)
+	s.Empty(s.sessionRep.deletedMCPToken)
+	s.Nil(s.sandboxHdl.runConfig)
+}
+
+func (s *ControllerSuite) TestSandbox_MCPDispatchScopesCredentialsToExecution() {
+	mcps := []interfaces.MCPConfig{{
+		Name:             "git",
+		Url:              "https://engine.example.com/api/v1/mcp/git",
+		AuthHeaderKey:    "Authorization",
+		AuthHeaderValue:  "Bearer {env:WORKDOCK_GIT_MCP_API_KEY}",
+		AuthSecretEnvVar: "WORKDOCK_GIT_MCP_API_KEY",
+		AuthSecret:       "api-key",
+		Hosts:            []string{"engine.example.com"},
+	}}
+
+	s.mcpHdl.getMCPListFn = func() []interfaces.MCPConfig { return mcps }
+	s.harnessHdl.getConfigFileFn = func(config *interfaces.HarnessConfig) (string, []byte, error) {
+		s.Equal(mcps, config.Mcps)
+		return "/tmp/config.json", []byte("{}"), nil
+	}
+
+	config, _, _, _, err := s.c.sandbox(
+		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		"prompt", nil, newTestSession(), testSessionEvent, "execution-token",
+	)
+
+	s.Require().NoError(err)
+	s.Equal(mcps, config.Mcps)
+	s.Require().Len(s.sandboxHdl.runConfig.Secrets, 2)
+	s.Equal("api-key", s.sandboxHdl.runConfig.Secrets[0].Value)
+	s.Equal("AGENT_SESSION_CONFIG", s.sandboxHdl.runConfig.Secrets[1].Name)
+	s.Equal("sess-1|evt-1|execution-token", s.sandboxHdl.runConfig.Secrets[1].Value)
+
+	for _, data := range s.sandboxHdl.runConfig.FileUploads {
+		s.NotContains(string(data), "execution-token")
+	}
+}
+
+func (s *ControllerSuite) TestExecute_MCPTokenCleanupUsesUncancelledContext() {
+	s.prepareExecutable()
+	ctx, cancel := context.WithCancel(context.Background())
+	deleted := false
+	s.sessionRep.deleteMCPTokenFn = func(cleanupCtx context.Context, sessionID string) error {
+		s.NoError(cleanupCtx.Err())
+		s.Equal("sess-1", sessionID)
+		delete(s.sessionRep.mcpTokens, sessionID)
+		deleted = true
+		return nil
+	}
+	s.sandboxHdl.runFn = func(context.Context, *interfaces.SandboxConfig, chan<- string, chan<- string) (interfaces.SandboxShutdown, error) {
+		cancel()
+		return nil, context.Canceled
+	}
+
+	status, err := s.c.execute(ctx, &types.EventJob{SessionEventIdentifier: "evt-1"})
+
+	s.ErrorIs(err, context.Canceled)
+	s.Equal(types.EventJobStatus_Failed, status)
+	s.True(deleted)
+	s.Empty(s.sessionRep.mcpTokens)
+}
+
+func (s *ControllerSuite) TestExecute_MCPTokenIsRevokedAfterHarnessFailure() {
+	s.prepareExecutable()
+	s.harnessHdl.parseFn = func(
+		context.Context,
+		*interfaces.HarnessConfig,
+		<-chan []byte,
+		string,
+		func(context.Context, string) error,
+		func(context.Context, string) error,
+		func(context.Context, types.AgentAction) error,
+		func(context.Context, types.AgentElicitation) error,
+		func(context.Context) error,
+	) error {
+		return errors.New("harness failed")
+	}
+	s.runSandboxToCompletion()
+
+	status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
+
+	s.ErrorContains(err, "harness failed")
+	s.Equal(types.EventJobStatus_Failed, status)
+	s.Equal("sess-1", s.sessionRep.createdMCPToken)
+	s.Equal("sess-1", s.sessionRep.deletedMCPToken)
+	s.Empty(s.sessionRep.mcpTokens)
+}
+
+func (s *ControllerSuite) TestMCPDependenciesConfiguredBeforeAnyExecution() {
+	mux := http.NewServeMux()
+	server := NewMCP(mux, "api-key", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
+	s.Nil(s.sandboxHdl.runConfig)
+	s.sessionRep.mcpTokens = map[string]string{"remote-session": "remote-token"}
+	invocations := 0
+	server.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id, eventID, err := server.authorized(r.Context(), "remote-session|event|remote-token")
+		if err != nil {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		s.Equal("remote-session", id)
+		s.Equal("event", eventID)
+		invocations++
+		w.WriteHeader(http.StatusNoContent)
+	})
+
+	for _, test := range []struct {
+		name   string
+		header string
+		status int
+	}{
+		{name: "missing API key", status: http.StatusUnauthorized},
+		{name: "invalid API key", header: "Bearer invalid", status: http.StatusUnauthorized},
+		{name: "valid execution", header: "Bearer api-key", status: http.StatusNoContent},
+	} {
+		s.Run(test.name, func() {
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/git", nil)
+			request.Header.Set("Authorization", test.header)
+			response := httptest.NewRecorder()
+			mux.ServeHTTP(response, request)
+			s.Equal(test.status, response.Code)
+		})
+	}
+	s.Equal(1, invocations)
+	delete(s.sessionRep.mcpTokens, "remote-session")
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/git", nil)
+	request.Header.Set("Authorization", "Bearer api-key")
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, request)
+	s.Equal(http.StatusForbidden, response.Code)
+	s.Equal(1, invocations)
+	response = httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/mcp/daytona", nil))
+	s.Equal(http.StatusNotFound, response.Code)
+}
+
+func (s *ControllerSuite) TestMCPGitAccessLooksUpCurrentConnectionForEachSession() {
+	installation := "installation"
+	s.sessionRep.getAgentSessionFn = func(_ context.Context, id string) (*types.Session, error) {
+		return &types.Session{Identifier: id, RepoFullName: &id}, nil
+	}
+	s.gitRepo.getConnectionFn = func(_ context.Context, repo string) (*types.GitConnection, error) {
+		return &types.GitConnection{RepoFullName: repo, Connected: true, InstallationId: &installation}, nil
+	}
+	s.gitHdl.getGitAccessFn = func(_ context.Context, connection *types.GitConnection) (*interfaces.GitAccess, error) {
+		s.Equal(installation, *connection.InstallationId)
+		return &interfaces.GitAccess{Granted: true, Secret: connection.RepoFullName}, nil
+	}
+	server := NewMCP(http.NewServeMux(), "api-key", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
+	for _, id := range []string{"first-repo", "second-repo"} {
+		token, err := server.gitAccess(context.Background(), id)
+		s.Require().NoError(err)
+		s.Equal(id, token)
+	}
+	s.gitRepo.getConnectionFn = func(context.Context, string) (*types.GitConnection, error) { return nil, nil }
+	_, err := server.gitAccess(context.Background(), "first-repo")
+	s.ErrorContains(err, "git is not connected")
+}
+
+func (s *ControllerSuite) TestMCPGitAccessRejectsMissingAndInvalidRepository() {
+	server := NewMCP(http.NewServeMux(), "api-key", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
+	_, err := server.gitAccess(context.Background(), "unknown")
+	s.ErrorContains(err, "agent session repository not set")
+	s.sessionRep.getAgentSessionFn = func(context.Context, string) (*types.Session, error) {
+		return &types.Session{}, nil
+	}
+	_, err = server.gitAccess(context.Background(), "no-repo")
+	s.ErrorContains(err, "agent session repository not set")
+	s.sessionRep.getAgentSessionFn = func(context.Context, string) (*types.Session, error) {
+		return nil, errors.New("session lookup failed")
+	}
+	_, err = server.gitAccess(context.Background(), "session")
+	s.ErrorContains(err, "session lookup failed")
+	repo := "repo"
+	s.sessionRep.getAgentSessionFn = func(context.Context, string) (*types.Session, error) {
+		return &types.Session{RepoFullName: &repo}, nil
+	}
+	s.gitRepo.getConnectionFn = func(context.Context, string) (*types.GitConnection, error) {
+		return nil, errors.New("connection lookup failed")
+	}
+	_, err = server.gitAccess(context.Background(), "session")
+	s.ErrorContains(err, "connection lookup failed")
+	for _, connection := range []*types.GitConnection{{}, {Connected: true}} {
+		s.gitRepo.getConnectionFn = func(context.Context, string) (*types.GitConnection, error) { return connection, nil }
+		_, err = server.gitAccess(context.Background(), "session")
+		s.ErrorContains(err, "git is not connected")
+	}
+}
+
+func (s *ControllerSuite) TestMCPRejectsEmptyMissingAndDeletedCredentials() {
+	s.sessionRep.mcpTokens = map[string]string{"active": "token"}
+	server := NewMCP(http.NewServeMux(), "api-key", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
+	ctx := context.WithValue(context.Background(), AuthenticatedKey, true)
+
+	for _, input := range []string{"", "|", "unknown|", "active|", "|token", "active|event|token|extra", "active|event|", "active||token", "|event|token", "active|token"} {
+		_, _, err := server.authorized(ctx, input)
+		s.ErrorContains(err, "invalid agent session configuration format", input)
+	}
+
+	for _, input := range []string{"unknown|event|token", "active|event|wrong"} {
+		_, _, err := server.authorized(ctx, input)
+		s.ErrorContains(err, "invalid agent session mcp token", input)
+	}
+
+	id, eventID, err := server.authorized(ctx, "active|event|token")
+	s.Require().NoError(err)
+	s.Equal("active", id)
+	s.Equal("event", eventID)
+	delete(s.sessionRep.mcpTokens, "active")
+	_, _, err = server.authorized(ctx, "active|event|token")
+	s.ErrorContains(err, "invalid agent session mcp token")
+}
+
+func (s *ControllerSuite) TestMCPGitAccessPropagatesErrorsAndRejectsEmptyTokens() {
+	repo := "workdock-dev/engine"
+	installation := "installation"
+	s.sessionRep.getAgentSessionFn = func(context.Context, string) (*types.Session, error) {
+		return &types.Session{RepoFullName: &repo}, nil
+	}
+	s.gitRepo.getConnectionFn = func(context.Context, string) (*types.GitConnection, error) {
+		return &types.GitConnection{Connected: true, InstallationId: &installation}, nil
+	}
+	server := NewMCP(http.NewServeMux(), "api-key", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
+	expected := errors.New("access failed")
+
+	for _, access := range []*interfaces.GitAccess{nil, {Granted: true, Secret: "private"}} {
+		s.gitHdl.getGitAccessFn = func(context.Context, *types.GitConnection) (*interfaces.GitAccess, error) { return access, expected }
+		token, err := server.gitAccess(context.Background(), "session")
+		s.ErrorIs(err, expected)
+		s.Empty(token)
+	}
+
+	for _, access := range []*interfaces.GitAccess{nil, {Granted: false, Secret: "private"}, {Granted: true}} {
+		s.gitHdl.getGitAccessFn = func(context.Context, *types.GitConnection) (*interfaces.GitAccess, error) { return access, nil }
+		token, err := server.gitAccess(context.Background(), "session")
+		s.ErrorContains(err, "git access not granded")
+		s.Empty(token)
+	}
+}
+
+func (s *ControllerSuite) TestPromptUsesCurrentMCPCredentialContract() {
+	s.Contains(PromptTemplate_WorkItem, "`session` argument")
+	s.Contains(PromptTemplate_WorkItem, "`AGENT_SESSION_CONFIG`")
+	s.NotContains(PromptTemplate_WorkItem, "WORKDOCK_AGENT_SESSION_ID")
+	s.NotContains(PromptTemplate_WorkItem, "WORKDOCK_AGENT_SESSION_TOKEN")
+}
+
+func (s *ControllerSuite) TestWorkReportValidationAndPersistence() {
+	s.sessionRep.getAgentSessionEventFn = func(_ context.Context, id string) (*types.SessionEvent, error) {
+		s.Equal("event", id)
+		return &types.SessionEvent{Identifier: id, SessionIdentifier: "session"}, nil
+	}
+
+	s.sessionRep.mcpTokens = map[string]string{"session": "token"}
+	server := NewMCP(http.NewServeMux(), "api", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
+	ctx := context.WithValue(context.Background(), AuthenticatedKey, true)
+	calls := 0
+	s.sessionRep.updateSessionEventResultFn = func(_ context.Context, event *types.SessionEvent) error {
+		id := event.SessionIdentifier
+		s.Equal("session", id)
+		report := event.Result
+		calls++
+		s.Equal("session", id)
+		s.Equal(0, report.LinesAdded)
+		s.Equal(0, report.LinesRemoved)
+		s.NotNil(report.Commits)
+		s.Empty(report.Commits)
+		s.Equal(strings.Repeat("界", 280), report.Report)
+		return nil
+	}
+	_, output, err := server.workReport(ctx, nil, WorkReportInput{Session: "session|event|token", Report: strings.Repeat("界", 280)})
+	s.Require().NoError(err)
+	s.Equal(map[string]bool{"success": true}, output)
+	s.Equal(1, calls)
+
+	for _, input := range []WorkReportInput{
+		{Session: "session|event|token", Report: strings.Repeat("界", 281)},
+		{Session: "session|event|token", Report: ""},
+		{Session: "session|event|token", Report: "   "},
+		{Session: "session|event|token", Report: "report", LinesAdded: -1},
+		{Session: "session|event|token", Report: "report", LinesRemoved: -1},
+		{Session: "session|event|wrong", Report: "report"},
+	} {
+		_, _, err := server.workReport(ctx, nil, input)
+		s.Error(err)
+	}
+	_, _, err = server.workReport(context.Background(), nil, WorkReportInput{Session: "session|event|token", Report: "report"})
+	s.Error(err)
+	s.Equal(1, calls)
+	delete(s.sessionRep.mcpTokens, "session")
+	_, _, err = server.workReport(ctx, nil, WorkReportInput{Session: "session|event|token", Report: "report"})
+	s.Error(err)
+	s.Equal(1, calls)
+}
+
+func (s *ControllerSuite) TestWorkReportPreservesChangesAndPropagatesSaveError() {
+	s.sessionRep.getAgentSessionEventFn = func(_ context.Context, id string) (*types.SessionEvent, error) {
+		s.Equal("event", id)
+		return &types.SessionEvent{Identifier: id, SessionIdentifier: "session"}, nil
+	}
+
+	s.sessionRep.mcpTokens = map[string]string{"session": "token"}
+	server := NewMCP(http.NewServeMux(), "api", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
+	expected := errors.New("save failed")
+	s.sessionRep.updateSessionEventResultFn = func(_ context.Context, event *types.SessionEvent) error {
+		id := event.SessionIdentifier
+		s.Equal("session", id)
+		report := event.Result
+		s.Equal(7, report.LinesAdded)
+		s.Equal(3, report.LinesRemoved)
+		s.Equal([]string{"commit-one", "commit-two"}, report.Commits)
+		return expected
+	}
+	ctx := context.WithValue(context.Background(), AuthenticatedKey, true)
+	_, _, err := server.workReport(ctx, nil, WorkReportInput{Session: "session|event|token", LinesAdded: 7, LinesRemoved: 3, Commits: []string{"commit-one", "commit-two"}, Report: "Implemented changes"})
+	s.ErrorIs(err, expected)
+}
+
+func (s *ControllerSuite) TestCreatePullRequestUsesSessionRepositoryAndStoresResult() {
+	s.sessionRep.getAgentSessionEventFn = func(_ context.Context, id string) (*types.SessionEvent, error) {
+		s.Equal("event", id)
+		return &types.SessionEvent{Identifier: id, SessionIdentifier: "session"}, nil
+	}
+
+	repo := "owner/repo"
+	installation := "installation"
+	s.sessionRep.mcpTokens = map[string]string{"session": "token"}
+	s.sessionRep.getAgentSessionFn = func(context.Context, string) (*types.Session, error) {
+		return &types.Session{RepoFullName: &repo}, nil
+	}
+	s.gitRepo.getConnectionFn = func(context.Context, string) (*types.GitConnection, error) {
+		return &types.GitConnection{Connected: true, InstallationId: &installation}, nil
+	}
+	s.gitHdl.getGitAccessFn = func(context.Context, *types.GitConnection) (*interfaces.GitAccess, error) {
+		return &interfaces.GitAccess{Granted: true, Secret: "installation-token"}, nil
+	}
+	pr := &types.PullRequest{Number: 42, URL: "https://github.com/owner/repo/pull/42", HeadRefName: "feature"}
+	created := 0
+	s.gitHdl.createPRFn = func(_ context.Context, input interfaces.CreatePullRequestInput) (*types.PullRequest, error) {
+		created++
+		s.Equal(interfaces.CreatePullRequestInput{RepoFullName: repo, AccessToken: "installation-token", Title: "Changes", Body: "Details", Head: "feature", Base: "main", Draft: true}, input)
+		return pr, nil
+	}
+	stored := 0
+	s.sessionRep.updateSessionEventResultFn = func(_ context.Context, event *types.SessionEvent) error {
+		id := event.SessionIdentifier
+		got := event.Result.PullRequest
+		stored++
+		s.Equal("session", id)
+		s.Same(pr, got)
+		return nil
+	}
+	server := NewMCP(http.NewServeMux(), "api", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
+	ctx := context.WithValue(context.Background(), AuthenticatedKey, true)
+	input := CreatePullRequestInput{Session: "session|event|token", Title: "Changes", Body: "Details", Head: "feature", Base: "main", Draft: true}
+	_, output, err := server.createPullRequest(ctx, nil, input)
+	s.Require().NoError(err)
+	s.Same(pr, output)
+	s.Equal(1, created)
+	s.Equal(1, stored)
+
+	input.Session = "session|event|wrong"
+	_, _, err = server.createPullRequest(ctx, nil, input)
+	s.Error(err)
+	s.Equal(1, created)
+	s.Equal(1, stored)
+	input.Session = "session|event|token"
+	input.Title = ""
+	_, _, err = server.createPullRequest(ctx, nil, input)
+	s.Error(err)
+	s.Equal(1, created)
+}
+
+func (s *ControllerSuite) TestReportAndPullRequestToolsRegistered() {
+	server := NewMCP(http.NewServeMux(), "api", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
+	clientTransport, serverTransport := mcp.NewInMemoryTransports()
+	ctx := context.Background()
+	serverSession, err := server.mcp.Connect(ctx, serverTransport, nil)
+	s.Require().NoError(err)
+	defer serverSession.Close()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test"}, nil)
+	clientSession, err := client.Connect(ctx, clientTransport, nil)
+	s.Require().NoError(err)
+	defer clientSession.Close()
+	result, err := clientSession.ListTools(ctx, nil)
+	s.Require().NoError(err)
+	var names []string
+
+	for _, tool := range result.Tools {
+		names = append(names, tool.Name)
+	}
+
+	s.ElementsMatch([]string{"git_clone", "git_push", "git_pull", "work_report", "create_pull_request"}, names)
+}
+
+func (s *ControllerSuite) TestExecuteRequiresWorkReport() {
+	s.prepareExecutable()
+	event := *testSessionEvent
+	event.Result = nil
+	s.sessionRep.getAgentSessionEventFn = func(context.Context, string) (*types.SessionEvent, error) { return &event, nil }
+	s.sandboxHdl.runFn = func(_ context.Context, _ *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
+		close(stdout)
+		close(stderr)
+		return nil, nil
+	}
+
+	status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
+
+	s.ErrorContains(err, "agent must call work_report")
+	s.Equal(types.EventJobStatus_Failed, status)
+	s.Equal("sess-1", s.sessionRep.deletedMCPToken)
+}
+
+func (s *ControllerSuite) TestExecutePreservesExistingReportBeforeDispatch() {
+	s.prepareExecutable()
+	event := *testSessionEvent
+	event.Result = &types.SessionEventResult{Report: "Previous execution", Commits: []string{"commit"}}
+	s.sessionRep.getAgentSessionEventFn = func(context.Context, string) (*types.SessionEvent, error) { return &event, nil }
+	s.sandboxHdl.runFn = func(_ context.Context, _ *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
+		s.Equal("Previous execution", event.Result.Report)
+		s.Equal([]string{"commit"}, event.Result.Commits)
+		close(stdout)
+		close(stderr)
+		return nil, nil
+	}
+	status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
+	s.NoError(err)
+	s.Equal(types.EventJobStatus_Succeeded, status)
+	s.Empty(s.sessionRep.updatedResults)
+	s.Empty(s.sessionRep.mcpTokens)
+}
+
+func (s *ControllerSuite) TestWorkReportUsesExistingResultUpdateAndPreservesPullRequest() {
+	s.sessionRep.mcpTokens = map[string]string{"session": "token"}
+	pr := &types.PullRequest{Number: 42, HeadRefName: "feature"}
+	event := &types.SessionEvent{Identifier: "event", SessionIdentifier: "session", Result: &types.SessionEventResult{PullRequest: pr}}
+	s.sessionRep.getAgentSessionEventFn = func(_ context.Context, id string) (*types.SessionEvent, error) {
+		s.Equal("event", id)
+		return event, nil
+	}
+	updated := false
+	s.sessionRep.updateSessionEventResultFn = func(_ context.Context, got *types.SessionEvent) error {
+		s.Same(event, got)
+		s.Same(pr, got.Result.PullRequest)
+		s.Equal("Completed work", got.Result.Report)
+		updated = true
+		return nil
+	}
+	server := NewMCP(http.NewServeMux(), "api", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
+	_, _, err := server.workReport(context.WithValue(context.Background(), AuthenticatedKey, true), nil, WorkReportInput{Session: "session|event|token", Report: "Completed work"})
+	s.NoError(err)
+	s.True(updated)
 }

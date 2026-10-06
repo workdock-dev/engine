@@ -195,6 +195,7 @@ func (r *mockRows) Conn() *pgx.Conn {
 // --- pgx.Tx mock ---
 
 type mockTx struct {
+	queryRowFn func(ctx context.Context, sql string, args ...any) pgx.Row
 	execFn     func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 	commitFn   func(ctx context.Context) error
 	rollbackFn func(ctx context.Context) error
@@ -246,6 +247,9 @@ func (t *mockTx) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, 
 }
 
 func (t *mockTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	if t.queryRowFn != nil {
+		return t.queryRowFn(ctx, sql, args...)
+	}
 	return &mockRow{}
 }
 

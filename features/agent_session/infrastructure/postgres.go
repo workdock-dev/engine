@@ -66,6 +66,15 @@ var (
 	//go:embed sql/reset_git_connection.sql
 	ResetGitConnectionSql string
 
+	//go:embed sql/create_mcp_token.sql
+	CreateMCPTokenSql string
+
+	//go:embed sql/get_mcp_token.sql
+	GetMCPTokenSql string
+
+	//go:embed sql/delete_mcp_token.sql
+	DeleteMCPTokenSql string
+
 	//go:embed sql/cancel.sql
 	CancelSql string
 )
@@ -402,4 +411,43 @@ func (p *postgres) CancelSession(ctx context.Context, queuedBy, reason string) (
 	}
 
 	return int(tags.RowsAffected()), nil
+}
+
+func (p *postgres) CreateMCPToken(ctx context.Context, sessionID, token string) error {
+	_, err := p.client.Exec(ctx, CreateMCPTokenSql, sessionID, token)
+
+	if err != nil {
+		slog.Error("[agent_session][postgres] failed to create MCP execution token", "err", err, "session_id", sessionID)
+		return err
+	}
+
+	return nil
+}
+
+func (p *postgres) GetMCPToken(ctx context.Context, sessionID string) (string, error) {
+	var token string
+
+	err := p.client.QueryRow(ctx, GetMCPTokenSql, sessionID).Scan(&token)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+
+	if err != nil {
+		slog.Error("[agent_session][postgres] failed to get MCP execution token", "err", err, "session_id", sessionID)
+		return "", err
+	}
+
+	return token, nil
+}
+
+func (p *postgres) DeleteMCPToken(ctx context.Context, sessionID string) error {
+	_, err := p.client.Exec(ctx, DeleteMCPTokenSql, sessionID)
+
+	if err != nil {
+		slog.Error("[agent_session][postgres] failed to delete MCP execution token", "err", err, "session_id", sessionID)
+		return err
+	}
+
+	return nil
 }

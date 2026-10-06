@@ -16,6 +16,7 @@ package agent_session
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/workdock-dev/engine/features/agent_session/interfaces"
@@ -170,12 +171,10 @@ func (m *mockAgentHandler) TransitionIssueToInReview(ctx context.Context, issueI
 // --- HandlerGit mock ---
 
 type mockGitHandler struct {
-	getInstallationUrlFn  func() string
-	getConfigCommandsFn   func() []string
-	getCommandsFn         func() []string
-	getLatestChangesCmdFn func() string
-	getGitAccessFn        func(ctx context.Context, connection *types.GitConnection) (*interfaces.GitAccess, error)
-	parseLatestResultFn   func(changes string) *types.PullRequest
+	createPRFn func(context.Context, interfaces.CreatePullRequestInput) (*types.PullRequest, error)
+
+	getInstallationUrlFn func() string
+	getGitAccessFn       func(ctx context.Context, connection *types.GitConnection) (*interfaces.GitAccess, error)
 }
 
 func (m *mockGitHandler) GetInstallationUrl() string {
@@ -185,39 +184,11 @@ func (m *mockGitHandler) GetInstallationUrl() string {
 	return "https://github.com/install"
 }
 
-func (m *mockGitHandler) GetConfigurationCommands() []string {
-	if m.getConfigCommandsFn != nil {
-		return m.getConfigCommandsFn()
-	}
-	return nil
-}
-
-func (m *mockGitHandler) GetCommands() []string {
-	if m.getCommandsFn != nil {
-		return m.getCommandsFn()
-	}
-	return nil
-}
-
-func (m *mockGitHandler) GetLatestChangesCommand() string {
-	if m.getLatestChangesCmdFn != nil {
-		return m.getLatestChangesCmdFn()
-	}
-	return ""
-}
-
 func (m *mockGitHandler) GetGitAccess(ctx context.Context, connection *types.GitConnection) (*interfaces.GitAccess, error) {
 	if m.getGitAccessFn != nil {
 		return m.getGitAccessFn(ctx, connection)
 	}
 	return &interfaces.GitAccess{Granted: true}, nil
-}
-
-func (m *mockGitHandler) ParseLatestChangesResult(changes string) *types.PullRequest {
-	if m.parseLatestResultFn != nil {
-		return m.parseLatestResultFn(changes)
-	}
-	return nil
 }
 
 // --- HandlerSandbox mock ---
@@ -243,9 +214,8 @@ func (m *mockSandboxHandler) Run(ctx context.Context, config *interfaces.Sandbox
 	if m.runFn != nil {
 		return m.runFn(ctx, config, stdout, stderr)
 	}
-	return func(ctx context.Context) string {
+	return func(ctx context.Context) {
 		m.shutdownRan = true
-		return "shutdown result"
 	}, nil
 }
 
@@ -255,6 +225,18 @@ func (m *mockSandboxHandler) Archive(ctx context.Context, config *interfaces.San
 		return m.archiveFn(ctx, config)
 	}
 	return m.archiveErr
+}
+
+func (m *mockSandboxHandler) GitClone(ctx context.Context, input interfaces.GitCloneInput) error {
+	return nil
+}
+
+func (m *mockSandboxHandler) GitPush(ctx context.Context, input interfaces.GitPushInput) error {
+	return nil
+}
+
+func (m *mockSandboxHandler) GitPull(ctx context.Context, input interfaces.GitPullInput) error {
+	return nil
 }
 
 // --- HandlerHarness mock ---
@@ -375,6 +357,8 @@ type mockSessionRepository struct {
 	upsertAgentSessionFn           func(ctx context.Context, session *types.Session) error
 	updateSessionEventResultFn     func(ctx context.Context, event *types.SessionEvent) error
 	cancelSessionFn                func(ctx context.Context, queuedBy, reason string) (int, error)
+	createMCPTokenFn               func(ctx context.Context, sessionID, token string) error
+	deleteMCPTokenFn               func(ctx context.Context, sessionID string) error
 
 	upsertedSessions []*types.Session
 	createdEvents    []*types.SessionEvent
@@ -383,6 +367,9 @@ type mockSessionRepository struct {
 	cancelSession    string
 	cancelReason     string
 	issueLookups     []string
+	mcpTokens        map[string]string
+	createdMCPToken  string
+	deletedMCPToken  string
 }
 
 func (m *mockSessionRepository) GetAgentSession(ctx context.Context, identifier string) (*types.Session, error) {
@@ -453,6 +440,38 @@ func (m *mockSessionRepository) CancelSession(ctx context.Context, queuedBy, rea
 		return m.cancelSessionFn(ctx, queuedBy, reason)
 	}
 	return 1, nil
+}
+
+func (m *mockSessionRepository) CreateMCPToken(ctx context.Context, sessionID, token string) error {
+	if m.createMCPTokenFn != nil {
+		return m.createMCPTokenFn(ctx, sessionID, token)
+	}
+
+	if m.mcpTokens == nil {
+		m.mcpTokens = make(map[string]string)
+	}
+
+	if _, exists := m.mcpTokens[sessionID]; exists {
+		return errors.New("duplicate MCP session token")
+	}
+
+	m.mcpTokens[sessionID] = token
+	m.createdMCPToken = sessionID
+	return nil
+}
+
+func (m *mockSessionRepository) GetMCPToken(ctx context.Context, sessionID string) (string, error) {
+	return m.mcpTokens[sessionID], nil
+}
+
+func (m *mockSessionRepository) DeleteMCPToken(ctx context.Context, sessionID string) error {
+	if m.deleteMCPTokenFn != nil {
+		return m.deleteMCPTokenFn(ctx, sessionID)
+	}
+
+	delete(m.mcpTokens, sessionID)
+	m.deletedMCPToken = sessionID
+	return nil
 }
 
 // --- RepositoryOrg mock ---
@@ -604,7 +623,6 @@ func (m *mockQueue) Listen(ctx context.Context) (<-chan struct{}, <-chan string,
 var (
 	_ interfaces.HandlerAgentSession = (*mockAgentHandler)(nil)
 	_ interfaces.HandlerGit          = (*mockGitHandler)(nil)
-	_ interfaces.HandlerSandbox      = (*mockSandboxHandler)(nil)
 	_ interfaces.HandlerHarness      = (*mockHarnessHandler)(nil)
 	_ interfaces.HandlerMCP          = (*mockMcpHandler)(nil)
 	_ interfaces.Repository          = (*mockSessionRepository)(nil)
@@ -613,3 +631,11 @@ var (
 	_ shared.SecretManager           = (*mockSecretManager)(nil)
 	_ interfaces.Queue               = (*mockQueue)(nil)
 )
+
+func (m *mockGitHandler) CreatePullRequest(ctx context.Context, input interfaces.CreatePullRequestInput) (*types.PullRequest, error) {
+	if m.createPRFn != nil {
+		return m.createPRFn(ctx, input)
+	}
+
+	return nil, nil
+}

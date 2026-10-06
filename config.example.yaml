@@ -67,6 +67,9 @@ linear:
     - "34.134.222.122"
     - "35.222.25.142"
 
+mcp_server_url: "https://engine.example.com/api/v1/mcp/git"
+mcp_api_key: "replace-with-internal-workdock-mcp-api-key"
+
 daytona:
   api_url: "https://app.daytona.io/api"
   api_key: "replace-with-daytona-api-key"

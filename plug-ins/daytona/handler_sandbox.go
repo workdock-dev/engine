@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"time"
 	"uuid"
@@ -39,12 +40,34 @@ const (
 
 type SandboxHandler struct {
 	config types.Config
+	client *daytona.Client
 }
 
-func NewSandboxHandler(config types.Config) agent_session_interfaces.HandlerSandbox {
-	return &SandboxHandler{
-		config: config,
+func NewSandboxHandler(config types.Config) (*SandboxHandler, error) {
+	target := config.Target
+
+	if target == "" {
+		target = "us"
 	}
+
+	client, err := daytona.NewClientWithConfig(&sdktypes.DaytonaConfig{
+		APIKey:     config.ApiKey,
+		APIUrl:     config.ApiUrl,
+		Target:     target,
+		HTTPClient: helpers.HTTPClient,
+	})
+
+	if err != nil {
+		slog.Error("[daytona] failed to create client")
+		return nil, err
+	}
+
+	h := &SandboxHandler{
+		config: config,
+		client: client,
+	}
+
+	return h, nil
 }
 
 func (h *SandboxHandler) Run(
@@ -52,30 +75,7 @@ func (h *SandboxHandler) Run(
 	config *agent_session_interfaces.SandboxConfig,
 	stdout chan<- string,
 	stderr chan<- string,
-) (func(ctx context.Context) string, error) {
-	target := h.config.Target
-
-	if target == "" {
-		target = "us"
-	}
-
-	// *-------------------------------------------------------------------------*
-	// * Create daytona client                                                   *
-	// *-------------------------------------------------------------------------*
-
-	slog.Debug("[sandbox][daytona] client created")
-	client, err := daytona.NewClientWithConfig(&sdktypes.DaytonaConfig{
-		APIKey:     h.config.ApiKey,
-		APIUrl:     h.config.ApiUrl,
-		Target:     target,
-		HTTPClient: helpers.HTTPClient,
-	})
-
-	if err != nil {
-		slog.Error("failed to create daytona client", "err", err)
-		return nil, err
-	}
-
+) (agent_session_interfaces.SandboxShutdown, error) {
 	// Track created secrets
 	secretIds := make([]string, 0)
 
@@ -89,31 +89,8 @@ func (h *SandboxHandler) Run(
 	var listening bool
 	var execSessionCreated bool
 
-	shutdown := func(ctx context.Context) string {
-		out := ""
-
+	shutdown := func(ctx context.Context) {
 		if sandbox != nil && !deleting {
-
-			// *-------------------------------------------------------------------------*
-			// * Run the provided exit command
-			// *-------------------------------------------------------------------------*
-
-			// The exit command is only set when the session was granted git access;
-			// repo-less sessions have no pull request metadata to collect
-			if config.ExitCommand != "" {
-				_, result, _ := h.executeCommand(
-					ctx,
-					sandbox,
-					config,
-					config.ExitCommand,
-					time.Minute*2,
-				)
-
-				if result != "" {
-					out = result
-				}
-			}
-
 			if !listening {
 				close(stdout)
 				close(stderr)
@@ -127,14 +104,8 @@ func (h *SandboxHandler) Run(
 		}
 
 		for _, id := range secretIds {
-			h.deleteSecret(ctx, client, config, id)
+			h.deleteSecret(ctx, config, id)
 		}
-
-		if err := client.Close(ctx); err != nil {
-			slog.Error("[sandbox][daytona] failed to close client", "err", err, "event_identifier", config.SessionEvent.Identifier)
-		}
-
-		return out
 	}
 
 	// *-------------------------------------------------------------------------*
@@ -146,7 +117,7 @@ func (h *SandboxHandler) Run(
 	secrets := make(map[string]string)
 
 	for _, secret := range config.Secrets {
-		secretId, secretName, err := h.setSecret(ctx, client, config, secret.Name, secret.Value, secret.Hosts)
+		secretId, secretName, err := h.setSecret(ctx, config, secret.Name, secret.Value, secret.Hosts)
 
 		if err != nil {
 			return shutdown, err
@@ -157,7 +128,7 @@ func (h *SandboxHandler) Run(
 	}
 
 	for _, secret := range h.config.Secrets {
-		secretId, secretName, err := h.setSecret(ctx, client, config, secret.Name, secret.Value, secret.Hosts)
+		secretId, secretName, err := h.setSecret(ctx, config, secret.Name, secret.Value, secret.Hosts)
 
 		if err != nil {
 			return shutdown, err
@@ -172,7 +143,7 @@ func (h *SandboxHandler) Run(
 	// *-------------------------------------------------------------------------*
 
 	slog.Debug("[sandbox][daytona] created")
-	sandbox, created, err = h.getOrCreateSandbox(ctx, client, config, secrets)
+	sandbox, created, err := h.getOrCreateSandbox(ctx, config, secrets)
 
 	if err != nil {
 		return shutdown, err
@@ -236,11 +207,11 @@ func (h *SandboxHandler) Run(
 	}
 
 	// *-------------------------------------------------------------------------*
-	// * Run the session configuration commands (e.g. git credential setup)      *
+	// * Run the session configuration commands                                 *
 	// *                                                                         *
 	// * Unlike CommandsWhenCreated these must run on every session since        *
 	// * sandboxes are reused and the configuration is required before the       *
-	// * harness starts issuing git commands                                     *
+	// * harness starts running its commands                                     *
 	// *-------------------------------------------------------------------------*
 
 	slog.Debug("[sandbox][daytona] session commands")
@@ -367,9 +338,203 @@ func (h *SandboxHandler) Archive(ctx context.Context, config *agent_session_inte
 	return nil
 }
 
-func (h *SandboxHandler) getOrCreateSandbox(ctx context.Context, client *daytona.Client, config *agent_session_interfaces.SandboxConfig, secrets map[string]string) (*daytona.Sandbox, bool, error) {
+func (h *SandboxHandler) GitClone(ctx context.Context, input agent_session_interfaces.GitCloneInput) error {
+	if err := h.validateGitURL(input.Url, input.SessionId); err != nil {
+		return err
+	}
+
 	sandbox, err := helpers.RetryRateLimited(ctx, helpers.ThrottlerAuthenticated, "get sandbox", func() (*daytona.Sandbox, error) {
-		return client.Get(ctx, config.Session.Identifier)
+		return h.client.Get(ctx, input.SessionId)
+	})
+
+	if err != nil {
+		if h.isContextCanceledOrDeadlineExceeded(err) {
+			return err
+		}
+
+		if !errors.Is(err, sdkerrors.ErrNotFound) {
+			slog.Error("[sandbox][daytona] failed to get", "err", err, "session_id", input.SessionId)
+			return err
+		}
+	}
+
+	if sandbox == nil {
+		err := fmt.Errorf("sandbox with id %s, sandbox == nil", input.SessionId)
+		slog.Error("[sandbox][daytona] failed to get", "err", err, "session_id", input.SessionId)
+		return err
+	}
+
+	if sandbox.State != daytona.SandboxStateStarted {
+		err := fmt.Errorf("sandbox in incorrect state for running git command, expected %s got %s", daytona.SandboxStateStarted, sandbox.State)
+		slog.Error("[sandbox][daytona] failed to git clone", "err", err, "session_id", input.SessionId)
+		return err
+	}
+
+	opts := []func(*options.GitClone){
+		options.WithUsername("x-access-token"),
+		options.WithPassword(input.AccessToken),
+	}
+
+	if input.Branch != "" {
+		opts = append(opts, options.WithBranch(input.Branch))
+	}
+
+	if input.CommitId != "" {
+		opts = append(opts, options.WithCommitId(input.CommitId))
+	}
+
+	slog.Debug("[sandbox][daytona] git clone", "session_id", input.SessionId)
+	err = sandbox.Git.Clone(ctx, input.Url, input.Path, opts...)
+
+	if err != nil {
+		slog.Error("[sandbox][daytona] git clone failed", "err", err, "session_id", input.SessionId)
+		return err
+	}
+
+	return nil
+}
+
+func (h *SandboxHandler) GitPush(ctx context.Context, input agent_session_interfaces.GitPushInput) error {
+	sandbox, err := helpers.RetryRateLimited(ctx, helpers.ThrottlerAuthenticated, "get sandbox", func() (*daytona.Sandbox, error) {
+		return h.client.Get(ctx, input.SessionId)
+	})
+
+	if err != nil {
+		if h.isContextCanceledOrDeadlineExceeded(err) {
+			return err
+		}
+
+		if !errors.Is(err, sdkerrors.ErrNotFound) {
+			slog.Error("[sandbox][daytona] failed to get", "err", err, "session_id", input.SessionId)
+			return err
+		}
+	}
+
+	if sandbox == nil {
+		err := fmt.Errorf("sandbox with id %s, sandbox == nil", input.SessionId)
+		slog.Error("[sandbox][daytona] failed to get", "err", err, "session_id", input.SessionId)
+		return err
+	}
+
+	if sandbox.State != daytona.SandboxStateStarted {
+		err := fmt.Errorf("sandbox in incorrect state for running git command, expected %s got %s", daytona.SandboxStateStarted, sandbox.State)
+		slog.Error("[sandbox][daytona] failed to git push", "err", err, "session_id", input.SessionId)
+		return err
+	}
+
+	remote := "origin"
+
+	if input.Remote != "" {
+		remote = input.Remote
+	}
+
+	remoteURL, err := sandbox.Git.RemoteGet(ctx, input.Path, remote)
+
+	if err != nil {
+		slog.Error("[sandbox][daytona] failed to get git remote", "err", err)
+		return err
+	}
+
+	if err := h.validateGitURL(remoteURL, input.SessionId); err != nil {
+		return err
+	}
+
+	opts := []func(*options.GitPush){
+		options.WithPushUsername("x-access-token"),
+		options.WithPushPassword(input.AccessToken),
+	}
+
+	if input.Branch != "" {
+		opts = append(opts, options.WithPushBranch(input.Branch))
+	}
+
+	if input.Remote != "" {
+		opts = append(opts, options.WithPushRemote(input.Remote))
+	}
+
+	slog.Debug("[sandbox][daytona] git push", "session_id", input.SessionId)
+	err = sandbox.Git.Push(ctx, input.Path, opts...)
+
+	if err != nil {
+		slog.Error("[sandbox][daytona] failed to git push", "err", err, "session_id", input.SessionId)
+		return err
+	}
+
+	return nil
+}
+
+func (h *SandboxHandler) GitPull(ctx context.Context, input agent_session_interfaces.GitPullInput) error {
+	sandbox, err := helpers.RetryRateLimited(ctx, helpers.ThrottlerAuthenticated, "get sandbox", func() (*daytona.Sandbox, error) {
+		return h.client.Get(ctx, input.SessionId)
+	})
+
+	if err != nil {
+		if h.isContextCanceledOrDeadlineExceeded(err) {
+			return err
+		}
+
+		if !errors.Is(err, sdkerrors.ErrNotFound) {
+			slog.Error("[sandbox][daytona] failed to get", "err", err, "session_id", input.SessionId)
+			return err
+		}
+	}
+
+	if sandbox == nil {
+		err := fmt.Errorf("sandbox with id %s, sandbox == nil", input.SessionId)
+		slog.Error("[sandbox][daytona] failed to get", "err", err, "session_id", input.SessionId)
+		return err
+	}
+
+	if sandbox.State != daytona.SandboxStateStarted {
+		err := fmt.Errorf("sandbox in incorrect state for running git command, expected %s got %s", daytona.SandboxStateStarted, sandbox.State)
+		slog.Error("[sandbox][daytona] failed to git pull", "err", err, "session_id", input.SessionId)
+		return err
+	}
+
+	remote := "origin"
+
+	if input.Remote != "" {
+		remote = input.Remote
+	}
+
+	remoteURL, err := sandbox.Git.RemoteGet(ctx, input.Path, remote)
+
+	if err != nil {
+		slog.Error("[sandbox][daytona] failed to get git remote", "err", err)
+		return err
+	}
+
+	if err := h.validateGitURL(remoteURL, input.SessionId); err != nil {
+		return err
+	}
+
+	opts := []func(*options.GitPull){
+		options.WithPullUsername("x-access-token"),
+		options.WithPullPassword(input.AccessToken),
+	}
+
+	if input.Branch != "" {
+		opts = append(opts, options.WithPullBranch(input.Branch))
+	}
+
+	if input.Remote != "" {
+		opts = append(opts, options.WithPullRemote(input.Remote))
+	}
+
+	slog.Debug("[sandbox][daytona] git pull", "session_id", input.SessionId)
+	err = sandbox.Git.Pull(ctx, input.Path, opts...)
+
+	if err != nil {
+		slog.Error("[sandbox][daytona] failed to git pull", "err", err, "session_id", input.SessionId)
+		return err
+	}
+
+	return nil
+}
+
+func (h *SandboxHandler) getOrCreateSandbox(ctx context.Context, config *agent_session_interfaces.SandboxConfig, secrets map[string]string) (*daytona.Sandbox, bool, error) {
+	sandbox, err := helpers.RetryRateLimited(ctx, helpers.ThrottlerAuthenticated, "get sandbox", func() (*daytona.Sandbox, error) {
+		return h.client.Get(ctx, config.Session.Identifier)
 	})
 
 	if err != nil {
@@ -391,7 +556,7 @@ func (h *SandboxHandler) getOrCreateSandbox(ctx context.Context, client *daytona
 			}
 
 			return helpers.RetryRateLimited(ctx, helpers.ThrottlerSandboxCreate, "create sandbox", func() (*daytona.Sandbox, error) {
-				return client.Create(ctx, sdktypes.SnapshotParams{
+				return h.client.Create(ctx, sdktypes.SnapshotParams{
 					Snapshot:         "daytona-small",
 					Name:             config.Session.Identifier,
 					Public:           false,
@@ -416,10 +581,10 @@ func (h *SandboxHandler) getOrCreateSandbox(ctx context.Context, client *daytona
 }
 
 // setSecret creates a secret and returns its id and name.
-func (h *SandboxHandler) setSecret(ctx context.Context, client *daytona.Client, config *agent_session_interfaces.SandboxConfig, secretKey, secretValue string, hosts []string) (string, string, error) {
+func (h *SandboxHandler) setSecret(ctx context.Context, config *agent_session_interfaces.SandboxConfig, secretKey, secretValue string, hosts []string) (string, string, error) {
 	secretName := h.newUUIDStartingWithLetter()
 	secret, err := helpers.RetryRateLimited(ctx, helpers.ThrottlerAuthenticated, "create secret", func() (*sdktypes.Secret, error) {
-		return client.Secret.Create(ctx, &sdktypes.CreateSecretParams{
+		return h.client.Secret.Create(ctx, &sdktypes.CreateSecretParams{
 			Name:        secretName,
 			Description: &secretKey,
 			Value:       secretValue,
@@ -435,9 +600,9 @@ func (h *SandboxHandler) setSecret(ctx context.Context, client *daytona.Client, 
 	return secret.ID, secretName, nil
 }
 
-func (h *SandboxHandler) deleteSecret(ctx context.Context, client *daytona.Client, config *agent_session_interfaces.SandboxConfig, secretId string) error {
+func (h *SandboxHandler) deleteSecret(ctx context.Context, config *agent_session_interfaces.SandboxConfig, secretId string) error {
 	err := helpers.RetryRateLimitedVoid(ctx, helpers.ThrottlerAuthenticated, "delete secret", func() error {
-		return client.Secret.Delete(ctx, secretId)
+		return h.client.Secret.Delete(ctx, secretId)
 	})
 
 	if err != nil {
@@ -647,4 +812,30 @@ func (h *SandboxHandler) newUUIDStartingWithLetter() string {
 
 func (h *SandboxHandler) isContextCanceledOrDeadlineExceeded(err error) bool {
 	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+}
+
+func (h *SandboxHandler) validateGitURL(rawURL, sessionID string) error {
+	u, err := url.Parse(rawURL)
+
+	if err != nil {
+		slog.Error("[sandbox][daytona] failed to validate git remote", "err", err)
+		return err
+	}
+
+	if u.Scheme != "https" ||
+		u.User != nil ||
+		u.RawQuery != "" ||
+		u.Fragment != "" ||
+		u.Host != "github.com" || // TODO: Support other hosts
+		u.Path == "" {
+		err := errors.New("GitHub installation authentication is restricted to github.com remotes")
+		slog.Error("[sandbox][daytona] failed to validate git remote", "err", err, "session_id", sessionID)
+		return err
+	}
+
+	return nil
+}
+
+func (h *SandboxHandler) Close(ctx context.Context) error {
+	return h.client.Close(ctx)
 }

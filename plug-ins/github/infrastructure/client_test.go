@@ -507,3 +507,87 @@ func (s *GitHubClientSuite) TestBaseURL_Custom() {
 	c := &GitHubClient{config: types.Config{BaseURL: "http://localhost:9999"}}
 	s.Equal("http://localhost:9999", c.baseURL())
 }
+
+func (s *GitHubClientSuite) TestCreatePullRequestSuccess() {
+	input := types.CreatePullRequestInput{Title: "Changes", Body: "Details", Head: "feature", Base: "main", Draft: true}
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		s.Equal(http.MethodPost, r.Method)
+		s.Equal("/repos/owner/repo/pulls", r.URL.Path)
+		s.Equal("Bearer installation-token", r.Header.Get("Authorization"))
+		s.Equal("application/vnd.github+json", r.Header.Get("Accept"))
+		s.Equal("application/json", r.Header.Get("Content-Type"))
+		s.Equal("2022-11-28", r.Header.Get("X-GitHub-Api-Version"))
+		var body types.CreatePullRequestInput
+		s.NoError(json.NewDecoder(r.Body).Decode(&body))
+		s.Equal(input, body)
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprint(w, `{"html_url":"https://github.com/owner/repo/pull/42","number":42,"head":{"ref":"feature","sha":"commit"}}`)
+	}))
+	defer server.Close()
+	client := &GitHubClient{config: types.Config{BaseURL: server.URL}, httpClient: server.Client()}
+	pr, err := client.CreatePullRequest(context.Background(), "owner/repo", "installation-token", input)
+	s.Require().NoError(err)
+	s.Require().NotNil(pr)
+	s.Equal(1, requests)
+	s.Equal("https://github.com/owner/repo/pull/42", pr.URL)
+	s.Equal(42, pr.Number)
+	s.Equal("feature", pr.Head.Ref)
+	s.Equal("commit", pr.Head.SHA)
+}
+
+func (s *GitHubClientSuite) TestCreatePullRequestInvalidRepository() {
+	client := &GitHubClient{}
+	for _, repo := range []string{"", "owner", "/repo", "owner/", "owner/repo/extra"} {
+		s.Run(repo, func() {
+			pr, err := client.CreatePullRequest(context.Background(), repo, "token", types.CreatePullRequestInput{})
+			s.ErrorContains(err, "invalid repository format: expected owner/repo")
+			s.Nil(pr)
+		})
+	}
+}
+
+func (s *GitHubClientSuite) TestCreatePullRequestInvalidURL() {
+	client := &GitHubClient{config: types.Config{BaseURL: "://invalid"}}
+	pr, err := client.CreatePullRequest(context.Background(), "owner/repo", "token", types.CreatePullRequestInput{})
+	s.Error(err)
+	s.Nil(pr)
+}
+
+func (s *GitHubClientSuite) TestCreatePullRequestTransportError() {
+	client := &GitHubClient{httpClient: &http.Client{Transport: &failTransport{err: errors.New("connection refused")}}}
+	pr, err := client.CreatePullRequest(context.Background(), "owner/repo", "token", types.CreatePullRequestInput{})
+	s.EqualError(err, "GitHub pull request request failed")
+	s.Nil(pr)
+}
+
+func (s *GitHubClientSuite) TestCreatePullRequestResponseErrors() {
+	for _, test := range []struct {
+		name   string
+		status int
+		body   string
+		error  string
+	}{
+		{name: "forbidden", status: http.StatusForbidden, body: `{"message":"Forbidden"}`, error: "GitHub pull request creation failed with status 403"},
+		{name: "validation error", status: http.StatusUnprocessableEntity, body: `{"message":"Validation Failed"}`, error: "GitHub pull request creation failed with status 422"},
+		{name: "server error", status: http.StatusInternalServerError, body: `{}`, error: "GitHub pull request creation failed with status 500"},
+		{name: "invalid JSON", status: http.StatusCreated, body: "not json"},
+		{name: "wrong JSON type", status: http.StatusCreated, body: `{"number":"invalid"}`},
+	} {
+		s.Run(test.name, func() {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(test.status)
+				fmt.Fprint(w, test.body)
+			}))
+			defer server.Close()
+			client := &GitHubClient{config: types.Config{BaseURL: server.URL}, httpClient: server.Client()}
+			pr, err := client.CreatePullRequest(context.Background(), "owner/repo", "token", types.CreatePullRequestInput{})
+			s.Error(err)
+			s.Nil(pr)
+			if test.error != "" {
+				s.EqualError(err, test.error)
+			}
+		})
+	}
+}

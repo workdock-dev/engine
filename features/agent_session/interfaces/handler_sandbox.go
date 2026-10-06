@@ -26,7 +26,7 @@ import (
 // sandbox provider's side, not on the engine's side.
 var ErrSandboxCannotStart = errors.New("sandbox is in a state that cannot start")
 
-type SandboxShutdown = func(ctx context.Context) string
+type SandboxShutdown = func(ctx context.Context)
 
 type SandboxSecret struct {
 	Name  string   `yaml:"name"`
@@ -42,10 +42,34 @@ type SandboxConfig struct {
 	FileUploads         map[string][]byte
 	CommandsWhenCreated []string
 	Commands            []string
-	ExitCommand         string
 	HarnessCommand      string
 	GitName             string
 	GitEmail            string
+}
+
+type GitCloneInput struct {
+	SessionId   string
+	AccessToken string
+	Url         string
+	Path        string
+	Branch      string
+	CommitId    string
+}
+
+type GitPullInput struct {
+	SessionId   string
+	AccessToken string
+	Path        string
+	Remote      string
+	Branch      string
+}
+
+type GitPushInput struct {
+	SessionId   string
+	AccessToken string
+	Path        string
+	Remote      string
+	Branch      string
 }
 
 // HandlerSandbox is the interfaces through which the sandbox will be
@@ -65,4 +89,13 @@ type HandlerSandbox interface {
 
 	// Archive a given sandbox
 	Archive(ctx context.Context, config *SandboxConfig) error
+
+	// GitClone perform a git clone operation
+	GitClone(ctx context.Context, input GitCloneInput) error
+
+	// GitPush perform a git push operation
+	GitPush(ctx context.Context, input GitPushInput) error
+
+	// GitPull perform a git pull operation
+	GitPull(ctx context.Context, input GitPullInput) error
 }
