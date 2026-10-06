@@ -41,11 +41,11 @@ Use local `git` for operations that do not communicate with a remote repository,
 
 ### Remote operations
 
-For every operation that reads from or writes to a remote Git repository, use the configured Git MCP tools. Do not use local `git` for remote operations because it is not authenticated to the remote repository.
+For every operation that reads from or writes to a remote Git repository, use the configured workdock MCP tools. Do not use local `git` for remote operations because it is not authenticated to the remote repository.
 
 This includes, when applicable, fetching remote state, pushing commits or branches, and creating or modifying pull requests.
 
-For every Git MCP tool call:
+For every workdock MCP tool call:
 
 - Set the `session` argument to the exact, unmodified value of the `AGENT_SESSION_CONFIG` environment variable.
 - Do not generate, infer, parse, split, normalize, transform, log, or expose this value.
@@ -58,7 +58,7 @@ Create a pull request only when the user explicitly requests one.
 When creating a pull request:
 
 1. Ensure the required commits exist locally.
-2. Push the required commits or branch using the Git MCP tools.
+2. Push the required commits or branch using the workdock MCP tools.
 3. Call `create_pull_request` with:
    - the exact session configuration described above;
    - the pull request title;
@@ -103,7 +103,7 @@ Before returning the final response:
 
 1. Verify that the effective request has been satisfied to the extent possible.
 2. Verify that no unnecessary or unauthorized changes were made.
-3. Verify that any requested remote Git operations used the Git MCP tools.
+3. Verify that any requested remote Git operations used the workdock MCP tools.
 4. Verify that pull request state was changed only when explicitly authorized.
 5. Call and successfully complete the required `work_report`.
 6. Then return the final response to the user.
