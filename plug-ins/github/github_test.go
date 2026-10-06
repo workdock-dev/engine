@@ -41,7 +41,7 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockClient struct {
-	createPRFn func(context.Context, string, string, types.CreatePullRequestInput) (*types.CreatePullRequestResponse, error)
+	createPRFn func(context.Context, string, string, types.CreatePullRequestInput) (*types.PullRequest, error)
 
 	isPublicFn  func(ctx context.Context, repo string) (bool, error)
 	createTokFn func(installationId int) (*types.InstallationAccessToken, error)
@@ -969,7 +969,7 @@ var (
 	_ webhook.WEventConsumer = (*WEventConsumer)(nil)
 )
 
-func (m *mockClient) CreatePullRequest(ctx context.Context, repo, token string, input types.CreatePullRequestInput) (*types.CreatePullRequestResponse, error) {
+func (m *mockClient) CreatePullRequest(ctx context.Context, repo, token string, input types.CreatePullRequestInput) (*types.PullRequest, error) {
 	if m.createPRFn != nil {
 		return m.createPRFn(ctx, repo, token, input)
 	}
@@ -978,13 +978,13 @@ func (m *mockClient) CreatePullRequest(ctx context.Context, repo, token string, 
 }
 
 func (s *GitHandlerSuite) TestCreatePullRequestMapsProviderResult() {
-	client := &mockClient{createPRFn: func(_ context.Context, repo, token string, input types.CreatePullRequestInput) (*types.CreatePullRequestResponse, error) {
+	client := &mockClient{createPRFn: func(_ context.Context, repo, token string, input types.CreatePullRequestInput) (*types.PullRequest, error) {
 		s.Equal("owner/repo", repo)
 		s.Equal("private", token)
 		s.Equal("Changes", input.Title)
 		s.Equal("feature", input.Head)
 		s.Equal("main", input.Base)
-		pr := &types.CreatePullRequestResponse{URL: "https://github.com/owner/repo/pull/42", Number: 42}
+		pr := &types.PullRequest{URL: "https://github.com/owner/repo/pull/42", Number: 42}
 		pr.Head.Ref = "feature"
 		pr.Head.SHA = "commit"
 		return pr, nil

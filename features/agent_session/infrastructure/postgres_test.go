@@ -816,9 +816,7 @@ func (s *PostgresSuite) TestSaveMCPPullRequestPreservesReportAndRejectsExpiredEx
 		return pgconn.NewCommandTag("UPDATE 1"), nil
 	}
 	s.NoError(s.repo.SaveMCPPullRequest(context.Background(), "session", "token", pr))
-	s.pool.execFn = func(context.Context, string, ...any) (pgconn.CommandTag, error) {
-		return pgconn.NewCommandTag("UPDATE 0"), nil
-	}
+	s.pool.execFn = func(context.Context, string, ...any) (pgconn.CommandTag, error) { return pgconn.NewCommandTag("UPDATE 0"), nil }
 	s.ErrorContains(s.repo.SaveMCPPullRequest(context.Background(), "session", "token", pr), "active agent execution required")
 	s.ErrorContains(s.repo.SaveMCPReport(context.Background(), "session", "token", &types.SessionEventResult{Commits: []string{}, Report: "No changes"}), "active agent execution required")
 }
