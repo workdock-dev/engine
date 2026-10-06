@@ -276,8 +276,8 @@ func (s *HarnessSuite) TestGetConfigFile_ParamProviderOverridesModel() {
 func (s *HarnessSuite) TestGetConfigFile_Mcps() {
 	config := agent_session_interfaces.HarnessConfig{
 		Mcps: []agent_session_interfaces.MCPConfig{
-			{Name: "linear", Url: "https://mcp.linear.app/sse", AuthSecretEnvVar: "LINEAR_TOKEN", AuthHeaderValue: "Bearer {env:LINEAR_TOKEN}"},
-			{Name: "github", Url: "https://mcp.github.dev", AuthSecretEnvVar: "GITHUB_TOKEN", AuthHeaderValue: "Bearer {env:GITHUB_TOKEN}"},
+			{Name: "linear", Url: "https://mcp.linear.app/sse", AuthSecretEnvVar: "LINEAR_TOKEN", AuthHeaderValue: "Bearer {{secret}}"},
+			{Name: "github", Url: "https://mcp.github.dev", AuthSecretEnvVar: "GITHUB_TOKEN", AuthHeaderValue: "Bearer {{secret}}"},
 		},
 	}
 
@@ -1106,3 +1106,23 @@ func (s *HarnessSuite) TestParseToolPart_ToolTiming() {
 
 // compile-time interface check
 var _ agent_session_interfaces.HandlerHarness = (*HarnessHandler)(nil)
+
+func (s *HarnessSuite) TestMCPSecretReferenceRequiresEnvironmentVariable() {
+	config := agent_session_interfaces.HarnessConfig{Mcps: []agent_session_interfaces.MCPConfig{
+		{Name: "missing-secret", Url: "https://example.com/mcp", AuthHeaderValue: "Bearer {{secret}}"},
+	}}
+	_, _, err := s.handler.GetConfigFile(&config)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "auth_secret_env_var")
+}
+
+func (s *HarnessSuite) TestMCPNeutralAPIKeyHeader() {
+	config := agent_session_interfaces.HarnessConfig{Mcps: []agent_session_interfaces.MCPConfig{
+		{Name: "api-key", Url: "https://example.com/mcp", AuthHeaderKey: "X-Api-Key", AuthHeaderValue: "{{secret}}", AuthSecretEnvVar: "CUSTOM_TOKEN"},
+	}}
+	parsed := s.unmarshalConfig(config)
+	var mcps map[string]any
+	s.Require().NoError(json.Unmarshal(parsed.Mcp, &mcps))
+	server := mcps["api-key"].(map[string]any)
+	s.Equal("{env:CUSTOM_TOKEN}", server["headers"].(map[string]any)["X-Api-Key"])
+}

@@ -3061,7 +3061,7 @@ func (s *ControllerSuite) TestSandbox_MCPDispatchScopesCredentialsToExecution() 
 		Name:             "git",
 		Url:              "https://engine.example.com/api/v1/mcp",
 		AuthHeaderKey:    "Authorization",
-		AuthHeaderValue:  "Bearer {env:WORKDOCK_GIT_MCP_API_KEY}",
+		AuthHeaderValue:  "Bearer {{secret}}",
 		AuthSecretEnvVar: "WORKDOCK_GIT_MCP_API_KEY",
 		AuthSecret:       "api-key",
 		Hosts:            []string{"engine.example.com"},

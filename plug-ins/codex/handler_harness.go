@@ -88,14 +88,25 @@ func (h *HarnessHandler) GetConfigFile(config *agent_session_interfaces.HarnessC
 			header = "Authorization"
 		}
 
-		if mcp.AuthSecretEnvVar == "" {
-			if mcp.AuthHeaderValue != "" {
-				fmt.Fprintf(&data, "http_headers = { %s = %s }\n", strconv.Quote(header), strconv.Quote(mcp.AuthHeaderValue))
+		if strings.Contains(mcp.AuthHeaderValue, "{{secret}}") {
+			if mcp.AuthSecretEnvVar == "" {
+				err := fmt.Errorf("[codex] MCP %q requires auth_secret_env_var for {{secret}}", mcp.Name)
+				slog.Error("[codex] missing MCP secret environment variable", "err", err)
+				return "", nil, err
 			}
-		} else if header == "Authorization" {
-			fmt.Fprintf(&data, "bearer_token_env_var = %s\n", strconv.Quote(mcp.AuthSecretEnvVar))
-		} else {
-			fmt.Fprintf(&data, "env_http_headers = { %s = %s }\n", strconv.Quote(header), strconv.Quote(mcp.AuthSecretEnvVar))
+
+			switch {
+			case header == "Authorization" && mcp.AuthHeaderValue == "Bearer {{secret}}":
+				fmt.Fprintf(&data, "bearer_token_env_var = %s\n", strconv.Quote(mcp.AuthSecretEnvVar))
+			case mcp.AuthHeaderValue == "{{secret}}":
+				fmt.Fprintf(&data, "env_http_headers = { %s = %s }\n", strconv.Quote(header), strconv.Quote(mcp.AuthSecretEnvVar))
+			default:
+				err := fmt.Errorf("[codex] MCP %q has an unsupported auth_header_value template", mcp.Name)
+				slog.Error("[codex] unsupported MCP auth template", "err", err)
+				return "", nil, err
+			}
+		} else if mcp.AuthHeaderValue != "" {
+			fmt.Fprintf(&data, "http_headers = { %s = %s }\n", strconv.Quote(header), strconv.Quote(mcp.AuthHeaderValue))
 		}
 	}
 

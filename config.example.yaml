@@ -42,8 +42,10 @@ mcps:
     url: "https://example.com"
     # Defines the http auth header key e.g. Authorization, X-Api-Key
     auth_header_key: "Authorization" # Defaults to Authorization
-    # Defines the http auth header value e.g. Bearer {env:SOME_SCRET_VAR}, SOME_SECRET_VAR, this will always point to an env var
-    auth_header_value: "Bearer {env:SOME_SECRET_VAR}"
+    # Each harness renders {{secret}} using its native environment variable format.
+    # Use "{{secret}}" for a raw API-key header or "Bearer {{secret}}" for Authorization.
+    # Codex rejects other templates containing {{secret}}.
+    auth_header_value: "Bearer {{secret}}"
     # Defines the env var where the secret is e.g. SOME_SECRET_VAR
     auth_secret_env_var: "SOME_SECRET_VAR"
     # The secret itself that will be assign or shadow-assign to the SOME_SECRET_VAR

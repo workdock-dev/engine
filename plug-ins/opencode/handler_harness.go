@@ -141,13 +141,21 @@ func (h *HarnessHandler) GetConfigFile(config *agent_session_interfaces.HarnessC
 				header = "Authorization"
 			}
 
+			if strings.Contains(value.AuthHeaderValue, "{{secret}}") && value.AuthSecretEnvVar == "" {
+				err := fmt.Errorf("[opencode] MCP %q requires auth_secret_env_var for {{secret}}", value.Name)
+				slog.Error("[opencode] missing MCP secret environment variable", "err", err)
+				return "", nil, err
+			}
+
+			headerValue := strings.ReplaceAll(value.AuthHeaderValue, "{{secret}}", "{env:"+value.AuthSecretEnvVar+"}")
+
 			mcp[value.Name] = map[string]any{
 				"type":    "remote",
 				"url":     value.Url,
 				"enabled": true,
 				"oauth":   false,
 				"headers": map[string]string{
-					header: value.AuthHeaderValue,
+					header: headerValue,
 				},
 			}
 		}

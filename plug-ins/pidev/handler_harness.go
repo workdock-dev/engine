@@ -190,13 +190,21 @@ func (h *HarnessHandler) mcpJson(mcps []agent_session_interfaces.MCPConfig) ([]b
 			header = "Authorization"
 		}
 
+		if strings.Contains(mcp.AuthHeaderValue, "{{secret}}") && mcp.AuthSecretEnvVar == "" {
+			err := fmt.Errorf("[pidev] MCP %q requires auth_secret_env_var for {{secret}}", mcp.Name)
+			slog.Error("[pidev] missing MCP secret environment variable", "err", err)
+			return nil, err
+		}
+
+		headerValue := strings.ReplaceAll(mcp.AuthHeaderValue, "{{secret}}", "${"+mcp.AuthSecretEnvVar+"}")
+
 		// keep-alive connects at startup and reconnects when the remote HTTP
 		// session expires, so agents never have to reconnect manually; eager
 		// would leave the server disconnected after a session expiry
 		servers[mcp.Name] = map[string]any{
 			"url": mcp.Url,
 			"headers": map[string]string{
-				header: mcp.AuthHeaderValue,
+				header: headerValue,
 			},
 			"lifecycle": "keep-alive",
 		}
