@@ -23,6 +23,8 @@
 
 service_name: "workdock"
 server_address: ":8080"
+mcp_server_url: "https://engine.example.com/api/v1/mcp"
+mcp_api_key: "replace-with-internal-workdock-mcp-api-key"
 
 task_scheduler:
   workers: 3
@@ -66,9 +68,6 @@ linear:
     - "34.38.87.206"
     - "34.134.222.122"
     - "35.222.25.142"
-
-mcp_server_url: "https://engine.example.com/api/v1/mcp/git"
-mcp_api_key: "replace-with-internal-workdock-mcp-api-key"
 
 daytona:
   api_url: "https://app.daytona.io/api"

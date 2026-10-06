@@ -163,7 +163,7 @@ func (h *SandboxHandler) Run(
 	// *-------------------------------------------------------------------------*
 
 	if !created {
-		if err := h.updateExistingSandbox(ctx, sandbox, config, secrets, nil); err != nil {
+		if err := h.updateExistingSandbox(ctx, sandbox, config, secrets, config.EnvVars); err != nil {
 			return shutdown, err
 		}
 	}
@@ -565,6 +565,7 @@ func (h *SandboxHandler) getOrCreateSandbox(ctx context.Context, config *agent_s
 						"session_event_identifier": config.SessionEvent.Identifier,
 					},
 					Secrets: secrets,
+					EnvVars: config.EnvVars,
 				})
 			})
 		}()

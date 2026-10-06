@@ -1088,17 +1088,10 @@ func (c *controller) sandbox(
 		}
 	}
 
-	secrets = append(secrets,
-		interfaces.SandboxSecret{
-			Name: "AGENT_SESSION_CONFIG",
-			Value: fmt.Sprintf(
-				"%s|%s|%s",
-				session.Identifier,
-				sessionEvent.Identifier,
-				mcpToken,
-			),
-		},
-	)
+	// Tool arguments travel in JSON bodies, where secret placeholders are not substituted.
+	envVars := map[string]string{
+		"AGENT_SESSION_CONFIG": fmt.Sprintf("%s|%s|%s", session.Identifier, sessionEvent.Identifier, mcpToken),
+	}
 
 	// Get prompt file and prepare it for upload
 	promptFilePath, promptData := harnessHandler.GetPromptFile(prompt)
@@ -1144,6 +1137,7 @@ func (c *controller) sandbox(
 			Commands:            commands,
 			FileUploads:         fileUploads,
 			Secrets:             secrets,
+			EnvVars:             envVars,
 			GitName:             "workdock[bot]",
 			GitEmail:            "no-reply@workdock.dev",
 			HarnessCommand:      harnessHandler.RunCommand(),

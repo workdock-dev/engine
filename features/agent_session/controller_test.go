@@ -1870,7 +1870,7 @@ func (s *ControllerSuite) TestSandbox_NoMcpNoGitAccess() {
 	s.Equal(5, config.AutoStopInterval)
 	s.NotNil(config.Session)
 	s.Same(testSessionEvent, config.SessionEvent)
-	s.Len(config.Secrets, 1)
+	s.Empty(config.Secrets)
 	s.Equal([]string{"harness-config-cmd"}, config.CommandsWhenCreated[len(config.CommandsWhenCreated)-1:])
 	s.Equal("opencode run", config.HarnessCommand)
 	s.Len(config.FileUploads, 2)
@@ -1906,10 +1906,10 @@ func (s *ControllerSuite) TestSandbox_WithMcp() {
 
 	s.Require().NoError(err)
 	config := s.sandboxHdl.runConfig
-	s.Require().Len(config.Secrets, 2)
+	s.Require().Len(config.Secrets, 1)
 	s.Equal("LINEAR_KEY", config.Secrets[0].Name)
 	s.Equal("linear-secret", config.Secrets[0].Value)
-	s.Equal("sess-1|evt-1|", config.Secrets[1].Value)
+	s.Equal("sess-1|evt-1|", config.EnvVars["AGENT_SESSION_CONFIG"])
 }
 
 func (s *ControllerSuite) TestSandbox_NilMcpHandler() {
@@ -1921,7 +1921,7 @@ func (s *ControllerSuite) TestSandbox_NilMcpHandler() {
 	)
 
 	s.Require().NoError(err)
-	s.Len(s.sandboxHdl.runConfig.Secrets, 1)
+	s.Empty(s.sandboxHdl.runConfig.Secrets)
 }
 
 func (s *ControllerSuite) TestSandbox_GetConfigFileError() {
@@ -2341,10 +2341,10 @@ func (s *ControllerSuite) TestExecute_Success_NoPullRequest() {
 	s.prepareExecutable()
 
 	s.sandboxHdl.runFn = func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
-		s.Require().Len(config.Secrets, 1)
-		s.Equal("AGENT_SESSION_CONFIG", config.Secrets[0].Name)
-		s.Regexp(`^sess-1\|evt-1\|[0-9a-f]{64}$`, config.Secrets[0].Value)
-		s.Equal("sess-1|evt-1|"+s.sessionRep.mcpTokens["sess-1"], config.Secrets[0].Value)
+		s.Empty(config.Secrets)
+		s.Require().Len(config.EnvVars, 1)
+		s.Regexp(`^sess-1\|evt-1\|[0-9a-f]{64}$`, config.EnvVars["AGENT_SESSION_CONFIG"])
+		s.Equal("sess-1|evt-1|"+s.sessionRep.mcpTokens["sess-1"], config.EnvVars["AGENT_SESSION_CONFIG"])
 		go func() {
 			close(stdout)
 			close(stderr)
@@ -3059,7 +3059,7 @@ func (s *ControllerSuite) TestExecute_MCPTokenCreationErrorPreventsDispatch() {
 func (s *ControllerSuite) TestSandbox_MCPDispatchScopesCredentialsToExecution() {
 	mcps := []interfaces.MCPConfig{{
 		Name:             "git",
-		Url:              "https://engine.example.com/api/v1/mcp/git",
+		Url:              "https://engine.example.com/api/v1/mcp",
 		AuthHeaderKey:    "Authorization",
 		AuthHeaderValue:  "Bearer {env:WORKDOCK_GIT_MCP_API_KEY}",
 		AuthSecretEnvVar: "WORKDOCK_GIT_MCP_API_KEY",
@@ -3080,14 +3080,23 @@ func (s *ControllerSuite) TestSandbox_MCPDispatchScopesCredentialsToExecution() 
 
 	s.Require().NoError(err)
 	s.Equal(mcps, config.Mcps)
-	s.Require().Len(s.sandboxHdl.runConfig.Secrets, 2)
+	s.Require().Len(s.sandboxHdl.runConfig.Secrets, 1)
 	s.Equal("api-key", s.sandboxHdl.runConfig.Secrets[0].Value)
-	s.Equal("AGENT_SESSION_CONFIG", s.sandboxHdl.runConfig.Secrets[1].Name)
-	s.Equal("sess-1|evt-1|execution-token", s.sandboxHdl.runConfig.Secrets[1].Value)
+	s.Require().Len(s.sandboxHdl.runConfig.EnvVars, 1)
+	s.Equal("sess-1|evt-1|execution-token", s.sandboxHdl.runConfig.EnvVars["AGENT_SESSION_CONFIG"])
 
 	for _, data := range s.sandboxHdl.runConfig.FileUploads {
 		s.NotContains(string(data), "execution-token")
 	}
+
+	_, _, _, _, err = s.c.sandbox(
+		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		"next prompt", nil, newTestSession(), testSessionEvent, "next-execution-token",
+	)
+	s.Require().NoError(err)
+	s.Equal("sess-1|evt-1|next-execution-token", s.sandboxHdl.runConfig.EnvVars["AGENT_SESSION_CONFIG"])
+	s.Require().Len(s.sandboxHdl.runConfig.Secrets, 1)
+	s.Equal("api-key", s.sandboxHdl.runConfig.Secrets[0].Value)
 }
 
 func (s *ControllerSuite) TestExecute_MCPTokenCleanupUsesUncancelledContext() {
@@ -3168,7 +3177,7 @@ func (s *ControllerSuite) TestMCPDependenciesConfiguredBeforeAnyExecution() {
 		{name: "valid execution", header: "Bearer api-key", status: http.StatusNoContent},
 	} {
 		s.Run(test.name, func() {
-			request := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/git", nil)
+			request := httptest.NewRequest(http.MethodPost, "/api/v1/mcp", nil)
 			request.Header.Set("Authorization", test.header)
 			response := httptest.NewRecorder()
 			mux.ServeHTTP(response, request)
@@ -3177,15 +3186,12 @@ func (s *ControllerSuite) TestMCPDependenciesConfiguredBeforeAnyExecution() {
 	}
 	s.Equal(1, invocations)
 	delete(s.sessionRep.mcpTokens, "remote-session")
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/git", nil)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/mcp", nil)
 	request.Header.Set("Authorization", "Bearer api-key")
 	response := httptest.NewRecorder()
 	mux.ServeHTTP(response, request)
 	s.Equal(http.StatusForbidden, response.Code)
 	s.Equal(1, invocations)
-	response = httptest.NewRecorder()
-	mux.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/mcp/daytona", nil))
-	s.Equal(http.StatusNotFound, response.Code)
 }
 
 func (s *ControllerSuite) TestMCPGitAccessLooksUpCurrentConnectionForEachSession() {

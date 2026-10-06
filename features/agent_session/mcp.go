@@ -99,7 +99,7 @@ func NewMCP(
 			JSONResponse: true,
 		},
 	)
-	mux.Handle("/api/v1/mcp/git", m.Handler())
+	mux.Handle("/api/v1/mcp", m.Handler())
 
 	slog.Debug("[daytona] Git MCP server configured")
 	return m

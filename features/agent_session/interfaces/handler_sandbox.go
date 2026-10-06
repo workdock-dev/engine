@@ -39,6 +39,7 @@ type SandboxConfig struct {
 	Session             *types.Session
 	SessionEvent        *types.SessionEvent
 	Secrets             []SandboxSecret
+	EnvVars             map[string]string
 	FileUploads         map[string][]byte
 	CommandsWhenCreated []string
 	Commands            []string
