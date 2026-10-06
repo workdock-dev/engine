@@ -42,6 +42,23 @@ type GitPullInput struct {
 	Remote  string `json:"remote,omitempty"`
 }
 
+type WorkReportInput struct {
+	Session      string   `json:"session" jsonschema:"Read the exact value from AGENT_SESSION_CONFIG."`
+	LinesAdded   int      `json:"linesAdded" jsonschema:"Lines of code added; zero when none."`
+	LinesRemoved int      `json:"linesRemoved" jsonschema:"Lines of code removed; zero when none."`
+	Commits      []string `json:"commits" jsonschema:"Commit SHAs; an empty list when none."`
+	Report       string   `json:"report" jsonschema:"Summary of work, next action, or questions; at most 280 characters."`
+}
+
+type CreatePullRequestInput struct {
+	Session string `json:"session" jsonschema:"Read the exact value from AGENT_SESSION_CONFIG."`
+	Title   string `json:"title"`
+	Body    string `json:"body"`
+	Head    string `json:"head"`
+	Base    string `json:"base"`
+	Draft   bool   `json:"draft,omitempty"`
+}
+
 type AgentSessionMCP struct {
 	apiKey                    string
 	mcp                       *mcp.Server
@@ -106,9 +123,6 @@ func (m *AgentSessionMCP) Handler() http.Handler {
 }
 
 func (m *AgentSessionMCP) registerTools() {
-	mcp.AddTool(m.mcp, &mcp.Tool{Name: "work_report", Description: "Required before completing any execution: report changes, next actions, or questions. Use zero counts and an empty commits list when no changes were made."}, m.workReport)
-	mcp.AddTool(m.mcp, &mcp.Tool{Name: "create_pull_request", Description: "Create a pull request only when requested by the user."}, m.createPullRequest)
-
 	mcp.AddTool(m.mcp, &mcp.Tool{
 		Name:        "git_clone",
 		Description: "Clone a repository.",
@@ -123,13 +137,24 @@ func (m *AgentSessionMCP) registerTools() {
 		Name:        "git_pull",
 		Description: "Pull repository changes.",
 	}, m.gitPull)
+
+	mcp.AddTool(m.mcp, &mcp.Tool{
+		Name:        "work_report",
+		Description: "Required before completing any execution: report changes, next actions, or questions. Use zero counts and an empty commits list when no changes were made.",
+	}, m.workReport)
+
+	mcp.AddTool(m.mcp, &mcp.Tool{
+		Name:        "create_pull_request",
+		Description: "Create a pull request only when requested by the user.",
+	}, m.createPullRequest)
 }
 
-func (m *AgentSessionMCP) authorized(ctx context.Context, session string) (string, error) {
+// authorized returns the session identifier, session event identifier or an error
+func (m *AgentSessionMCP) authorized(ctx context.Context, session string) (string, string, error) {
 	if ctx.Value(AuthenticatedKey) != true {
 		err := errors.New("request not authenticated")
 		slog.Error("[agent_session][mcp] failed to authorize request", "err", err)
-		return "", err
+		return "", "", err
 	}
 
 	// TODO: Check if session is in cache, if it is, session is valid
@@ -139,27 +164,28 @@ func (m *AgentSessionMCP) authorized(ctx context.Context, session string) (strin
 	if len(config) != 2 || config[0] == "" || config[1] == "" {
 		err := errors.New("invalid agent session configuration format")
 		slog.Error("[agent_session][mcp] failed to authorize request", "err", err)
-		return "", err
+		return "", "", err
 	}
 
 	sessionId := config[0]
-	sessionToken := config[1]
+	sessionEventId := config[1]
+	sessionToken := config[2]
 
 	token, err := m.session.GetMCPToken(ctx, sessionId)
 
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	if token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(sessionToken)) != 1 {
 		err := errors.New("invalid agent session mcp token")
 		slog.Error("[agent_session][mcp] failed to authorize request", "err", err, "session_id", sessionId)
-		return "", err
+		return "", "", err
 	}
 
 	// TODO: Cache the session to avoid trips to the database
 
-	return sessionId, nil
+	return sessionId, sessionEventId, nil
 }
 
 func (m *AgentSessionMCP) gitAccess(ctx context.Context, sessionId string) (string, error) {
@@ -211,7 +237,7 @@ func (m *AgentSessionMCP) gitAccess(ctx context.Context, sessionId string) (stri
 }
 
 func (m *AgentSessionMCP) gitClone(ctx context.Context, _ *mcp.CallToolRequest, input GitCloneInput) (*mcp.CallToolResult, any, error) {
-	sessionId, err := m.authorized(ctx, input.Session)
+	sessionId, _, err := m.authorized(ctx, input.Session)
 
 	if err != nil {
 		return nil, nil, err
@@ -244,7 +270,7 @@ func (m *AgentSessionMCP) gitClone(ctx context.Context, _ *mcp.CallToolRequest, 
 }
 
 func (m *AgentSessionMCP) gitPush(ctx context.Context, _ *mcp.CallToolRequest, input GitPushInput) (*mcp.CallToolResult, any, error) {
-	sessionId, err := m.authorized(ctx, input.Session)
+	sessionId, _, err := m.authorized(ctx, input.Session)
 
 	if err != nil {
 		return nil, nil, err
@@ -276,7 +302,7 @@ func (m *AgentSessionMCP) gitPush(ctx context.Context, _ *mcp.CallToolRequest, i
 }
 
 func (m *AgentSessionMCP) gitPull(ctx context.Context, _ *mcp.CallToolRequest, input GitPullInput) (*mcp.CallToolResult, any, error) {
-	sessionId, err := m.authorized(ctx, input.Session)
+	sessionId, _, err := m.authorized(ctx, input.Session)
 
 	if err != nil {
 		return nil, nil, err
@@ -307,8 +333,8 @@ func (m *AgentSessionMCP) gitPull(ctx context.Context, _ *mcp.CallToolRequest, i
 	return nil, map[string]bool{"success": err == nil}, err
 }
 
-func (m *AgentSessionMCP) workReport(ctx context.Context, _ *mcp.CallToolRequest, input types.WorkReportInput) (*mcp.CallToolResult, any, error) {
-	sessionID, err := m.authorized(ctx, input.Session)
+func (m *AgentSessionMCP) workReport(ctx context.Context, _ *mcp.CallToolRequest, input WorkReportInput) (*mcp.CallToolResult, any, error) {
+	_, sessionEventId, err := m.authorized(ctx, input.Session)
 
 	if err != nil {
 		return nil, nil, err
@@ -324,7 +350,7 @@ func (m *AgentSessionMCP) workReport(ctx context.Context, _ *mcp.CallToolRequest
 		input.Commits = []string{}
 	}
 
-	event, err := m.session.GetExecutingSessionEvent(ctx, sessionID)
+	event, err := m.session.GetAgentSessionEvent(ctx, sessionEventId)
 
 	if err != nil {
 		return nil, nil, err
@@ -343,8 +369,8 @@ func (m *AgentSessionMCP) workReport(ctx context.Context, _ *mcp.CallToolRequest
 	return nil, map[string]bool{"success": err == nil}, err
 }
 
-func (m *AgentSessionMCP) createPullRequest(ctx context.Context, _ *mcp.CallToolRequest, input types.CreatePullRequestInput) (*mcp.CallToolResult, any, error) {
-	sessionID, err := m.authorized(ctx, input.Session)
+func (m *AgentSessionMCP) createPullRequest(ctx context.Context, _ *mcp.CallToolRequest, input CreatePullRequestInput) (*mcp.CallToolResult, any, error) {
+	sessionID, sessionEventId, err := m.authorized(ctx, input.Session)
 
 	if err != nil {
 		return nil, nil, err
@@ -372,10 +398,22 @@ func (m *AgentSessionMCP) createPullRequest(ctx context.Context, _ *mcp.CallTool
 		return nil, nil, errors.New("agent session repository not set")
 	}
 
-	gitHandler := m.gitHostingHandlerRegistry[string(shared.PlatformProvider_GitHub)]
+	gitHandler, ok := m.gitHostingHandlerRegistry[string(shared.PlatformProvider_GitHub)]
+
+	if !ok {
+		err := fmt.Errorf("provider %s not configured for git hosting handler", shared.PlatformProvider_GitHub)
+		slog.Error("[agent-session][mcp] failed to validate git access", "err", err, "session_id", sessionID)
+		return nil, nil, err
+	}
+
 	pr, err := gitHandler.CreatePullRequest(ctx, interfaces.CreatePullRequestInput{
-		RepoFullName: *session.RepoFullName, AccessToken: accessToken,
-		Title: input.Title, Body: input.Body, Head: input.Head, Base: input.Base, Draft: input.Draft,
+		RepoFullName: *session.RepoFullName,
+		AccessToken:  accessToken,
+		Title:        input.Title,
+		Body:         input.Body,
+		Head:         input.Head,
+		Base:         input.Base,
+		Draft:        input.Draft,
 	})
 
 	if err != nil {
@@ -386,7 +424,7 @@ func (m *AgentSessionMCP) createPullRequest(ctx context.Context, _ *mcp.CallTool
 		return nil, nil, errors.New("pull request creation returned no result")
 	}
 
-	event, err := m.session.GetExecutingSessionEvent(ctx, sessionID)
+	event, err := m.session.GetAgentSessionEvent(ctx, sessionEventId)
 
 	if err != nil {
 		return nil, nil, err

@@ -167,8 +167,6 @@ func (c *controller) init() error {
 	c.onGitResetConnection()
 	c.onGitCompleteConnection()
 
-	// TODO: Implement/check run failed domain subscription
-
 	return nil
 }
 
@@ -568,8 +566,8 @@ func (c *controller) onGitResetConnection() {
 
 			if payload.Delete {
 				slog.Debug("[agent-session] deleted git access secret")
-				// TODO: Remove this hardcoded value
 				if err := telemetry.SpanErr(ctx, c.tracer, "git_reset_connection.delete_secret", func(ctx context.Context) error {
+					// TODO: Remove this hardcoded value
 					return c.secretManager.Delete(ctx, "/github/installations", payload.InstallationId)
 				}); err != nil {
 					return err
@@ -671,16 +669,6 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 		}
 	}()
 
-	if sessionEvent.Result != nil {
-		result := *sessionEvent.Result
-		result.Report = ""
-		sessionEvent.Result = &result
-
-		if err := c.session.UpdateSessionEventResult(ctx, sessionEvent); err != nil {
-			return types.EventJobStatus_Failed, err
-		}
-	}
-
 	// *-------------------------------------------------------------------------*
 	// * Get provider: work platform, git hosting, harness, sandbox              *
 	// *-------------------------------------------------------------------------*
@@ -758,7 +746,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 		*interfaces.HarnessConfig,
 		<-chan string,
 		<-chan string,
-		func(ctx context.Context) string,
+		interfaces.SandboxShutdown,
 		error,
 	) {
 		return c.sandbox(
@@ -776,50 +764,30 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	})
 
 	defer func() {
+		// DO NOT REMOVE!
+		// Some times the harness bug out and doesn't send the response, causing the
+		// UI/UX Chat to stay in a thinking state; thus, with this, we guranteed to
+		// send the finish signal
+		slog.Debug("[agent-session] send response event")
+		agentHandler.SendResponse(ctx, session.Identifier, agentHandlerCredential, "")
+
+		// *-------------------------------------------------------------------------*
+		// * Transition the ticket to In Review                                      *
+		// *-------------------------------------------------------------------------*
+		slog.Debug("[agent-session] transition issue to in review status")
+		if err := telemetry.SpanErr(ctx, c.tracer, "execute.transition_issue_to_in_review", func(ctx context.Context) error {
+			return agentHandler.TransitionIssueToInReview(ctx, session.IssueId, agentHandlerCredential)
+		}); err != nil {
+			slog.Warn("[agent-session] failed to transition issue to in review status", "issue_id", session.IssueId, "err", err)
+		}
+
 		if shutdown != nil {
 			// The job context can be cancelled by the time the sandbox shuts down;
 			// finalization (PR result, response event and the In Review transition)
 			// must still complete.
 			telemetry.SpanDo(context.WithoutCancel(ctx), c.tracer, "execute.sandbox.shutdown", func(ctx context.Context) {
 				slog.Debug("[agent-session] sandbox shutdown")
-				result := shutdown(context.Background())
-
-				// *-------------------------------------------------------------------------*
-				// * Parse exit command
-				// *-------------------------------------------------------------------------*
-				pr := gitHandler.ParseLatestChangesResult(result)
-
-				if pr != nil {
-					slog.Debug("[agent-session] update session result")
-					current, err := c.session.GetAgentSessionEvent(ctx, sessionEvent.Identifier)
-
-					if err == nil && current != nil {
-						if current.Result == nil {
-							current.Result = &types.SessionEventResult{}
-						}
-
-						current.Result.PullRequest = pr
-						current.GitRef = &pr.HeadRefName
-						c.session.UpdateSessionEventResult(ctx, current)
-					}
-				}
-
-				// DO NOT REMOVE!
-				// Some times the harness bug out and doesn't send the response, causing the
-				// UI/UX Chat to stay in a thinking state; thus, with this, we guranteed to
-				// send the finish signal
-				slog.Debug("[agent-session] send response event")
-				agentHandler.SendResponse(ctx, session.Identifier, agentHandlerCredential, "")
-
-				// *-------------------------------------------------------------------------*
-				// * Transition the ticket to In Review                                      *
-				// *-------------------------------------------------------------------------*
-				slog.Debug("[agent-session] transition issue to in review status")
-				if err := telemetry.SpanErr(ctx, c.tracer, "execute.transition_issue_to_in_review", func(ctx context.Context) error {
-					return agentHandler.TransitionIssueToInReview(ctx, session.IssueId, agentHandlerCredential)
-				}); err != nil {
-					slog.Warn("[agent-session] failed to transition issue to in review status", "issue_id", session.IssueId, "err", err)
-				}
+				shutdown(context.Background())
 			})
 		}
 	}()
@@ -1100,7 +1068,7 @@ func (c *controller) sandbox(
 	*interfaces.HarnessConfig,
 	<-chan string,
 	<-chan string,
-	func(ctx context.Context) string,
+	interfaces.SandboxShutdown,
 	error,
 ) {
 	stdout := make(chan string, 100)
@@ -1124,7 +1092,15 @@ func (c *controller) sandbox(
 	}
 
 	secrets = append(secrets,
-		interfaces.SandboxSecret{Name: "AGENT_SESSION_CONFIG", Value: fmt.Sprintf("%s|%s", session.Identifier, mcpToken)},
+		interfaces.SandboxSecret{
+			Name: "AGENT_SESSION_CONFIG",
+			Value: fmt.Sprintf(
+				"%s|%s|%s",
+				session.Identifier,
+				sessionEvent.Identifier,
+				mcpToken,
+			),
+		},
 	)
 
 	// Get prompt file and prepare it for upload
@@ -1160,26 +1136,10 @@ func (c *controller) sandbox(
 	// running git-specific commands would fail the run.
 	commandsWhenCreated := harnessHandler.GetConfigurationCommands()
 	commands := harnessHandler.GetCommands()
-	exitCommand := ""
 
 	if gitAccess != nil && gitAccess.Granted {
 		commandsWhenCreated = slices.Concat(gitHandler.GetConfigurationCommands(), commandsWhenCreated)
 		commands = slices.Concat(gitHandler.GetCommands(), commands)
-		repoFullName := ""
-
-		if session.RepoFullName != nil {
-			repoFullName = *session.RepoFullName
-		}
-
-		exitCommand = gitHandler.GetLatestChangesCommand(repoFullName)
-
-		if gitAccess.EnvVarName != "" {
-			secrets = append(secrets, interfaces.SandboxSecret{
-				Name:  gitAccess.EnvVarName,
-				Value: gitAccess.Secret,
-				Hosts: gitAccess.Hosts,
-			})
-		}
 	}
 
 	shutdown, err := sandboxHandler.Run(
@@ -1190,7 +1150,6 @@ func (c *controller) sandbox(
 			SessionEvent:        sessionEvent,
 			CommandsWhenCreated: commandsWhenCreated,
 			Commands:            commands,
-			ExitCommand:         exitCommand,
 			FileUploads:         fileUploads,
 			Secrets:             secrets,
 			GitName:             "workdock[bot]",

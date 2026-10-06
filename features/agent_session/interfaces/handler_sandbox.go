@@ -26,7 +26,7 @@ import (
 // sandbox provider's side, not on the engine's side.
 var ErrSandboxCannotStart = errors.New("sandbox is in a state that cannot start")
 
-type SandboxShutdown = func(ctx context.Context) string
+type SandboxShutdown = func(ctx context.Context)
 
 type SandboxSecret struct {
 	Name  string   `yaml:"name"`
@@ -42,7 +42,6 @@ type SandboxConfig struct {
 	FileUploads         map[string][]byte
 	CommandsWhenCreated []string
 	Commands            []string
-	ExitCommand         string
 	HarnessCommand      string
 	GitName             string
 	GitEmail            string

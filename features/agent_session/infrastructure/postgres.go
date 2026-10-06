@@ -72,9 +72,6 @@ var (
 	//go:embed sql/get_mcp_token.sql
 	GetMCPTokenSql string
 
-	//go:embed sql/get_mcp_session_event.sql
-	GetMCPSessionEventSql string
-
 	//go:embed sql/delete_mcp_token.sql
 	DeleteMCPTokenSql string
 
@@ -453,21 +450,4 @@ func (p *postgres) DeleteMCPToken(ctx context.Context, sessionID string) error {
 	}
 
 	return nil
-}
-
-func (p *postgres) GetExecutingSessionEvent(ctx context.Context, sessionID string) (*types.SessionEvent, error) {
-	var event types.SessionEvent
-	err := p.client.QueryRow(ctx, GetMCPSessionEventSql, sessionID).Scan(&event.Identifier, &event.GitRef, &event.Result)
-
-	if errors.Is(err, pgx.ErrNoRows) {
-		err = errors.New("active agent execution required")
-	}
-
-	if err != nil {
-		slog.Error("[agent_session][postgres] failed to get executing session event", "err", err)
-		return nil, err
-	}
-
-	event.SessionIdentifier = sessionID
-	return &event, nil
 }

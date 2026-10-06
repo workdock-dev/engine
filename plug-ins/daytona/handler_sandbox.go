@@ -75,7 +75,7 @@ func (h *SandboxHandler) Run(
 	config *agent_session_interfaces.SandboxConfig,
 	stdout chan<- string,
 	stderr chan<- string,
-) (func(ctx context.Context) string, error) {
+) (agent_session_interfaces.SandboxShutdown, error) {
 	// Track created secrets
 	secretIds := make([]string, 0)
 
@@ -89,31 +89,8 @@ func (h *SandboxHandler) Run(
 	var listening bool
 	var execSessionCreated bool
 
-	shutdown := func(ctx context.Context) string {
-		out := ""
-
+	shutdown := func(ctx context.Context) {
 		if sandbox != nil && !deleting {
-
-			// *-------------------------------------------------------------------------*
-			// * Run the provided exit command
-			// *-------------------------------------------------------------------------*
-
-			// The exit command is only set when the session was granted git access;
-			// repo-less sessions have no pull request metadata to collect
-			if config.ExitCommand != "" {
-				_, result, _ := h.executeCommand(
-					ctx,
-					sandbox,
-					config,
-					config.ExitCommand,
-					time.Minute*2,
-				)
-
-				if result != "" {
-					out = result
-				}
-			}
-
 			if !listening {
 				close(stdout)
 				close(stderr)
@@ -129,8 +106,6 @@ func (h *SandboxHandler) Run(
 		for _, id := range secretIds {
 			h.deleteSecret(ctx, config, id)
 		}
-
-		return out
 	}
 
 	// *-------------------------------------------------------------------------*
