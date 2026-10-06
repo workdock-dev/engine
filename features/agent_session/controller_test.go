@@ -1855,7 +1855,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_Success() {
 
 func (s *ControllerSuite) TestSandbox_NoMcpNoGitAccess() {
 	harnessConfig, stdout, stderr, shutdown, err := s.c.sandbox(
-		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		context.Background(), s.harnessHdl, s.sandboxHdl,
 		"prompt text", nil, newTestSession(), testSessionEvent, "",
 	)
 
@@ -1881,7 +1881,7 @@ func (s *ControllerSuite) TestSandbox_UsesHarnessCommands() {
 	s.harnessHdl.getCommandsFn = func() []string { return []string{"prepare-harness"} }
 
 	_, _, _, _, err := s.c.sandbox(
-		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		context.Background(), s.harnessHdl, s.sandboxHdl,
 		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
@@ -1900,7 +1900,7 @@ func (s *ControllerSuite) TestSandbox_WithMcp() {
 	}
 
 	_, _, _, _, err := s.c.sandbox(
-		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		context.Background(), s.harnessHdl, s.sandboxHdl,
 		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
@@ -1916,7 +1916,7 @@ func (s *ControllerSuite) TestSandbox_NilMcpHandler() {
 	s.c.mcpHandler = nil
 
 	_, _, _, _, err := s.c.sandbox(
-		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		context.Background(), s.harnessHdl, s.sandboxHdl,
 		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
@@ -1930,7 +1930,7 @@ func (s *ControllerSuite) TestSandbox_GetConfigFileError() {
 	}
 
 	harnessConfig, stdout, stderr, shutdown, err := s.c.sandbox(
-		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		context.Background(), s.harnessHdl, s.sandboxHdl,
 		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
@@ -1948,7 +1948,7 @@ func (s *ControllerSuite) TestSandbox_GetFilesError() {
 	}
 
 	harnessConfig, stdout, stderr, shutdown, err := s.c.sandbox(
-		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		context.Background(), s.harnessHdl, s.sandboxHdl,
 		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
@@ -1969,7 +1969,7 @@ func (s *ControllerSuite) TestSandbox_GetFilesMergedIntoFileUploads() {
 	}
 
 	_, _, _, _, err := s.c.sandbox(
-		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		context.Background(), s.harnessHdl, s.sandboxHdl,
 		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
@@ -1987,7 +1987,7 @@ func (s *ControllerSuite) TestSandbox_GetFilesMergedIntoFileUploads() {
 // small.
 func (s *ControllerSuite) TestSandbox_ContextFileUploaded() {
 	_, _, _, _, err := s.c.sandbox(
-		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		context.Background(), s.harnessHdl, s.sandboxHdl,
 		"prompt", &interfaces.ContextFile{Content: "do the work", Summary: "summary of the context"},
 		newTestSession(), testSessionEvent, "",
 	)
@@ -2004,7 +2004,7 @@ func (s *ControllerSuite) TestSandbox_ContextFileUploaded() {
 // the context is withheld because the harness resumes the previous run.
 func (s *ControllerSuite) TestSandbox_NoContextFileUploaded() {
 	_, _, _, _, err := s.c.sandbox(
-		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		context.Background(), s.harnessHdl, s.sandboxHdl,
 		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
@@ -2020,7 +2020,7 @@ func (s *ControllerSuite) TestSandbox_RunError() {
 	}
 
 	_, _, _, shutdown, err := s.c.sandbox(
-		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		context.Background(), s.harnessHdl, s.sandboxHdl,
 		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
@@ -3074,7 +3074,7 @@ func (s *ControllerSuite) TestSandbox_MCPDispatchScopesCredentialsToExecution() 
 	}
 
 	config, _, _, _, err := s.c.sandbox(
-		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		context.Background(), s.harnessHdl, s.sandboxHdl,
 		"prompt", nil, newTestSession(), testSessionEvent, "execution-token",
 	)
 
@@ -3090,7 +3090,7 @@ func (s *ControllerSuite) TestSandbox_MCPDispatchScopesCredentialsToExecution() 
 	}
 
 	_, _, _, _, err = s.c.sandbox(
-		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
+		context.Background(), s.harnessHdl, s.sandboxHdl,
 		"next prompt", nil, newTestSession(), testSessionEvent, "next-execution-token",
 	)
 	s.Require().NoError(err)

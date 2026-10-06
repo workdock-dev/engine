@@ -750,7 +750,6 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	) {
 		return c.sandbox(
 			ctx,
-			gitHandler,
 			harnessHandler,
 			sandboxHandler,
 			prompt,
@@ -1053,7 +1052,6 @@ func (c *controller) verifyGitAccess(
 
 func (c *controller) sandbox(
 	ctx context.Context,
-	gitHandler interfaces.HandlerGit,
 	harnessHandler interfaces.HandlerHarness,
 	sandboxHandler interfaces.HandlerSandbox,
 	prompt string,
