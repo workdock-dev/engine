@@ -15,8 +15,7 @@
 insert into
     public.sessions_mcp_tokens (
         agent_session_id,
-        agent_session_token,
-        agent_session_event_id
+        agent_session_token
     )
 values
-    ($1, $2, $3);
+    ($1, $2);

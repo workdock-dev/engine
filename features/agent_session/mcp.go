@@ -324,8 +324,7 @@ func (m *AgentSessionMCP) workReport(ctx context.Context, _ *mcp.CallToolRequest
 		input.Commits = []string{}
 	}
 
-	_, token, _ := strings.Cut(input.Session, "|")
-	err = m.session.SaveMCPReport(ctx, sessionID, token, &types.SessionEventResult{
+	err = m.session.SaveMCPReport(ctx, sessionID, &types.SessionEventResult{
 		LinesAdded: input.LinesAdded, LinesRemoved: input.LinesRemoved,
 		Commits: input.Commits, Report: input.Report,
 	})
@@ -376,9 +375,8 @@ func (m *AgentSessionMCP) createPullRequest(ctx context.Context, _ *mcp.CallTool
 		return nil, nil, errors.New("pull request creation returned no result")
 	}
 
-	_, token, _ := strings.Cut(input.Session, "|")
 
-	if err := m.session.SaveMCPPullRequest(ctx, sessionID, token, pr); err != nil {
+	if err := m.session.SaveMCPPullRequest(ctx, sessionID, pr); err != nil {
 		return nil, nil, err
 	}
 

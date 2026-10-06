@@ -12,10 +12,8 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
-ALTER TABLE public.sessions_mcp_tokens ADD COLUMN agent_session_event_id TEXT;
-DELETE FROM public.sessions_mcp_tokens;
-ALTER TABLE public.sessions_mcp_tokens ALTER COLUMN agent_session_event_id SET NOT NULL;
+ALTER TABLE public.sessions_mcp_tokens DROP COLUMN IF EXISTS agent_session_event_id;
 
 ---- create above / drop below ----
 
-ALTER TABLE public.sessions_mcp_tokens DROP COLUMN agent_session_event_id;
+SELECT 1;

@@ -47,17 +47,17 @@ func (s *PostgresSuite) SetupTest() {
 func (s *PostgresSuite) TestCreateMCPToken() {
 	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		s.Equal(CreateMCPTokenSql, sql)
-		s.Equal([]any{"session-1", "0123456789abcdef", "event-1"}, args)
+		s.Equal([]any{"session-1", "0123456789abcdef"}, args)
 		return pgconn.CommandTag{}, nil
 	}
-	s.NoError(s.repo.CreateMCPToken(context.Background(), "session-1", "0123456789abcdef", "event-1"))
+	s.NoError(s.repo.CreateMCPToken(context.Background(), "session-1", "0123456789abcdef"))
 }
 
 func (s *PostgresSuite) TestCreateMCPToken_DuplicateError() {
 	s.pool.execFn = func(context.Context, string, ...any) (pgconn.CommandTag, error) {
 		return pgconn.CommandTag{}, errors.New("duplicate key")
 	}
-	s.Error(s.repo.CreateMCPToken(context.Background(), "session-1", "token", "event-1"))
+	s.Error(s.repo.CreateMCPToken(context.Background(), "session-1", "token"))
 }
 
 func (s *PostgresSuite) TestGetAndDeleteMCPToken() {
@@ -806,8 +806,10 @@ func (s *PostgresSuite) TestMCPResultUpdatesPassTypedResultsAndPreserveOtherFiel
 				return &mockTx{
 					queryRowFn: func(_ context.Context, sql string, args ...any) pgx.Row {
 						s.Equal(GetMCPSessionEventSql, sql)
-						s.Equal([]any{"session", "token"}, args)
-						s.Contains(sql, "for update of event, token")
+						s.Equal([]any{"session"}, args)
+						s.Contains(sql, "for update of event")
+						s.NotContains(sql, "sessions_mcp_tokens")
+						s.Contains(sql, "job.session_event_identifier = event.identifier")
 						return &mockRow{scanFn: func(dest ...any) error {
 							*dest[0].(*string) = "event"
 							*dest[1].(**string) = &pr.HeadRefName
@@ -836,16 +838,16 @@ func (s *PostgresSuite) TestMCPResultUpdatesPassTypedResultsAndPreserveOtherFiel
 				}, nil
 			}
 			if operation == "report" {
-				s.NoError(s.repo.SaveMCPReport(context.Background(), "session", "token", &types.SessionEventResult{Commits: []string{}, Report: "No changes"}))
+				s.NoError(s.repo.SaveMCPReport(context.Background(), "session", &types.SessionEventResult{Commits: []string{}, Report: "No changes"}))
 			} else {
-				s.NoError(s.repo.SaveMCPPullRequest(context.Background(), "session", "token", pr))
+				s.NoError(s.repo.SaveMCPPullRequest(context.Background(), "session", pr))
 			}
 			s.True(committed)
 		})
 	}
 }
 
-func (s *PostgresSuite) TestMCPResultRejectsDeletedCredentialsAndRollsBack() {
+func (s *PostgresSuite) TestMCPResultRejectsMissingExecutingEventAndRollsBack() {
 	rolledBack := false
 	s.pool.beginFn = func(context.Context) (pgx.Tx, error) {
 		return &mockTx{
@@ -862,7 +864,7 @@ func (s *PostgresSuite) TestMCPResultRejectsDeletedCredentialsAndRollsBack() {
 			},
 		}, nil
 	}
-	s.ErrorContains(s.repo.SaveMCPReport(context.Background(), "session", "token", &types.SessionEventResult{}), "active agent execution required")
+	s.ErrorContains(s.repo.SaveMCPReport(context.Background(), "session", &types.SessionEventResult{}), "active agent execution required")
 	s.True(rolledBack)
 }
 
@@ -901,7 +903,7 @@ func (s *PostgresSuite) TestMCPResultTransactionFailuresDoNotCommit() {
 					},
 				}, nil
 			}
-			s.ErrorIs(s.repo.SaveMCPPullRequest(context.Background(), "session", "token", &types.PullRequest{}), failure)
+			s.ErrorIs(s.repo.SaveMCPPullRequest(context.Background(), "session", &types.PullRequest{}), failure)
 			s.Equal(stage != "begin", rolledBack)
 		})
 	}

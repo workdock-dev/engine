@@ -661,7 +661,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 		return types.EventJobStatus_Failed, err
 	}
 
-	if err := c.session.CreateMCPToken(ctx, session.Identifier, mcpToken, sessionEvent.Identifier); err != nil {
+	if err := c.session.CreateMCPToken(ctx, session.Identifier, mcpToken); err != nil {
 		return types.EventJobStatus_Failed, err
 	}
 
@@ -791,7 +791,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 
 				if pr != nil {
 					slog.Debug("[agent-session] update session result")
-					c.session.SaveMCPPullRequest(ctx, session.Identifier, mcpToken, pr)
+					c.session.SaveMCPPullRequest(ctx, session.Identifier, pr)
 				}
 
 				// DO NOT REMOVE!

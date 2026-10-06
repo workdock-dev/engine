@@ -381,8 +381,8 @@ func (m *mockMcpHandler) GetMCPList() []interfaces.MCPConfig {
 // --- Repository mock (session) ---
 
 type mockSessionRepository struct {
-	saveReportFn func(context.Context, string, string, *types.SessionEventResult) error
-	savePRFn     func(context.Context, string, string, *types.PullRequest) error
+	saveReportFn func(context.Context, string, *types.SessionEventResult) error
+	savePRFn     func(context.Context, string, *types.PullRequest) error
 
 	getAgentSessionFn              func(ctx context.Context, identifier string) (*types.Session, error)
 	getAgentSessionsByIssueIdFn    func(ctx context.Context, issueId string) ([]*types.Session, error)
@@ -478,7 +478,7 @@ func (m *mockSessionRepository) CancelSession(ctx context.Context, queuedBy, rea
 	return 1, nil
 }
 
-func (m *mockSessionRepository) CreateMCPToken(ctx context.Context, sessionID, token, eventID string) error {
+func (m *mockSessionRepository) CreateMCPToken(ctx context.Context, sessionID, token string) error {
 	if m.createMCPTokenFn != nil {
 		return m.createMCPTokenFn(ctx, sessionID, token)
 	}
@@ -676,17 +676,17 @@ func (m *mockGitHandler) CreatePullRequest(ctx context.Context, input interfaces
 	return nil, nil
 }
 
-func (m *mockSessionRepository) SaveMCPReport(ctx context.Context, sessionID, token string, result *types.SessionEventResult) error {
+func (m *mockSessionRepository) SaveMCPReport(ctx context.Context, sessionID string, result *types.SessionEventResult) error {
 	if m.saveReportFn != nil {
-		return m.saveReportFn(ctx, sessionID, token, result)
+		return m.saveReportFn(ctx, sessionID, result)
 	}
 
 	return nil
 }
 
-func (m *mockSessionRepository) SaveMCPPullRequest(ctx context.Context, sessionID, token string, pr *types.PullRequest) error {
+func (m *mockSessionRepository) SaveMCPPullRequest(ctx context.Context, sessionID string, pr *types.PullRequest) error {
 	if m.savePRFn != nil {
-		return m.savePRFn(ctx, sessionID, token, pr)
+		return m.savePRFn(ctx, sessionID, pr)
 	}
 
 	return nil

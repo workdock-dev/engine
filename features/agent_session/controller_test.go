@@ -2390,9 +2390,8 @@ func (s *ControllerSuite) TestExecute_Success_WithPullRequestResult() {
 	}
 
 	saved := false
-	s.sessionRep.savePRFn = func(_ context.Context, sessionID, token string, result *types.PullRequest) error {
+	s.sessionRep.savePRFn = func(_ context.Context, sessionID string, result *types.PullRequest) error {
 		s.Equal("sess-1", sessionID)
-		s.Equal(s.sessionRep.mcpTokens[sessionID], token)
 		s.Same(pr, result)
 		saved = true
 		return nil
@@ -3378,10 +3377,9 @@ func (s *ControllerSuite) TestWorkReportValidationAndPersistence() {
 	server := NewMCP(http.NewServeMux(), "api", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
 	ctx := context.WithValue(context.Background(), AuthenticatedKey, true)
 	calls := 0
-	s.sessionRep.saveReportFn = func(_ context.Context, id, token string, report *types.SessionEventResult) error {
+	s.sessionRep.saveReportFn = func(_ context.Context, id string, report *types.SessionEventResult) error {
 		calls++
 		s.Equal("session", id)
-		s.Equal("token", token)
 		s.Equal(0, report.LinesAdded)
 		s.Equal(0, report.LinesRemoved)
 		s.NotNil(report.Commits)
@@ -3418,7 +3416,7 @@ func (s *ControllerSuite) TestWorkReportPreservesChangesAndPropagatesSaveError()
 	s.sessionRep.mcpTokens = map[string]string{"session": "token"}
 	server := NewMCP(http.NewServeMux(), "api", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
 	expected := errors.New("save failed")
-	s.sessionRep.saveReportFn = func(_ context.Context, id, token string, report *types.SessionEventResult) error {
+	s.sessionRep.saveReportFn = func(_ context.Context, id string, report *types.SessionEventResult) error {
 		s.Equal(7, report.LinesAdded)
 		s.Equal(3, report.LinesRemoved)
 		s.Equal([]string{"commit-one", "commit-two"}, report.Commits)
@@ -3450,10 +3448,9 @@ func (s *ControllerSuite) TestCreatePullRequestUsesSessionRepositoryAndStoresRes
 		return pr, nil
 	}
 	stored := 0
-	s.sessionRep.savePRFn = func(_ context.Context, id, token string, got *types.PullRequest) error {
+	s.sessionRep.savePRFn = func(_ context.Context, id string, got *types.PullRequest) error {
 		stored++
 		s.Equal("session", id)
-		s.Equal("token", token)
 		s.Same(pr, got)
 		return nil
 	}

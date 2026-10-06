@@ -14,9 +14,7 @@
 
 select event.identifier, event.git_ref, event.result
 from public.sessions_events as event
-join public.sessions_mcp_tokens as token
-    on event.identifier = token.agent_session_event_id
-    and event.session_identifier = token.agent_session_id
-where token.agent_session_id = $1
-    and token.agent_session_token = $2
-for update of event, token;
+join public.jobs as job on job.session_event_identifier = event.identifier
+where event.session_identifier = $1
+    and job.status in ('running', 'cancelling')
+for update of event;
