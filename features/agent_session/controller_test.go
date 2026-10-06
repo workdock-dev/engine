@@ -1856,7 +1856,7 @@ func (s *ControllerSuite) TestVerifyGitAccess_Success() {
 func (s *ControllerSuite) TestSandbox_NoMcpNoGitAccess() {
 	harnessConfig, stdout, stderr, shutdown, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt text", nil, newTestSession(), testSessionEvent, "",
+		"prompt text", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -1876,60 +1876,32 @@ func (s *ControllerSuite) TestSandbox_NoMcpNoGitAccess() {
 	s.Len(config.FileUploads, 2)
 }
 
-// TestSandbox_NoGitAccess_SkipsGitCommands ensures repo-less sessions run no
-// git-specific sandbox commands; without a repository those operations do not apply.
-func (s *ControllerSuite) TestSandbox_NoGitAccess_SkipsGitCommands() {
-	s.gitHdl.getConfigCommandsFn = func() []string { return []string{"git-config-cmd"} }
-	s.gitHdl.getCommandsFn = func() []string { return []string{"git-cmd"} }
+func (s *ControllerSuite) TestSandbox_UsesHarnessCommands() {
+	s.harnessHdl.getConfigCommandsFn = func() []string { return []string{"configure-harness"} }
+	s.harnessHdl.getCommandsFn = func() []string { return []string{"prepare-harness"} }
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent, "",
+		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
 	config := s.sandboxHdl.runConfig
 	s.Require().NotNil(config)
-	s.Equal([]string{"harness-config-cmd"}, config.CommandsWhenCreated)
-	s.Equal([]string{"harness-cmd"}, config.Commands)
+	s.Equal([]string{"configure-harness"}, config.CommandsWhenCreated)
+	s.Equal([]string{"prepare-harness"}, config.Commands)
 }
 
-// TestSandbox_WithGitAccess_RunsGitCommands ensures sessions with granted git
-// access keep running the git configuration and setup commands.
-func (s *ControllerSuite) TestSandbox_WithGitAccess_RunsGitCommands() {
-	s.gitHdl.getConfigCommandsFn = func() []string { return []string{"git-config-cmd"} }
-	s.gitHdl.getCommandsFn = func() []string { return []string{"git-cmd"} }
-
-	gitAccess := &interfaces.GitAccess{Granted: true}
-
-	_, _, _, _, err := s.c.sandbox(
-		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		gitAccess, "prompt", nil, newTestSession(), testSessionEvent, "",
-	)
-
-	s.Require().NoError(err)
-	config := s.sandboxHdl.runConfig
-	s.Require().NotNil(config)
-	s.Equal([]string{"git-config-cmd", "harness-config-cmd"}, config.CommandsWhenCreated)
-	s.Equal([]string{"git-cmd", "harness-cmd"}, config.Commands)
-}
-
-func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
+func (s *ControllerSuite) TestSandbox_WithMcp() {
 	s.mcpHdl.getMCPListFn = func() []interfaces.MCPConfig {
 		return []interfaces.MCPConfig{
 			{Name: "linear", AuthSecretEnvVar: "LINEAR_KEY", AuthSecret: "linear-secret", Hosts: []string{"api.linear.app"}},
 		}
 	}
-	gitAccess := &interfaces.GitAccess{
-		EnvVarName: "WORKDOCK_GITHUB_API_TOKEN",
-		Secret:     "git-secret",
-		Hosts:      []string{"github.com"},
-		Granted:    true,
-	}
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		gitAccess, "prompt", nil, newTestSession(), testSessionEvent, "",
+		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -1940,24 +1912,12 @@ func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
 	s.Equal("sess-1|evt-1|", config.Secrets[1].Value)
 }
 
-func (s *ControllerSuite) TestSandbox_GitAccessNotGranted_NotInSecrets() {
-	gitAccess := &interfaces.GitAccess{Granted: false, Secret: "git-secret"}
-
-	_, _, _, _, err := s.c.sandbox(
-		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		gitAccess, "prompt", nil, newTestSession(), testSessionEvent, "",
-	)
-
-	s.Require().NoError(err)
-	s.Len(s.sandboxHdl.runConfig.Secrets, 1)
-}
-
 func (s *ControllerSuite) TestSandbox_NilMcpHandler() {
 	s.c.mcpHandler = nil
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent, "",
+		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -1971,7 +1931,7 @@ func (s *ControllerSuite) TestSandbox_GetConfigFileError() {
 
 	harnessConfig, stdout, stderr, shutdown, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent, "",
+		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Error(err)
@@ -1989,7 +1949,7 @@ func (s *ControllerSuite) TestSandbox_GetFilesError() {
 
 	harnessConfig, stdout, stderr, shutdown, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent, "",
+		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Error(err)
@@ -2010,7 +1970,7 @@ func (s *ControllerSuite) TestSandbox_GetFilesMergedIntoFileUploads() {
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent, "",
+		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -2028,7 +1988,7 @@ func (s *ControllerSuite) TestSandbox_GetFilesMergedIntoFileUploads() {
 func (s *ControllerSuite) TestSandbox_ContextFileUploaded() {
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", &interfaces.ContextFile{Content: "do the work", Summary: "summary of the context"},
+		"prompt", &interfaces.ContextFile{Content: "do the work", Summary: "summary of the context"},
 		newTestSession(), testSessionEvent, "",
 	)
 
@@ -2045,7 +2005,7 @@ func (s *ControllerSuite) TestSandbox_ContextFileUploaded() {
 func (s *ControllerSuite) TestSandbox_NoContextFileUploaded() {
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent, "",
+		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Require().NoError(err)
@@ -2061,7 +2021,7 @@ func (s *ControllerSuite) TestSandbox_RunError() {
 
 	_, _, _, shutdown, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent, "",
+		"prompt", nil, newTestSession(), testSessionEvent, "",
 	)
 
 	s.Error(err)
@@ -2394,9 +2354,6 @@ func (s *ControllerSuite) TestExecute_Success_NoPullRequest() {
 			s.sandboxHdl.shutdownRan = true
 		}, nil
 	}
-	s.gitHdl.parseLatestResultFn = func(changes string) *types.PullRequest {
-		return nil
-	}
 
 	status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
 
@@ -2420,9 +2377,6 @@ func (s *ControllerSuite) runSandboxToCompletion() {
 		return func(ctx context.Context) {
 			s.sandboxHdl.shutdownRan = true
 		}, nil
-	}
-	s.gitHdl.parseLatestResultFn = func(changes string) *types.PullRequest {
-		return nil
 	}
 }
 
@@ -3121,7 +3075,7 @@ func (s *ControllerSuite) TestSandbox_MCPDispatchScopesCredentialsToExecution() 
 
 	config, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
-		nil, "prompt", nil, newTestSession(), testSessionEvent, "execution-token",
+		"prompt", nil, newTestSession(), testSessionEvent, "execution-token",
 	)
 
 	s.Require().NoError(err)

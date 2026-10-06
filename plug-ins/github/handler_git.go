@@ -17,7 +17,6 @@ package github
 import (
 	"context"
 	_ "embed"
-	"encoding/json"
 	"errors"
 	"log/slog"
 
@@ -50,14 +49,6 @@ func (h *GitHandler) GetInstallationUrl() string {
 	return h.installationUrl
 }
 
-func (h *GitHandler) GetConfigurationCommands() []string {
-	return nil
-}
-
-func (h *GitHandler) GetCommands() []string {
-	return nil
-}
-
 func (h *GitHandler) GetGitAccess(ctx context.Context, connection *agent_session_types.GitConnection) (*agent_session_interfaces.GitAccess, error) {
 	token, err := getGitHubAccessToken(ctx, h.secretManager, h.client, *connection.InstallationId)
 
@@ -66,26 +57,9 @@ func (h *GitHandler) GetGitAccess(ctx context.Context, connection *agent_session
 	}
 
 	return &agent_session_interfaces.GitAccess{
-		EnvVarName: "WORKDOCK_GITHUB_API_TOKEN",
-		Secret:     token,
-		Hosts:      []string{"api.github.com", "github.com"},
-		Granted:    true,
+		Secret:  token,
+		Granted: true,
 	}, nil
-}
-
-func (h *GitHandler) ParseLatestChangesResult(changes string) *agent_session_types.PullRequest {
-	if changes == "" {
-		return nil
-	}
-
-	var pr agent_session_types.PullRequest
-
-	if err := json.Unmarshal([]byte(changes), &pr); err != nil {
-		slog.Error("failed to unmarshal pull request metadata", "err", err)
-		return nil
-	}
-
-	return &pr
 }
 
 func (h *GitHandler) CreatePullRequest(ctx context.Context, input agent_session_interfaces.CreatePullRequestInput) (*agent_session_types.PullRequest, error) {

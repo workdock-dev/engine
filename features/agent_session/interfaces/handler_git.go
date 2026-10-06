@@ -21,10 +21,8 @@ import (
 )
 
 type GitAccess struct {
-	EnvVarName string
-	Secret     string
-	Hosts      []string
-	Granted    bool
+	Secret  string
+	Granted bool
 }
 
 type CreatePullRequestInput struct {
@@ -44,20 +42,8 @@ type HandlerGit interface {
 	// grant access
 	GetInstallationUrl() string
 
-	// GetConfigurationCommands may return a list of commands the git handler
-	// provider requires to be install in the sandbox
-	GetConfigurationCommands() []string
-
-	// GetCommands may return a list of commands the git handler provider
-	// requires to be run on every sandbox execution
-	GetCommands() []string
-
 	// GetGitAccess returns the git access configuration for the given provider
 	GetGitAccess(ctx context.Context, connection *types.GitConnection) (*GitAccess, error)
-
-	// ParseLatestChangesResult receives the changes procude by the latest changes command
-	// and parse it to a concrete domain type
-	ParseLatestChangesResult(changes string) *types.PullRequest
 
 	// CreatePullRequest creates a pull request against the given git hosting provider
 	CreatePullRequest(ctx context.Context, input CreatePullRequestInput) (*types.PullRequest, error)

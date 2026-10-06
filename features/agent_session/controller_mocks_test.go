@@ -173,12 +173,8 @@ func (m *mockAgentHandler) TransitionIssueToInReview(ctx context.Context, issueI
 type mockGitHandler struct {
 	createPRFn func(context.Context, interfaces.CreatePullRequestInput) (*types.PullRequest, error)
 
-	getInstallationUrlFn  func() string
-	getConfigCommandsFn   func() []string
-	getCommandsFn         func() []string
-	getLatestChangesCmdFn func() string
-	getGitAccessFn        func(ctx context.Context, connection *types.GitConnection) (*interfaces.GitAccess, error)
-	parseLatestResultFn   func(changes string) *types.PullRequest
+	getInstallationUrlFn func() string
+	getGitAccessFn       func(ctx context.Context, connection *types.GitConnection) (*interfaces.GitAccess, error)
 }
 
 func (m *mockGitHandler) GetInstallationUrl() string {
@@ -188,39 +184,11 @@ func (m *mockGitHandler) GetInstallationUrl() string {
 	return "https://github.com/install"
 }
 
-func (m *mockGitHandler) GetConfigurationCommands() []string {
-	if m.getConfigCommandsFn != nil {
-		return m.getConfigCommandsFn()
-	}
-	return nil
-}
-
-func (m *mockGitHandler) GetCommands() []string {
-	if m.getCommandsFn != nil {
-		return m.getCommandsFn()
-	}
-	return nil
-}
-
-func (m *mockGitHandler) GetLatestChangesCommand(repoFullName string) string {
-	if m.getLatestChangesCmdFn != nil {
-		return m.getLatestChangesCmdFn()
-	}
-	return ""
-}
-
 func (m *mockGitHandler) GetGitAccess(ctx context.Context, connection *types.GitConnection) (*interfaces.GitAccess, error) {
 	if m.getGitAccessFn != nil {
 		return m.getGitAccessFn(ctx, connection)
 	}
 	return &interfaces.GitAccess{Granted: true}, nil
-}
-
-func (m *mockGitHandler) ParseLatestChangesResult(changes string) *types.PullRequest {
-	if m.parseLatestResultFn != nil {
-		return m.parseLatestResultFn(changes)
-	}
-	return nil
 }
 
 // --- HandlerSandbox mock ---

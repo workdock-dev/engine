@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
-	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -733,7 +732,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	}
 
 	// Cannot continue, requires git access
-	if session.RepoFullName != nil && gitAccess == nil {
+	if session.RepoFullName != nil && (gitAccess == nil || !gitAccess.Granted) {
 		slog.Debug("[agent-session] git acess required")
 		return types.EventJobStatus_AwaitingAction, nil
 	}
@@ -754,7 +753,6 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 			gitHandler,
 			harnessHandler,
 			sandboxHandler,
-			gitAccess,
 			prompt,
 			contextFile,
 			session,
@@ -1058,7 +1056,6 @@ func (c *controller) sandbox(
 	gitHandler interfaces.HandlerGit,
 	harnessHandler interfaces.HandlerHarness,
 	sandboxHandler interfaces.HandlerSandbox,
-	gitAccess *interfaces.GitAccess,
 	prompt string,
 	contextFile *interfaces.ContextFile,
 	session *types.Session,
@@ -1136,11 +1133,6 @@ func (c *controller) sandbox(
 	// running git-specific commands would fail the run.
 	commandsWhenCreated := harnessHandler.GetConfigurationCommands()
 	commands := harnessHandler.GetCommands()
-
-	if gitAccess != nil && gitAccess.Granted {
-		commandsWhenCreated = slices.Concat(gitHandler.GetConfigurationCommands(), commandsWhenCreated)
-		commands = slices.Concat(gitHandler.GetCommands(), commands)
-	}
 
 	shutdown, err := sandboxHandler.Run(
 		ctx,

@@ -93,7 +93,7 @@ type HandlerSandbox interface {
 	// GitClone perform a git clone operation
 	GitClone(ctx context.Context, input GitCloneInput) error
 
-	// GitPull perform a git push operation
+	// GitPush perform a git push operation
 	GitPush(ctx context.Context, input GitPushInput) error
 
 	// GitPull perform a git pull operation

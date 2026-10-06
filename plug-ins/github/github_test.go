@@ -20,6 +20,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -341,16 +342,6 @@ func (s *GitHandlerSuite) TestGetInstallationUrl() {
 	s.Equal("https://github.com/apps/workdock/installations/new", s.handler.GetInstallationUrl())
 }
 
-func (s *GitHandlerSuite) TestGetConfigurationCommands() {
-	commands := s.handler.GetConfigurationCommands()
-	s.Empty(commands)
-}
-
-func (s *GitHandlerSuite) TestGetCommands() {
-	commands := s.handler.GetCommands()
-	s.Empty(commands)
-}
-
 func (s *GitHandlerSuite) TestGetGitAccess_Success() {
 	s.secrets.getFn = func(ctx context.Context, secretPath, secretName string) (string, error) {
 		return marshalToken(futureToken), nil
@@ -361,9 +352,7 @@ func (s *GitHandlerSuite) TestGetGitAccess_Success() {
 	})
 
 	s.Require().NoError(err)
-	s.Equal("WORKDOCK_GITHUB_API_TOKEN", access.EnvVarName)
 	s.Equal("stored-token", access.Secret)
-	s.Equal([]string{"api.github.com", "github.com"}, access.Hosts)
 	s.True(access.Granted)
 }
 
@@ -378,31 +367,6 @@ func (s *GitHandlerSuite) TestGetGitAccess_Error() {
 
 	s.Error(err)
 	s.Nil(access)
-}
-
-func (s *GitHandlerSuite) TestParseLatestChangesResult_Empty() {
-	s.Nil(s.handler.ParseLatestChangesResult(""))
-}
-
-func (s *GitHandlerSuite) TestParseLatestChangesResult_InvalidJson() {
-	s.Nil(s.handler.ParseLatestChangesResult("{not-json"))
-}
-
-func (s *GitHandlerSuite) TestParseLatestChangesResult_Success() {
-	payload := `{
-		"headRefName": "feature-branch",
-		"headRefOid": "abc123",
-		"number": 42,
-		"url": "https://github.com/owner/repo/pull/42"
-	}`
-
-	pr := s.handler.ParseLatestChangesResult(payload)
-
-	s.Require().NotNil(pr)
-	s.Equal("feature-branch", pr.HeadRefName)
-	s.Equal("abc123", pr.HeadRefOID)
-	s.Equal(42, pr.Number)
-	s.Equal("https://github.com/owner/repo/pull/42", pr.URL)
 }
 
 func strPtr(v string) *string { return &v }
@@ -972,6 +936,8 @@ func (s *GitHandlerSuite) TestCreatePullRequestMapsProviderResult() {
 		s.Equal("owner/repo", repo)
 		s.Equal("private", token)
 		s.Equal("Changes", input.Title)
+		s.Equal("Details", input.Body)
+		s.True(input.Draft)
 		s.Equal("feature", input.Head)
 		s.Equal("main", input.Base)
 		pr := &types.CreatePullRequestResponse{URL: "https://github.com/owner/repo/pull/42", Number: 42}
@@ -980,7 +946,25 @@ func (s *GitHandlerSuite) TestCreatePullRequestMapsProviderResult() {
 		return pr, nil
 	}}
 	handler := NewGitHandler(types.Config{}, client, nil)
-	pr, err := handler.CreatePullRequest(context.Background(), agent_session_interfaces.CreatePullRequestInput{RepoFullName: "owner/repo", AccessToken: "private", Title: "Changes", Head: "feature", Base: "main"})
+	pr, err := handler.CreatePullRequest(context.Background(), agent_session_interfaces.CreatePullRequestInput{RepoFullName: "owner/repo", AccessToken: "private", Title: "Changes", Body: "Details", Head: "feature", Base: "main", Draft: true})
 	s.Require().NoError(err)
 	s.Equal(&agent_session_types.PullRequest{URL: "https://github.com/owner/repo/pull/42", Number: 42, HeadRefName: "feature", HeadRefOID: "commit"}, pr)
+}
+
+func (s *GitHandlerSuite) TestCreatePullRequestPropagatesClientError() {
+	expected := errors.New("creation failed")
+	client := &mockClient{createPRFn: func(context.Context, string, string, types.CreatePullRequestInput) (*types.CreatePullRequestResponse, error) {
+		return nil, expected
+	}}
+	handler := NewGitHandler(types.Config{}, client, nil)
+	pr, err := handler.CreatePullRequest(context.Background(), agent_session_interfaces.CreatePullRequestInput{})
+	s.ErrorIs(err, expected)
+	s.Nil(pr)
+}
+
+func (s *GitHandlerSuite) TestCreatePullRequestRejectsNilResult() {
+	handler := NewGitHandler(types.Config{}, &mockClient{}, nil)
+	pr, err := handler.CreatePullRequest(context.Background(), agent_session_interfaces.CreatePullRequestInput{})
+	s.ErrorContains(err, "pull request creation returned no result")
+	s.Nil(pr)
 }
