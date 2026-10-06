@@ -3381,6 +3381,7 @@ func (s *ControllerSuite) TestWorkReportValidationAndPersistence() {
 	calls := 0
 	s.sessionRep.updateSessionEventResultFn = func(_ context.Context, event *types.SessionEvent) error {
 		id := event.SessionIdentifier
+		s.Equal("session", id)
 		report := event.Result
 		calls++
 		s.Equal("session", id)
@@ -3422,6 +3423,7 @@ func (s *ControllerSuite) TestWorkReportPreservesChangesAndPropagatesSaveError()
 	expected := errors.New("save failed")
 	s.sessionRep.updateSessionEventResultFn = func(_ context.Context, event *types.SessionEvent) error {
 		id := event.SessionIdentifier
+		s.Equal("session", id)
 		report := event.Result
 		s.Equal(7, report.LinesAdded)
 		s.Equal(3, report.LinesRemoved)
