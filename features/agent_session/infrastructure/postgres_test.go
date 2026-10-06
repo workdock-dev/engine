@@ -47,17 +47,17 @@ func (s *PostgresSuite) SetupTest() {
 func (s *PostgresSuite) TestCreateMCPToken() {
 	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		s.Equal(CreateMCPTokenSql, sql)
-		s.Equal([]any{"session-1", "0123456789abcdef", "event-1"}, args)
+		s.Equal([]any{"session-1", "0123456789abcdef"}, args)
 		return pgconn.CommandTag{}, nil
 	}
-	s.NoError(s.repo.CreateMCPToken(context.Background(), "session-1", "0123456789abcdef", "event-1"))
+	s.NoError(s.repo.CreateMCPToken(context.Background(), "session-1", "0123456789abcdef"))
 }
 
 func (s *PostgresSuite) TestCreateMCPToken_DuplicateError() {
 	s.pool.execFn = func(context.Context, string, ...any) (pgconn.CommandTag, error) {
 		return pgconn.CommandTag{}, errors.New("duplicate key")
 	}
-	s.Error(s.repo.CreateMCPToken(context.Background(), "session-1", "token", "event-1"))
+	s.Error(s.repo.CreateMCPToken(context.Background(), "session-1", "token"))
 }
 
 func (s *PostgresSuite) TestGetAndDeleteMCPToken() {
@@ -794,29 +794,4 @@ func (s *PostgresSuite) TestDeleteMCPToken_Error() {
 	}
 
 	s.ErrorContains(s.repo.DeleteMCPToken(context.Background(), "session-1"), "database unavailable")
-}
-
-func (s *PostgresSuite) TestSaveMCPReportUsesActiveExecutionAndExplicitZeroValues() {
-	s.pool.execFn = func(_ context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
-		s.Equal(SaveMCPReportSql, sql)
-		s.Equal([]any{"session", "token", 0, 0, "[]", "No changes"}, args)
-		s.Contains(sql, "event.identifier = token.agent_session_event_id")
-		s.Contains(sql, "token.agent_session_token = $2")
-		return pgconn.NewCommandTag("UPDATE 1"), nil
-	}
-	s.NoError(s.repo.SaveMCPReport(context.Background(), "session", "token", &types.SessionEventResult{Commits: []string{}, Report: "No changes"}))
-}
-
-func (s *PostgresSuite) TestSaveMCPPullRequestPreservesReportAndRejectsExpiredExecution() {
-	pr := &types.PullRequest{HeadRefName: "feature", Number: 42}
-	s.pool.execFn = func(_ context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
-		s.Equal(SaveMCPPullRequestSql, sql)
-		s.Equal([]any{"session", "token", "feature", pr}, args)
-		s.Contains(sql, "coalesce(event.result, '{}'::jsonb)")
-		return pgconn.NewCommandTag("UPDATE 1"), nil
-	}
-	s.NoError(s.repo.SaveMCPPullRequest(context.Background(), "session", "token", pr))
-	s.pool.execFn = func(context.Context, string, ...any) (pgconn.CommandTag, error) { return pgconn.NewCommandTag("UPDATE 0"), nil }
-	s.ErrorContains(s.repo.SaveMCPPullRequest(context.Background(), "session", "token", pr), "active agent execution required")
-	s.ErrorContains(s.repo.SaveMCPReport(context.Background(), "session", "token", &types.SessionEventResult{Commits: []string{}, Report: "No changes"}), "active agent execution required")
 }

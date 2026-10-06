@@ -54,11 +54,7 @@ type SessionEvent struct {
 }
 
 type SessionEventResult struct {
-	PullRequest  *PullRequest
-	LinesAdded   int
-	LinesRemoved int
-	Commits      []string
-	Report       string
+	PullRequest *PullRequest
 }
 
 type PullRequest struct {

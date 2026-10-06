@@ -21,7 +21,6 @@ import (
 )
 
 type Client interface {
-	CreatePullRequest(ctx context.Context, repo, token string, input types.CreatePullRequestInput) (*types.PullRequest, error)
 	IsRepositoryPublic(ctx context.Context, repo string) (bool, error)
 	CreateInstallationAccessToken(installationId int) (*types.InstallationAccessToken, error)
 }

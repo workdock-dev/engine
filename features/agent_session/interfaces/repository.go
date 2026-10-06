@@ -30,9 +30,7 @@ type Repository interface {
 	UpsertAgentSession(ctx context.Context, session *types.Session) error
 	UpdateSessionEventResult(ctx context.Context, event *types.SessionEvent) error
 	CancelSession(ctx context.Context, queuedBy, reason string) (int, error)
-	CreateMCPToken(ctx context.Context, sessionID, token, eventID string) error
-	SaveMCPReport(ctx context.Context, sessionID, token string, result *types.SessionEventResult) error
-	SaveMCPPullRequest(ctx context.Context, sessionID, token string, pr *types.PullRequest) error
+	CreateMCPToken(ctx context.Context, sessionID, token string) error
 	GetMCPToken(ctx context.Context, sessionID string) (string, error)
 	DeleteMCPToken(ctx context.Context, sessionID string) error
 }

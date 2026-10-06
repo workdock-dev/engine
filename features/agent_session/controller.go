@@ -661,7 +661,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 		return types.EventJobStatus_Failed, err
 	}
 
-	if err := c.session.CreateMCPToken(ctx, session.Identifier, mcpToken, sessionEvent.Identifier); err != nil {
+	if err := c.session.CreateMCPToken(ctx, session.Identifier, mcpToken); err != nil {
 		return types.EventJobStatus_Failed, err
 	}
 
@@ -830,19 +830,6 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 			sessionEvent,
 		)
 	}); err != nil {
-		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential, err)
-		return types.EventJobStatus_Failed, err
-	}
-
-	completedEvent, err := c.session.GetAgentSessionEvent(ctx, sessionEvent.Identifier)
-
-	if err != nil {
-		return types.EventJobStatus_Failed, err
-	}
-
-	if completedEvent == nil || completedEvent.Result == nil || completedEvent.Result.Report == "" {
-		err := errors.New("agent must call work_report before completing execution")
-		slog.Error("[agent_session] work report missing", "session_id", session.Identifier)
 		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential, err)
 		return types.EventJobStatus_Failed, err
 	}

@@ -16,6 +16,6 @@ update
     public.sessions_events
 set
     git_ref = $2,
-    result = coalesce(result, '{}'::jsonb) || jsonb_build_object('PullRequest', $3::jsonb -> 'PullRequest')
+    result = $3
 where identifier = $1;
 

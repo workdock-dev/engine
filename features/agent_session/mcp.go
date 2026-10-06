@@ -8,11 +8,9 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/workdock-dev/engine/features/agent_session/interfaces"
-	"github.com/workdock-dev/engine/features/agent_session/types"
 	"github.com/workdock-dev/engine/shared"
 )
 
@@ -106,9 +104,6 @@ func (m *AgentSessionMCP) Handler() http.Handler {
 }
 
 func (m *AgentSessionMCP) registerTools() {
-	mcp.AddTool(m.mcp, &mcp.Tool{Name: "work_report", Description: "Required before completing any execution: report changes, next actions, or questions. Use zero counts and an empty commits list when no changes were made."}, m.workReport)
-	mcp.AddTool(m.mcp, &mcp.Tool{Name: "create_pull_request", Description: "Create a pull request only when requested by the user."}, m.createPullRequest)
-
 	mcp.AddTool(m.mcp, &mcp.Tool{
 		Name:        "git_clone",
 		Description: "Clone a repository.",
@@ -305,82 +300,4 @@ func (m *AgentSessionMCP) gitPull(ctx context.Context, _ *mcp.CallToolRequest, i
 		Branch:      input.Branch,
 	})
 	return nil, map[string]bool{"success": err == nil}, err
-}
-
-func (m *AgentSessionMCP) workReport(ctx context.Context, _ *mcp.CallToolRequest, input types.WorkReportInput) (*mcp.CallToolResult, any, error) {
-	sessionID, err := m.authorized(ctx, input.Session)
-
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if input.LinesAdded < 0 || input.LinesRemoved < 0 || strings.TrimSpace(input.Report) == "" || !utf8.ValidString(input.Report) || utf8.RuneCountInString(input.Report) > 280 {
-		err := errors.New("work report requires nonnegative line counts and a report of 1 to 280 characters")
-		slog.Error("[agent_session][mcp] invalid work report", "err", err)
-		return nil, nil, err
-	}
-
-	if input.Commits == nil {
-		input.Commits = []string{}
-	}
-
-	_, token, _ := strings.Cut(input.Session, "|")
-	err = m.session.SaveMCPReport(ctx, sessionID, token, &types.SessionEventResult{
-		LinesAdded: input.LinesAdded, LinesRemoved: input.LinesRemoved,
-		Commits: input.Commits, Report: input.Report,
-	})
-
-	return nil, map[string]bool{"success": err == nil}, err
-}
-
-func (m *AgentSessionMCP) createPullRequest(ctx context.Context, _ *mcp.CallToolRequest, input types.CreatePullRequestInput) (*mcp.CallToolResult, any, error) {
-	sessionID, err := m.authorized(ctx, input.Session)
-
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if strings.TrimSpace(input.Title) == "" || strings.TrimSpace(input.Head) == "" || strings.TrimSpace(input.Base) == "" {
-		err := errors.New("pull request title, head, and base are required")
-		slog.Error("[agent_session][mcp] invalid pull request", "err", err)
-		return nil, nil, err
-	}
-
-	accessToken, err := m.gitAccess(ctx, sessionID)
-
-	if err != nil {
-		return nil, nil, err
-	}
-
-	session, err := m.session.GetAgentSession(ctx, sessionID)
-
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if session == nil || session.RepoFullName == nil {
-		return nil, nil, errors.New("agent session repository not set")
-	}
-
-	gitHandler := m.gitHostingHandlerRegistry[string(shared.PlatformProvider_GitHub)]
-	pr, err := gitHandler.CreatePullRequest(ctx, interfaces.CreatePullRequestInput{
-		RepoFullName: *session.RepoFullName, AccessToken: accessToken,
-		Title: input.Title, Body: input.Body, Head: input.Head, Base: input.Base, Draft: input.Draft,
-	})
-
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if pr == nil {
-		return nil, nil, errors.New("pull request creation returned no result")
-	}
-
-	_, token, _ := strings.Cut(input.Session, "|")
-
-	if err := m.session.SaveMCPPullRequest(ctx, sessionID, token, pr); err != nil {
-		return nil, nil, err
-	}
-
-	return nil, pr, nil
 }
