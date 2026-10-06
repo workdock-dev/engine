@@ -129,7 +129,7 @@ func (m *MCPFromConfigFile) GetMCPList() []agent_session_interfaces.MCPConfig {
 			Name:             "workdock",
 			Url:              m.config.MCPServerUrl,
 			AuthHeaderKey:    "Authorization",
-			AuthHeaderValue:  "Bearer {env:WORKDOCK_MCP_API_KEY}",
+			AuthHeaderValue:  "Bearer {{secret}}",
 			AuthSecretEnvVar: "WORKDOCK_MCP_API_KEY",
 			AuthSecret:       m.config.MCPApiKey,
 			Hosts:            []string{host},

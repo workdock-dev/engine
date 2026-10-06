@@ -75,12 +75,14 @@ func (s *HarnessSuite) TestGetConfigFileConfiguresMCPs() {
 			Name:             "workdock",
 			Url:              "https://mcp.example.com",
 			AuthSecretEnvVar: "MCP_TOKEN",
+			AuthHeaderValue:  "Bearer {{secret}}",
 		},
 		{
 			Name:             "custom-header",
 			Url:              "https://custom.example.com",
 			AuthHeaderKey:    "X-API-Key",
 			AuthSecretEnvVar: "CUSTOM_TOKEN",
+			AuthHeaderValue:  "{{secret}}",
 		},
 	}})
 
@@ -196,4 +198,38 @@ func (s *HarnessSuite) TestParseCompletesTurn() {
 	)
 
 	s.NoError(err)
+}
+
+func (s *HarnessSuite) TestMCPSecretReferenceRequiresEnvironmentVariable() {
+	config := agent_session_interfaces.HarnessConfig{Mcps: []agent_session_interfaces.MCPConfig{
+		{Name: "missing-secret", Url: "https://example.com/mcp", AuthHeaderValue: "Bearer {{secret}}"},
+	}}
+	_, _, err := s.handler.GetConfigFile(&config)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "auth_secret_env_var")
+}
+
+func (s *HarnessSuite) TestMCPUnsupportedHeaderTemplates() {
+	for _, config := range []agent_session_interfaces.MCPConfig{
+		{Name: "custom-prefix", AuthHeaderValue: "Token {{secret}}", AuthSecretEnvVar: "MCP_TOKEN"},
+		{Name: "custom-bearer-header", AuthHeaderKey: "X-Api-Key", AuthHeaderValue: "Bearer {{secret}}", AuthSecretEnvVar: "MCP_TOKEN"},
+	} {
+		_, _, err := s.handler.GetConfigFile(&agent_session_interfaces.HarnessConfig{Mcps: []agent_session_interfaces.MCPConfig{config}})
+		s.Require().Error(err)
+		s.Contains(err.Error(), "unsupported")
+	}
+}
+
+func (s *HarnessSuite) TestMCPRawAuthorizationAndLiteralHeaders() {
+	_, data, err := s.handler.GetConfigFile(&agent_session_interfaces.HarnessConfig{Mcps: []agent_session_interfaces.MCPConfig{
+		{Name: "raw-auth", AuthHeaderValue: "{{secret}}", AuthSecretEnvVar: "MCP_TOKEN"},
+		{Name: "literal", AuthHeaderKey: "X-Api-Key", AuthHeaderValue: "literal-value", AuthSecretEnvVar: "UNUSED"},
+		{Name: "public", Url: "https://example.com/mcp"},
+	}})
+	s.Require().NoError(err)
+	s.Contains(string(data), `env_http_headers = { "Authorization" = "MCP_TOKEN" }`)
+	s.Contains(string(data), `http_headers = { "X-Api-Key" = "literal-value" }`)
+	s.NotContains(string(data), "bearer_token_env_var")
+	s.NotContains(string(data), "UNUSED")
+	s.NotContains(string(data), "{{secret}}")
 }

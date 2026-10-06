@@ -1256,3 +1256,24 @@ func (s *HarnessSuite) TestParse_ToolExecution_RecordsDuration() {
 
 // compile-time interface check
 var _ agent_session_interfaces.HandlerHarness = (*HarnessHandler)(nil)
+
+func (s *HarnessSuite) TestMCPSecretReferenceRequiresEnvironmentVariable() {
+	config := agent_session_interfaces.HarnessConfig{Mcps: []agent_session_interfaces.MCPConfig{
+		{Name: "missing-secret", Url: "https://example.com/mcp", AuthHeaderValue: "Bearer {{secret}}"},
+	}}
+	_, err := s.handler.mcpJson(config.Mcps)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "auth_secret_env_var")
+}
+
+func (s *HarnessSuite) TestMCPNeutralHeaderTemplates() {
+	config := agent_session_interfaces.HarnessConfig{Mcps: []agent_session_interfaces.MCPConfig{
+		{Name: "bearer", Url: "https://example.com/mcp", AuthHeaderValue: "Bearer {{secret}}", AuthSecretEnvVar: "MCP_TOKEN"},
+		{Name: "api-key", Url: "https://example.com/mcp", AuthHeaderKey: "X-Api-Key", AuthHeaderValue: "{{secret}}", AuthSecretEnvVar: "CUSTOM_TOKEN"},
+	}}
+	files, err := s.handler.GetFiles(&config)
+	s.Require().NoError(err)
+	parsed := s.unmarshalMcpFromFiles(files)
+	s.Equal("Bearer ${MCP_TOKEN}", parsed.McpServers["bearer"].Headers["Authorization"])
+	s.Equal("${CUSTOM_TOKEN}", parsed.McpServers["api-key"].Headers["X-Api-Key"])
+}
