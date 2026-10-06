@@ -1520,7 +1520,7 @@ func (s *ControllerSuite) TestCreatePrompt_Base() {
 	s.Contains(p, "**Identifier:** issue-1")
 	s.Contains(p, "**Repository:** workdock/repo")
 	s.Contains(p, "Description")
-	s.False(strings.Contains(p, "### Latest User Comment"))
+	s.False(strings.Contains(p, "## Latest User Comment (Highest Priority)"))
 }
 
 // TestCreatePrompt_Base_PointsAtContextFile asserts the provider context is
@@ -1572,7 +1572,7 @@ func (s *ControllerSuite) TestCreatePrompt_PRComment() {
 
 	p := s.c.createPrompt(newTestSession(), event, testPromptContext)
 
-	s.True(strings.Contains(p, "### Latest User Comment"))
+	s.True(strings.Contains(p, "## Latest User Comment (Highest Priority)"))
 	s.True(strings.Contains(p, "There are review comments on the pull request"))
 }
 
@@ -1600,7 +1600,7 @@ func (s *ControllerSuite) TestCreatePrompt_WithContext() {
 
 	p := s.c.createPrompt(newTestSession(), nil, promptContext)
 
-	s.True(strings.Contains(p, "### Latest User Comment"))
+	s.True(strings.Contains(p, "## Latest User Comment (Highest Priority)"))
 	s.True(strings.Contains(p, "additional user context"))
 }
 
@@ -1881,7 +1881,6 @@ func (s *ControllerSuite) TestSandbox_NoMcpNoGitAccess() {
 func (s *ControllerSuite) TestSandbox_NoGitAccess_SkipsGitCommands() {
 	s.gitHdl.getConfigCommandsFn = func() []string { return []string{"git-config-cmd"} }
 	s.gitHdl.getCommandsFn = func() []string { return []string{"git-cmd"} }
-	s.gitHdl.getLatestChangesCmdFn = func() string { return "latest-changes-cmd" }
 
 	_, _, _, _, err := s.c.sandbox(
 		context.Background(), s.gitHdl, s.harnessHdl, s.sandboxHdl,
@@ -1893,16 +1892,13 @@ func (s *ControllerSuite) TestSandbox_NoGitAccess_SkipsGitCommands() {
 	s.Require().NotNil(config)
 	s.Equal([]string{"harness-config-cmd"}, config.CommandsWhenCreated)
 	s.Equal([]string{"harness-cmd"}, config.Commands)
-	s.Empty(config.ExitCommand)
 }
 
 // TestSandbox_WithGitAccess_RunsGitCommands ensures sessions with granted git
-// access keep running the git configuration, setup commands and the pull
-// request exit command.
+// access keep running the git configuration and setup commands.
 func (s *ControllerSuite) TestSandbox_WithGitAccess_RunsGitCommands() {
 	s.gitHdl.getConfigCommandsFn = func() []string { return []string{"git-config-cmd"} }
 	s.gitHdl.getCommandsFn = func() []string { return []string{"git-cmd"} }
-	s.gitHdl.getLatestChangesCmdFn = func() string { return "latest-changes-cmd" }
 
 	gitAccess := &interfaces.GitAccess{Granted: true}
 
@@ -1916,7 +1912,6 @@ func (s *ControllerSuite) TestSandbox_WithGitAccess_RunsGitCommands() {
 	s.Require().NotNil(config)
 	s.Equal([]string{"git-config-cmd", "harness-config-cmd"}, config.CommandsWhenCreated)
 	s.Equal([]string{"git-cmd", "harness-cmd"}, config.Commands)
-	s.Equal("latest-changes-cmd", config.ExitCommand)
 }
 
 func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
@@ -1939,12 +1934,10 @@ func (s *ControllerSuite) TestSandbox_WithMcpAndGitAccess() {
 
 	s.Require().NoError(err)
 	config := s.sandboxHdl.runConfig
-	s.Require().Len(config.Secrets, 3)
+	s.Require().Len(config.Secrets, 2)
 	s.Equal("LINEAR_KEY", config.Secrets[0].Name)
 	s.Equal("linear-secret", config.Secrets[0].Value)
-	s.Equal("WORKDOCK_GITHUB_API_TOKEN", config.Secrets[2].Name)
-	s.Equal("git-secret", config.Secrets[2].Value)
-	s.Equal("sess-1|", config.Secrets[1].Value)
+	s.Equal("sess-1|evt-1|", config.Secrets[1].Value)
 }
 
 func (s *ControllerSuite) TestSandbox_GitAccessNotGranted_NotInSecrets() {
@@ -2369,42 +2362,19 @@ func (s *ControllerSuite) TestExecute_HarnessError_ContextCancelled_NoErrorMessa
 
 func (s *ControllerSuite) TestExecute_Success_WithPullRequestResult() {
 	s.prepareExecutable()
-
-	var shutdownResult string
-	s.sandboxHdl.runFn = func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
-		go func() {
-			// The harness emits one valid JSON message, then closes the channels.
-			stdout <- `{"type":"text","text":"working"}`
-			close(stdout)
-			close(stderr)
-		}()
-
-		return func(ctx context.Context) string {
-			shutdownResult = "pr created"
-			return shutdownResult
-		}, nil
-	}
 	pr := &types.PullRequest{HeadRefName: "workdock/main", Number: 1, URL: "https://github.com/workdock/repo/pull/1"}
-	s.gitHdl.parseLatestResultFn = func(changes string) *types.PullRequest {
-		return pr
+	event := *testSessionEvent
+	event.Result = &types.SessionEventResult{Report: "Completed work", PullRequest: pr}
+	s.sessionRep.getAgentSessionEventFn = func(context.Context, string) (*types.SessionEvent, error) {
+		return &event, nil
 	}
-
-	saved := false
-	s.sessionRep.updateSessionEventResultFn = func(_ context.Context, event *types.SessionEvent) error {
-		sessionID := event.SessionIdentifier
-		result := event.Result.PullRequest
-		s.Equal("sess-1", sessionID)
-		s.Same(pr, result)
-		saved = true
-		return nil
-	}
-
+	s.runSandboxToCompletion()
 	status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
-
 	s.Require().NoError(err)
 	s.Equal(types.EventJobStatus_Succeeded, status)
-
-	s.True(saved, "a parsed PR must be persisted through the active execution")
+	s.Same(pr, event.Result.PullRequest)
+	s.Empty(s.sessionRep.updatedResults)
+	s.True(s.sandboxHdl.shutdownRan)
 }
 
 func (s *ControllerSuite) TestExecute_Success_NoPullRequest() {
@@ -2413,15 +2383,15 @@ func (s *ControllerSuite) TestExecute_Success_NoPullRequest() {
 	s.sandboxHdl.runFn = func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
 		s.Require().Len(config.Secrets, 1)
 		s.Equal("AGENT_SESSION_CONFIG", config.Secrets[0].Name)
-		s.Regexp(`^sess-1\|[0-9a-f]{64}$`, config.Secrets[0].Value)
-		s.Equal("sess-1|"+s.sessionRep.mcpTokens["sess-1"], config.Secrets[0].Value)
+		s.Regexp(`^sess-1\|evt-1\|[0-9a-f]{64}$`, config.Secrets[0].Value)
+		s.Equal("sess-1|evt-1|"+s.sessionRep.mcpTokens["sess-1"], config.Secrets[0].Value)
 		go func() {
 			close(stdout)
 			close(stderr)
 		}()
 
-		return func(ctx context.Context) string {
-			return "no pr"
+		return func(ctx context.Context) {
+			s.sandboxHdl.shutdownRan = true
 		}, nil
 	}
 	s.gitHdl.parseLatestResultFn = func(changes string) *types.PullRequest {
@@ -2439,8 +2409,7 @@ func (s *ControllerSuite) TestExecute_Success_NoPullRequest() {
 }
 
 // runSandboxToCompletion configures the sandbox mock to close its output
-// channels immediately (the harness produced no messages) and return a
-// no-result shutdown function.
+// channels immediately and record sandbox shutdown.
 func (s *ControllerSuite) runSandboxToCompletion() {
 	s.sandboxHdl.runFn = func(ctx context.Context, config *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
 		go func() {
@@ -2448,8 +2417,8 @@ func (s *ControllerSuite) runSandboxToCompletion() {
 			close(stderr)
 		}()
 
-		return func(ctx context.Context) string {
-			return "no pr"
+		return func(ctx context.Context) {
+			s.sandboxHdl.shutdownRan = true
 		}, nil
 	}
 	s.gitHdl.parseLatestResultFn = func(changes string) *types.PullRequest {
@@ -2503,8 +2472,8 @@ func (s *ControllerSuite) TestExecute_TransitionsIssueToInReview_AfterContextCan
 
 	s.Require().NotNil(transitionCtx, "the In Review transition must run even when the job context is cancelled")
 	s.Require().NotNil(responseCtx, "the response event must be sent even when the job context is cancelled")
-	s.NoError(transitionCtx.Err(), "the In Review transition must run on a non-cancelled context")
-	s.NoError(responseCtx.Err(), "the response event must be sent on a non-cancelled context")
+	s.ErrorIs(transitionCtx.Err(), context.Canceled)
+	s.ErrorIs(responseCtx.Err(), context.Canceled)
 	s.Equal([]string{"issue-1"}, s.agentHdl.transitionedInReview, "issue must still transition to In Review when the job context is cancelled")
 }
 
@@ -3160,7 +3129,7 @@ func (s *ControllerSuite) TestSandbox_MCPDispatchScopesCredentialsToExecution() 
 	s.Require().Len(s.sandboxHdl.runConfig.Secrets, 2)
 	s.Equal("api-key", s.sandboxHdl.runConfig.Secrets[0].Value)
 	s.Equal("AGENT_SESSION_CONFIG", s.sandboxHdl.runConfig.Secrets[1].Name)
-	s.Equal("sess-1|execution-token", s.sandboxHdl.runConfig.Secrets[1].Value)
+	s.Equal("sess-1|evt-1|execution-token", s.sandboxHdl.runConfig.Secrets[1].Value)
 
 	for _, data := range s.sandboxHdl.runConfig.FileUploads {
 		s.NotContains(string(data), "execution-token")
@@ -3224,12 +3193,13 @@ func (s *ControllerSuite) TestMCPDependenciesConfiguredBeforeAnyExecution() {
 	s.sessionRep.mcpTokens = map[string]string{"remote-session": "remote-token"}
 	invocations := 0
 	server.handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id, err := server.authorized(r.Context(), "remote-session|remote-token")
+		id, eventID, err := server.authorized(r.Context(), "remote-session|event|remote-token")
 		if err != nil {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
 		s.Equal("remote-session", id)
+		s.Equal("event", eventID)
 		invocations++
 		w.WriteHeader(http.StatusNoContent)
 	})
@@ -3322,21 +3292,22 @@ func (s *ControllerSuite) TestMCPRejectsEmptyMissingAndDeletedCredentials() {
 	server := NewMCP(http.NewServeMux(), "api-key", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
 	ctx := context.WithValue(context.Background(), AuthenticatedKey, true)
 
-	for _, input := range []string{"", "|", "unknown|", "active|", "|token", "active|token|extra"} {
-		_, err := server.authorized(ctx, input)
+	for _, input := range []string{"", "|", "unknown|", "active|", "|token", "active|event|token|extra", "active|event|", "active||token", "|event|token", "active|token"} {
+		_, _, err := server.authorized(ctx, input)
 		s.ErrorContains(err, "invalid agent session configuration format", input)
 	}
 
-	for _, input := range []string{"unknown|token", "active|wrong"} {
-		_, err := server.authorized(ctx, input)
+	for _, input := range []string{"unknown|event|token", "active|event|wrong"} {
+		_, _, err := server.authorized(ctx, input)
 		s.ErrorContains(err, "invalid agent session mcp token", input)
 	}
 
-	id, err := server.authorized(ctx, "active|token")
+	id, eventID, err := server.authorized(ctx, "active|event|token")
 	s.Require().NoError(err)
 	s.Equal("active", id)
+	s.Equal("event", eventID)
 	delete(s.sessionRep.mcpTokens, "active")
-	_, err = server.authorized(ctx, "active|token")
+	_, _, err = server.authorized(ctx, "active|event|token")
 	s.ErrorContains(err, "invalid agent session mcp token")
 }
 
@@ -3375,6 +3346,11 @@ func (s *ControllerSuite) TestPromptUsesCurrentMCPCredentialContract() {
 }
 
 func (s *ControllerSuite) TestWorkReportValidationAndPersistence() {
+	s.sessionRep.getAgentSessionEventFn = func(_ context.Context, id string) (*types.SessionEvent, error) {
+		s.Equal("event", id)
+		return &types.SessionEvent{Identifier: id, SessionIdentifier: "session"}, nil
+	}
+
 	s.sessionRep.mcpTokens = map[string]string{"session": "token"}
 	server := NewMCP(http.NewServeMux(), "api", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
 	ctx := context.WithValue(context.Background(), AuthenticatedKey, true)
@@ -3392,32 +3368,37 @@ func (s *ControllerSuite) TestWorkReportValidationAndPersistence() {
 		s.Equal(strings.Repeat("界", 280), report.Report)
 		return nil
 	}
-	_, output, err := server.workReport(ctx, nil, types.WorkReportInput{Session: "session|token", Report: strings.Repeat("界", 280)})
+	_, output, err := server.workReport(ctx, nil, WorkReportInput{Session: "session|event|token", Report: strings.Repeat("界", 280)})
 	s.Require().NoError(err)
 	s.Equal(map[string]bool{"success": true}, output)
 	s.Equal(1, calls)
 
-	for _, input := range []types.WorkReportInput{
-		{Session: "session|token", Report: strings.Repeat("界", 281)},
-		{Session: "session|token", Report: ""},
-		{Session: "session|token", Report: "   "},
-		{Session: "session|token", Report: "report", LinesAdded: -1},
-		{Session: "session|token", Report: "report", LinesRemoved: -1},
-		{Session: "session|wrong", Report: "report"},
+	for _, input := range []WorkReportInput{
+		{Session: "session|event|token", Report: strings.Repeat("界", 281)},
+		{Session: "session|event|token", Report: ""},
+		{Session: "session|event|token", Report: "   "},
+		{Session: "session|event|token", Report: "report", LinesAdded: -1},
+		{Session: "session|event|token", Report: "report", LinesRemoved: -1},
+		{Session: "session|event|wrong", Report: "report"},
 	} {
 		_, _, err := server.workReport(ctx, nil, input)
 		s.Error(err)
 	}
-	_, _, err = server.workReport(context.Background(), nil, types.WorkReportInput{Session: "session|token", Report: "report"})
+	_, _, err = server.workReport(context.Background(), nil, WorkReportInput{Session: "session|event|token", Report: "report"})
 	s.Error(err)
 	s.Equal(1, calls)
 	delete(s.sessionRep.mcpTokens, "session")
-	_, _, err = server.workReport(ctx, nil, types.WorkReportInput{Session: "session|token", Report: "report"})
+	_, _, err = server.workReport(ctx, nil, WorkReportInput{Session: "session|event|token", Report: "report"})
 	s.Error(err)
 	s.Equal(1, calls)
 }
 
 func (s *ControllerSuite) TestWorkReportPreservesChangesAndPropagatesSaveError() {
+	s.sessionRep.getAgentSessionEventFn = func(_ context.Context, id string) (*types.SessionEvent, error) {
+		s.Equal("event", id)
+		return &types.SessionEvent{Identifier: id, SessionIdentifier: "session"}, nil
+	}
+
 	s.sessionRep.mcpTokens = map[string]string{"session": "token"}
 	server := NewMCP(http.NewServeMux(), "api", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
 	expected := errors.New("save failed")
@@ -3431,11 +3412,16 @@ func (s *ControllerSuite) TestWorkReportPreservesChangesAndPropagatesSaveError()
 		return expected
 	}
 	ctx := context.WithValue(context.Background(), AuthenticatedKey, true)
-	_, _, err := server.workReport(ctx, nil, types.WorkReportInput{Session: "session|token", LinesAdded: 7, LinesRemoved: 3, Commits: []string{"commit-one", "commit-two"}, Report: "Implemented changes"})
+	_, _, err := server.workReport(ctx, nil, WorkReportInput{Session: "session|event|token", LinesAdded: 7, LinesRemoved: 3, Commits: []string{"commit-one", "commit-two"}, Report: "Implemented changes"})
 	s.ErrorIs(err, expected)
 }
 
 func (s *ControllerSuite) TestCreatePullRequestUsesSessionRepositoryAndStoresResult() {
+	s.sessionRep.getAgentSessionEventFn = func(_ context.Context, id string) (*types.SessionEvent, error) {
+		s.Equal("event", id)
+		return &types.SessionEvent{Identifier: id, SessionIdentifier: "session"}, nil
+	}
+
 	repo := "owner/repo"
 	installation := "installation"
 	s.sessionRep.mcpTokens = map[string]string{"session": "token"}
@@ -3466,19 +3452,19 @@ func (s *ControllerSuite) TestCreatePullRequestUsesSessionRepositoryAndStoresRes
 	}
 	server := NewMCP(http.NewServeMux(), "api", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
 	ctx := context.WithValue(context.Background(), AuthenticatedKey, true)
-	input := types.CreatePullRequestInput{Session: "session|token", Title: "Changes", Body: "Details", Head: "feature", Base: "main", Draft: true}
+	input := CreatePullRequestInput{Session: "session|event|token", Title: "Changes", Body: "Details", Head: "feature", Base: "main", Draft: true}
 	_, output, err := server.createPullRequest(ctx, nil, input)
 	s.Require().NoError(err)
 	s.Same(pr, output)
 	s.Equal(1, created)
 	s.Equal(1, stored)
 
-	input.Session = "session|wrong"
+	input.Session = "session|event|wrong"
 	_, _, err = server.createPullRequest(ctx, nil, input)
 	s.Error(err)
 	s.Equal(1, created)
 	s.Equal(1, stored)
-	input.Session = "session|token"
+	input.Session = "session|event|token"
 	input.Title = ""
 	_, _, err = server.createPullRequest(ctx, nil, input)
 	s.Error(err)
@@ -3525,27 +3511,22 @@ func (s *ControllerSuite) TestExecuteRequiresWorkReport() {
 	s.Equal("sess-1", s.sessionRep.deletedMCPToken)
 }
 
-func (s *ControllerSuite) TestExecuteClearsPreviousReportBeforeDispatch() {
+func (s *ControllerSuite) TestExecutePreservesExistingReportBeforeDispatch() {
 	s.prepareExecutable()
 	event := *testSessionEvent
 	event.Result = &types.SessionEventResult{Report: "Previous execution", Commits: []string{"commit"}}
 	s.sessionRep.getAgentSessionEventFn = func(context.Context, string) (*types.SessionEvent, error) { return &event, nil }
-	cleared := false
-	s.sessionRep.updateSessionEventResultFn = func(_ context.Context, updated *types.SessionEvent) error {
-		s.Empty(updated.Result.Report)
-		s.Equal([]string{"commit"}, updated.Result.Commits)
-		cleared = true
-		return nil
-	}
 	s.sandboxHdl.runFn = func(_ context.Context, _ *interfaces.SandboxConfig, stdout chan<- string, stderr chan<- string) (interfaces.SandboxShutdown, error) {
-		s.True(cleared)
+		s.Equal("Previous execution", event.Result.Report)
+		s.Equal([]string{"commit"}, event.Result.Commits)
 		close(stdout)
 		close(stderr)
 		return nil, nil
 	}
 	status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
-	s.ErrorContains(err, "agent must call work_report")
-	s.Equal(types.EventJobStatus_Failed, status)
+	s.NoError(err)
+	s.Equal(types.EventJobStatus_Succeeded, status)
+	s.Empty(s.sessionRep.updatedResults)
 	s.Empty(s.sessionRep.mcpTokens)
 }
 
@@ -3553,8 +3534,8 @@ func (s *ControllerSuite) TestWorkReportUsesExistingResultUpdateAndPreservesPull
 	s.sessionRep.mcpTokens = map[string]string{"session": "token"}
 	pr := &types.PullRequest{Number: 42, HeadRefName: "feature"}
 	event := &types.SessionEvent{Identifier: "event", SessionIdentifier: "session", Result: &types.SessionEventResult{PullRequest: pr}}
-	s.sessionRep.getExecutingEventFn = func(_ context.Context, id string) (*types.SessionEvent, error) {
-		s.Equal("session", id)
+	s.sessionRep.getAgentSessionEventFn = func(_ context.Context, id string) (*types.SessionEvent, error) {
+		s.Equal("event", id)
 		return event, nil
 	}
 	updated := false
@@ -3566,7 +3547,7 @@ func (s *ControllerSuite) TestWorkReportUsesExistingResultUpdateAndPreservesPull
 		return nil
 	}
 	server := NewMCP(http.NewServeMux(), "api", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
-	_, _, err := server.workReport(context.WithValue(context.Background(), AuthenticatedKey, true), nil, types.WorkReportInput{Session: "session|token", Report: "Completed work"})
+	_, _, err := server.workReport(context.WithValue(context.Background(), AuthenticatedKey, true), nil, WorkReportInput{Session: "session|event|token", Report: "Completed work"})
 	s.NoError(err)
 	s.True(updated)
 }

@@ -796,28 +796,30 @@ func (s *PostgresSuite) TestDeleteMCPToken_Error() {
 	s.ErrorContains(s.repo.DeleteMCPToken(context.Background(), "session-1"), "database unavailable")
 }
 
-func (s *PostgresSuite) TestGetExecutingSessionEventReturnsTypedResultWithoutTokens() {
+func (s *PostgresSuite) TestGetAgentSessionEventReturnsTypedResultWithoutTokens() {
 	result := &types.SessionEventResult{Report: "Completed work", Commits: []string{}}
 	s.pool.queryRowFn = func(_ context.Context, sql string, args ...any) pgx.Row {
-		s.Equal(GetMCPSessionEventSql, sql)
-		s.Equal([]any{"session"}, args)
+		s.Equal(GetAgentSessionEventSql, sql)
+		s.Equal([]any{"event"}, args)
 		s.NotContains(sql, "sessions_mcp_tokens")
 		return &mockRow{scanFn: func(dest ...any) error {
-			*dest[0].(*string) = "event"
-			*dest[2].(**types.SessionEventResult) = result
+			*dest[0].(*string) = "session"
+			*dest[1].(*string) = "event"
+			*dest[5].(**types.SessionEventResult) = result
 			return nil
 		}}
 	}
-	event, err := s.repo.GetExecutingSessionEvent(context.Background(), "session")
+	event, err := s.repo.GetAgentSessionEvent(context.Background(), "event")
 	s.Require().NoError(err)
 	s.Same(result, event.Result)
 	s.Equal("session", event.SessionIdentifier)
 }
 
-func (s *PostgresSuite) TestGetExecutingSessionEventRejectsMissingExecution() {
+func (s *PostgresSuite) TestGetAgentSessionEventReturnsNilWhenMissing() {
 	s.pool.queryRowFn = func(context.Context, string, ...any) pgx.Row {
 		return &mockRow{scanFn: func(...any) error { return pgx.ErrNoRows }}
 	}
-	_, err := s.repo.GetExecutingSessionEvent(context.Background(), "session")
-	s.ErrorContains(err, "active agent execution required")
+	event, err := s.repo.GetAgentSessionEvent(context.Background(), "event")
+	s.NoError(err)
+	s.Nil(event)
 }

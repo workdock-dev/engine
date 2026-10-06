@@ -351,16 +351,6 @@ func (s *GitHandlerSuite) TestGetCommands() {
 	s.Empty(commands)
 }
 
-func (s *GitHandlerSuite) TestGetLatestChangesCommand() {
-	command := s.handler.GetLatestChangesCommand("workdock-dev/engine")
-
-	s.Contains(command, `repository = "workdock-dev/engine"`)
-	s.NotContains(command, "REPO_FULL_NAME_ARG")
-	s.NotContains(command, "gh pr")
-	s.NotContains(command, "gh auth")
-	s.Contains(command, "WORKDOCK_GITHUB_API_TOKEN")
-}
-
 func (s *GitHandlerSuite) TestGetGitAccess_Success() {
 	s.secrets.getFn = func(ctx context.Context, secretPath, secretName string) (string, error) {
 		return marshalToken(futureToken), nil

@@ -161,7 +161,7 @@ func (m *AgentSessionMCP) authorized(ctx context.Context, session string) (strin
 
 	config := strings.Split(session, "|")
 
-	if len(config) != 2 || config[0] == "" || config[1] == "" {
+	if len(config) != 3 || config[0] == "" || config[1] == "" || config[2] == "" {
 		err := errors.New("invalid agent session configuration format")
 		slog.Error("[agent_session][mcp] failed to authorize request", "err", err)
 		return "", "", err

@@ -246,9 +246,8 @@ func (m *mockSandboxHandler) Run(ctx context.Context, config *interfaces.Sandbox
 	if m.runFn != nil {
 		return m.runFn(ctx, config, stdout, stderr)
 	}
-	return func(ctx context.Context) string {
+	return func(ctx context.Context) {
 		m.shutdownRan = true
-		return "shutdown result"
 	}, nil
 }
 
@@ -381,8 +380,6 @@ func (m *mockMcpHandler) GetMCPList() []interfaces.MCPConfig {
 // --- Repository mock (session) ---
 
 type mockSessionRepository struct {
-	getExecutingEventFn func(context.Context, string) (*types.SessionEvent, error)
-
 	getAgentSessionFn              func(ctx context.Context, identifier string) (*types.Session, error)
 	getAgentSessionsByIssueIdFn    func(ctx context.Context, issueId string) ([]*types.Session, error)
 	getAgentSessionEventFn         func(ctx context.Context, identifier string) (*types.SessionEvent, error)
@@ -673,12 +670,4 @@ func (m *mockGitHandler) CreatePullRequest(ctx context.Context, input interfaces
 	}
 
 	return nil, nil
-}
-
-func (m *mockSessionRepository) GetExecutingSessionEvent(ctx context.Context, sessionID string) (*types.SessionEvent, error) {
-	if m.getExecutingEventFn != nil {
-		return m.getExecutingEventFn(ctx, sessionID)
-	}
-
-	return &types.SessionEvent{Identifier: "event", SessionIdentifier: sessionID}, nil
 }
