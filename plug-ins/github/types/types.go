@@ -30,17 +30,18 @@ type InstallationAccessToken struct {
 }
 
 type WebhookEvent struct {
-	DeliveryID          string        `json:"-"`
-	EventType           string        `json:"event_type"`
-	Action              string        `json:"action"`
-	Installation        *Installation `json:"installation,omitempty"`
-	Repository          *Repository   `json:"repository"`
-	Repositories        []Repository  `json:"repositories,omitempty"`
-	RepositoriesAdded   []Repository  `json:"repositories_added,omitempty"`
-	RepositoriesRemoved []Repository  `json:"repositories_removed,omitempty"`
-	Sender              *User         `json:"sender,omitempty"`
-	PullRequest         *PullRequest  `json:"pull_request"`
-	CheckSuite          *CheckSuite   `json:"check_suite,omitempty"`
+	DeliveryID          string             `json:"-"`
+	EventType           string             `json:"event_type"`
+	Action              string             `json:"action"`
+	Installation        *Installation      `json:"installation,omitempty"`
+	Repository          *Repository        `json:"repository"`
+	Repositories        []Repository       `json:"repositories,omitempty"`
+	RepositoriesAdded   []Repository       `json:"repositories_added,omitempty"`
+	RepositoriesRemoved []Repository       `json:"repositories_removed,omitempty"`
+	Sender              *User              `json:"sender,omitempty"`
+	PullRequest         *PullRequest       `json:"pull_request"`
+	CheckSuite          *CheckSuite        `json:"check_suite,omitempty"`
+	Review              *PullRequestReview `json:"review,omitempty"`
 }
 
 type Installation struct {
@@ -60,6 +61,10 @@ type Repository struct {
 type User struct {
 	Login string `json:"login"`
 	ID    int    `json:"id"`
+}
+
+type PullRequestReview struct {
+	State string `json:"state"`
 }
 
 type PullRequest struct {

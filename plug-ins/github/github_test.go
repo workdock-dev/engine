@@ -846,6 +846,35 @@ func (s *WebhookSuite) TestHandlePullRequestComment_Success() {
 	s.Equal("delivery-comment-1", *event.DeliveryId)
 }
 
+func (s *WebhookSuite) TestHandlePullRequestComment_ReviewState() {
+	for _, state := range []string{"approved", "commented", "changes_requested"} {
+		s.Run(state, func() {
+			before := len(s.recorder.comment)
+			err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+				WEventType: WEventType_PullRequestReview,
+				Payload: []byte(fmt.Sprintf(`{
+					"action": "submitted",
+					"review": {"state": "%s"},
+					"sender": {"login": "alice"},
+					"installation": {"id": 11},
+					"pull_request": {
+						"head": {"ref": "feature", "repo": {"full_name": "owner/repo"}}
+					}
+				}`, state)),
+			})
+
+			s.Require().NoError(err)
+			if state == "approved" {
+				s.Len(s.recorder.comment, before, "approval must not trigger agent work")
+			} else {
+				s.Require().Len(s.recorder.comment, before+1)
+				s.Equal("feature", s.recorder.comment[before].GitRef)
+				s.Equal("owner/repo", s.recorder.comment[before].RepoFullName)
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // WEventConsumer — check_suite
 // ---------------------------------------------------------------------------
