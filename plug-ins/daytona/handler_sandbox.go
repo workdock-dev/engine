@@ -515,21 +515,13 @@ func (h *SandboxHandler) GitPull(ctx context.Context, input agent_session_interf
 
 	if input.Branch != "" {
 		// Daytona fetches configured refspecs even when pulling an explicit branch.
-		refspec := fmt.Sprintf("+refs/heads/%s:refs/remotes/%s/%s", input.Branch, remote, input.Branch)
-		result, err := sandbox.Process.ExecuteCommand(ctx,
-			`git -C "$WORKDOCK_GIT_PATH" config --local --fixed-value --replace-all "remote.$WORKDOCK_GIT_REMOTE.fetch" "$WORKDOCK_GIT_REFSPEC" "$WORKDOCK_GIT_REFSPEC"`,
-			options.WithCommandEnv(map[string]string{
-				"WORKDOCK_GIT_PATH":    input.Path,
-				"WORKDOCK_GIT_REMOTE":  remote,
-				"WORKDOCK_GIT_REFSPEC": refspec,
-			}),
+		err := sandbox.Git.SetConfig(ctx,
+			fmt.Sprintf("remote.%s.fetch", remote),
+			fmt.Sprintf("+refs/heads/*:refs/remotes/%s/*", remote),
+			options.WithConfigScope("local"),
+			options.WithConfigPath(input.Path),
 		)
 		if err != nil {
-			slog.Error("[sandbox][daytona] failed to configure git pull refspec", "err", err, "session_id", input.SessionId)
-			return err
-		}
-		if result == nil || result.ExitCode != 0 {
-			err := errors.New("failed to configure git pull refspec")
 			slog.Error("[sandbox][daytona] failed to configure git pull refspec", "err", err, "session_id", input.SessionId)
 			return err
 		}
