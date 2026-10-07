@@ -252,35 +252,44 @@ func (c *WEventConsumer) Consume(_ context.Context, event *webhook.VerifiedWEven
 	return webhook.ErrWBadRequest
 }
 
-// consumeIssueEvent processes a verified issue webhook payload. It emits the
-// TicketChangedEvent domain event for the issue change, and verifies whether
-// an issue update event moved the issue into a closed workflow state (done,
-// canceled, duplicated, etc.); only when it did, it publishes the
-// AgentSessionArchiveEvent to archive the issue's sandboxes.
-//
-// The webhook payload only carries the state's display name, not its type, so
-// the current issue state is re-checked against Linear. Verification errors
-// are logged upstream and never fail webhook ingestion.
+// Issue categories come from Linear's current state, rather than customizable
+// workflow names. A failed lookup still publishes the original ticket payload.
 func (c *WEventConsumer) consumeIssueEvent(payload types.IssueStatusChangePayload) error {
-	c.publishTicketChanged(payload)
-
-	if payload.Action != "update" {
+	if payload.Action != "update" && payload.Action != "create" {
+		c.publishTicketChanged(payload, "")
 		return nil
 	}
 
 	credentials, err := c.client.GetCredentials(context.Background(), payload.OrganizationID)
 
 	if err != nil {
+		c.publishTicketChanged(payload, "")
 		return err
 	}
 
 	issue, err := c.client.GetIssue(context.Background(), credentials, payload.Data.ID)
 
 	if err != nil {
+		c.publishTicketChanged(payload, "")
 		return err
 	}
 
-	if issue.StateType != types.IssueStateType_Completed && issue.StateType != types.IssueStateType_Canceled {
+	payload.Data.StateName = issue.StateName
+	stateType := issue.StateType
+
+	// Duplicate is a reserved, non-customizable Linear status. It
+	// may use the canceled category, so normalize its reserved name here.
+	if issue.StateName == "Duplicate" {
+		stateType = types.IssueStateType_Duplicate
+	}
+
+	c.publishTicketChanged(payload, stateType)
+
+	if payload.Action != "update" {
+		return nil
+	}
+
+	if stateType != types.IssueStateType_Completed && stateType != types.IssueStateType_Canceled && stateType != types.IssueStateType_Duplicate {
 		slog.Debug("[webhook][linear] issue state is not closed, skipping archive event", "issue_id", payload.Data.ID, "state_type", issue.StateType)
 		return nil
 	}
@@ -296,7 +305,7 @@ func (c *WEventConsumer) consumeIssueEvent(payload types.IssueStatusChangePayloa
 // publishTicketChanged emits the TicketChangedEvent for a verified issue
 // webhook payload. The change type is mapped from the webhook action; unknown
 // actions are not emitted.
-func (c *WEventConsumer) publishTicketChanged(payload types.IssueStatusChangePayload) {
+func (c *WEventConsumer) publishTicketChanged(payload types.IssueStatusChangePayload, stateType string) {
 	var changeType shared.TicketChangeType
 
 	switch payload.Action {
@@ -322,6 +331,7 @@ func (c *WEventConsumer) publishTicketChanged(payload types.IssueStatusChangePay
 		Url:             payload.Data.URL,
 		PreviousState:   payload.UpdatedFrom.StateName,
 		NewState:        payload.Data.StateName,
+		NewStateType:    stateType,
 		OccurredAt:      time.UnixMilli(payload.WebhookTimestamp),
 	})
 }

@@ -191,6 +191,7 @@ type TicketChangedEvent struct {
 	Url             string
 	PreviousState   string
 	NewState        string
+	NewStateType    string
 	OccurredAt      time.Time
 }
 

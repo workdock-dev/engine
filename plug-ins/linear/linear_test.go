@@ -643,7 +643,7 @@ func (s *WebhookSuite) TestConsume_Issue_CreationAction_NoEvent() {
 
 	s.Require().NoError(err)
 	s.Empty(s.recorder.archiveEvents, "creation events must not emit the agent session archive event")
-	s.Empty(s.client.issueCalls, "creation events must not query the issue state")
+	s.Equal([]string{"issue-1"}, s.client.issueCalls, "creation events persist the verified workflow category")
 }
 
 func (s *WebhookSuite) TestConsume_Issue_CredentialsError_NoEvent() {
@@ -709,7 +709,7 @@ func (s *WebhookSuite) TestConsume_Issue_CreateAction_PublishesTicketChanged() {
 	s.Require().NoError(err)
 	s.Require().Len(s.recorder.ticketChanged, 1)
 	s.Empty(s.recorder.archiveEvents, "creation events must not emit the agent session archive event")
-	s.Empty(s.client.issueCalls, "creation events must not query the issue state")
+	s.Equal([]string{"issue-1"}, s.client.issueCalls, "creation events persist the verified workflow category")
 
 	event := s.recorder.ticketChanged[0]
 	s.Equal(string(shared.PlatformProvider_Linear), event.Provider)
@@ -722,6 +722,7 @@ func (s *WebhookSuite) TestConsume_Issue_CreateAction_PublishesTicketChanged() {
 	s.Equal("https://linear.app/issue/1", event.Url)
 	s.Empty(event.PreviousState)
 	s.Equal("Todo", event.NewState)
+	s.Equal(types.IssueStateType_Unstarted, event.NewStateType)
 	s.True(event.OccurredAt.Equal(time.UnixMilli(timestamp)))
 }
 
@@ -761,6 +762,7 @@ func (s *WebhookSuite) TestConsume_Issue_UpdateAction_PublishesTicketChanged() {
 	s.Equal("Title", event.Title)
 	s.Equal("In Progress", event.PreviousState)
 	s.Equal("Done", event.NewState)
+	s.Equal(types.IssueStateType_Completed, event.NewStateType)
 }
 
 func (s *WebhookSuite) TestConsume_Issue_RemoveAction_PublishesTicketChanged() {
@@ -830,6 +832,40 @@ func (s *WebhookSuite) TestConsume_Issue_UpdateAction_PublishesTicketChangedWhen
 	s.Empty(s.recorder.archiveEvents)
 	s.Require().Len(s.recorder.ticketChanged, 1, "the ticket changed event is emitted from the verified webhook payload regardless of the archive verification outcome")
 	s.Equal(shared.TicketChange_Updated, s.recorder.ticketChanged[0].ChangeType)
+	s.Empty(s.recorder.ticketChanged[0].NewStateType)
+}
+
+func (s *WebhookSuite) TestConsume_Issue_PersistsCustomStateCategoriesAndDuplicate() {
+	for _, item := range []struct {
+		name     string
+		category string
+		expected string
+		closed   bool
+	}{
+		{"Shipped", types.IssueStateType_Completed, types.IssueStateType_Completed, true},
+		{"Won't Fix", types.IssueStateType_Canceled, types.IssueStateType_Canceled, true},
+		{"Duplicate", types.IssueStateType_Canceled, types.IssueStateType_Duplicate, true},
+		{"Implementing", types.IssueStateType_Started, types.IssueStateType_Started, false},
+		{"Waiting", types.IssueStateType_Backlog, types.IssueStateType_Backlog, false},
+	} {
+		s.Run(item.name, func() {
+			s.recorder.ticketChanged = nil
+			s.recorder.archiveEvents = nil
+			s.client.issueFn = func(context.Context, string, string) (*types.IssueStateResult, error) {
+				return &types.IssueStateResult{ID: "issue-1", StateName: item.name, StateType: item.category}, nil
+			}
+			payload, err := json.Marshal(types.IssueStatusChangePayload{
+				Action: "update", OrganizationID: "org-1", WebhookTimestamp: time.Now().UnixMilli(),
+				Data: types.Issue{ID: "issue-1", StateName: "Stale webhook name"},
+			})
+			s.Require().NoError(err)
+			s.NoError(s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{WEventType: WEventType_Issue, Payload: payload}))
+			s.Require().Len(s.recorder.ticketChanged, 1)
+			s.Equal(item.name, s.recorder.ticketChanged[0].NewState)
+			s.Equal(item.expected, s.recorder.ticketChanged[0].NewStateType)
+			s.Equal(item.closed, len(s.recorder.archiveEvents) == 1)
+		})
+	}
 }
 
 func (s *WebhookSuite) TestConsume_AgentSession_InvalidJson() {
