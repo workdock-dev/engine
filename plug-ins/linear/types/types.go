@@ -67,6 +67,7 @@ const (
 	IssueStateType_Started   = "started"
 	IssueStateType_Completed = "completed"
 	IssueStateType_Canceled  = "canceled"
+	IssueStateType_Duplicate = "duplicate"
 )
 
 // IssueStateName_InReview is the workflow state name used by Linear teams for
