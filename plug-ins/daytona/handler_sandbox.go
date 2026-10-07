@@ -514,6 +514,18 @@ func (h *SandboxHandler) GitPull(ctx context.Context, input agent_session_interf
 	}
 
 	if input.Branch != "" {
+		// Daytona fetches configured refspecs even when pulling an explicit branch.
+		err := sandbox.Git.SetConfig(ctx,
+			fmt.Sprintf("remote.%s.fetch", remote),
+			fmt.Sprintf("+refs/heads/*:refs/remotes/%s/*", remote),
+			options.WithConfigScope("local"),
+			options.WithConfigPath(input.Path),
+		)
+		if err != nil {
+			slog.Error("[sandbox][daytona] failed to configure git pull refspec", "err", err, "session_id", input.SessionId)
+			return err
+		}
+
 		opts = append(opts, options.WithPullBranch(input.Branch))
 	}
 
