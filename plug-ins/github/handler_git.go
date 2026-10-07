@@ -93,3 +93,72 @@ func (h *GitHandler) CreatePullRequest(ctx context.Context, input agent_session_
 		HeadRefOID:  pr.Head.SHA,
 	}, nil
 }
+
+func (h *GitHandler) GetUnresolvedPullRequestComments(ctx context.Context, input agent_session_interfaces.ReadPullRequestInput) ([]agent_session_interfaces.PullRequestComment, error) {
+	comments, err := h.client.GetUnresolvedPullRequestComments(ctx, input.RepoFullName, input.AccessToken, input.Number)
+
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]agent_session_interfaces.PullRequestComment, 0, len(comments))
+
+	for _, comment := range comments {
+		result = append(result, agent_session_interfaces.PullRequestComment{
+			ID:           comment.ID,
+			ThreadID:     comment.ThreadID,
+			URL:          comment.URL,
+			Body:         comment.Body,
+			Author:       comment.Author.Login,
+			CreatedAt:    comment.CreatedAt,
+			Path:         comment.Path,
+			Line:         comment.Line,
+			OriginalLine: comment.OriginalLine,
+			DiffHunk:     comment.DiffHunk,
+			IsOutdated:   comment.IsOutdated,
+		})
+	}
+
+	return result, nil
+}
+
+func (h *GitHandler) GetFailedPullRequestChecks(ctx context.Context, input agent_session_interfaces.ReadPullRequestInput) ([]agent_session_interfaces.PullRequestCheck, error) {
+	checks, err := h.client.GetFailedPullRequestChecks(ctx, input.RepoFullName, input.AccessToken, input.Number)
+
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]agent_session_interfaces.PullRequestCheck, 0, len(checks))
+
+	for _, check := range checks {
+		annotations := make([]agent_session_interfaces.PullRequestCheckAnnotation, 0, len(check.Annotations))
+
+		for _, annotation := range check.Annotations {
+			annotations = append(annotations, agent_session_interfaces.PullRequestCheckAnnotation{
+				Path:            annotation.Path,
+				StartLine:       annotation.StartLine,
+				EndLine:         annotation.EndLine,
+				AnnotationLevel: annotation.AnnotationLevel,
+				Title:           annotation.Title,
+				Message:         annotation.Message,
+				RawDetails:      annotation.RawDetails,
+			})
+		}
+
+		result = append(result, agent_session_interfaces.PullRequestCheck{
+			ID:          check.ID,
+			Name:        check.Name,
+			HeadSHA:     check.HeadSHA,
+			URL:         check.URL,
+			DetailsURL:  check.DetailsURL,
+			Conclusion:  check.Conclusion,
+			Title:       check.Output.Title,
+			Summary:     check.Output.Summary,
+			Text:        check.Output.Text,
+			Annotations: annotations,
+		})
+	}
+
+	return result, nil
+}

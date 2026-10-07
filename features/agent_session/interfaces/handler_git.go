@@ -35,9 +35,55 @@ type CreatePullRequestInput struct {
 	Draft        bool
 }
 
+type ReadPullRequestInput struct {
+	RepoFullName string
+	AccessToken  string
+	Number       int
+}
+
+type PullRequestComment struct {
+	ID           string `json:"id"`
+	ThreadID     string `json:"threadId,omitempty"`
+	URL          string `json:"url"`
+	Body         string `json:"body"`
+	Author       string `json:"author"`
+	CreatedAt    string `json:"createdAt"`
+	Path         string `json:"path,omitempty"`
+	Line         *int   `json:"line,omitempty"`
+	OriginalLine *int   `json:"originalLine,omitempty"`
+	DiffHunk     string `json:"diffHunk,omitempty"`
+	IsOutdated   bool   `json:"isOutdated,omitempty"`
+}
+
+type PullRequestCheckAnnotation struct {
+	Path            string `json:"path"`
+	StartLine       int    `json:"startLine"`
+	EndLine         int    `json:"endLine"`
+	AnnotationLevel string `json:"annotationLevel"`
+	Title           string `json:"title"`
+	Message         string `json:"message"`
+	RawDetails      string `json:"rawDetails"`
+}
+
+type PullRequestCheck struct {
+	ID          int64                        `json:"id"`
+	Name        string                       `json:"name"`
+	HeadSHA     string                       `json:"headSha"`
+	URL         string                       `json:"url"`
+	DetailsURL  string                       `json:"detailsUrl"`
+	Conclusion  string                       `json:"conclusion"`
+	Title       string                       `json:"title"`
+	Summary     string                       `json:"summary"`
+	Text        string                       `json:"text"`
+	Annotations []PullRequestCheckAnnotation `json:"annotations"`
+}
+
 // HandlerGit is the interface to interact with the git hosting provider
 // for the intial setup of the sandbox
 type HandlerGit interface {
+	GetUnresolvedPullRequestComments(ctx context.Context, input ReadPullRequestInput) ([]PullRequestComment, error)
+	GetFailedPullRequestChecks(ctx context.Context, input ReadPullRequestInput) ([]PullRequestCheck, error)
+
 	// GetInstallationUrl returns the installation URL where user can
 	// grant access
 	GetInstallationUrl() string

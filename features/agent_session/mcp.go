@@ -59,6 +59,11 @@ type CreatePullRequestInput struct {
 	Draft   bool   `json:"draft,omitempty"`
 }
 
+type ReadPullRequestInput struct {
+	Session string `json:"session" jsonschema:"Read the exact value from AGENT_SESSION_CONFIG."`
+	Number  int    `json:"number" jsonschema:"Pull request number in the agent session repository."`
+}
+
 type AgentSessionMCP struct {
 	apiKey                    string
 	mcp                       *mcp.Server
@@ -123,6 +128,16 @@ func (m *AgentSessionMCP) Handler() http.Handler {
 }
 
 func (m *AgentSessionMCP) registerTools() {
+	mcp.AddTool(m.mcp, &mcp.Tool{
+		Name:        "get_unresolved_pull_request_comments",
+		Description: "Retrieve all comments in unresolved review threads and all general conversation comments for a pull request in the session repository.",
+	}, m.getUnresolvedPullRequestComments)
+
+	mcp.AddTool(m.mcp, &mcp.Tool{
+		Name:        "get_failed_pull_request_checks",
+		Description: "Retrieve checks with a failure conclusion for the pull request head, including available output and error annotations.",
+	}, m.getFailedPullRequestChecks)
+
 	mcp.AddTool(m.mcp, &mcp.Tool{
 		Name:        "git_clone",
 		Description: "Clone a repository.",
@@ -442,4 +457,72 @@ func (m *AgentSessionMCP) createPullRequest(ctx context.Context, _ *mcp.CallTool
 	}
 
 	return nil, pr, nil
+}
+
+func (m *AgentSessionMCP) pullRequestAccess(ctx context.Context, input ReadPullRequestInput) (interfaces.HandlerGit, interfaces.ReadPullRequestInput, error) {
+	sessionID, _, err := m.authorized(ctx, input.Session)
+
+	if err != nil {
+		return nil, interfaces.ReadPullRequestInput{}, err
+	}
+
+	if input.Number <= 0 {
+		err := errors.New("pull request number must be positive")
+		slog.Error("[agent_session][mcp] invalid pull request", "err", err)
+		return nil, interfaces.ReadPullRequestInput{}, err
+	}
+
+	accessToken, err := m.gitAccess(ctx, sessionID)
+
+	if err != nil {
+		return nil, interfaces.ReadPullRequestInput{}, err
+	}
+
+	session, err := m.session.GetAgentSession(ctx, sessionID)
+
+	if err != nil {
+		return nil, interfaces.ReadPullRequestInput{}, err
+	}
+
+	if session == nil || session.RepoFullName == nil {
+		err := errors.New("agent session repository not set")
+		slog.Error("[agent_session][mcp] failed to read pull request", "err", err, "session_id", sessionID)
+		return nil, interfaces.ReadPullRequestInput{}, err
+	}
+
+	gitHandler, ok := m.gitHostingHandlerRegistry[string(shared.PlatformProvider_GitHub)]
+
+	if !ok {
+		err := fmt.Errorf("provider %s not configured for git hosting handler", shared.PlatformProvider_GitHub)
+		slog.Error("[agent_session][mcp] failed to read pull request", "err", err, "session_id", sessionID)
+		return nil, interfaces.ReadPullRequestInput{}, err
+	}
+
+	return gitHandler, interfaces.ReadPullRequestInput{
+		RepoFullName: *session.RepoFullName,
+		AccessToken:  accessToken,
+		Number:       input.Number,
+	}, nil
+}
+
+func (m *AgentSessionMCP) getUnresolvedPullRequestComments(ctx context.Context, _ *mcp.CallToolRequest, input ReadPullRequestInput) (*mcp.CallToolResult, any, error) {
+	handler, request, err := m.pullRequestAccess(ctx, input)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	comments, err := handler.GetUnresolvedPullRequestComments(ctx, request)
+	return nil, map[string]any{"comments": comments}, err
+}
+
+func (m *AgentSessionMCP) getFailedPullRequestChecks(ctx context.Context, _ *mcp.CallToolRequest, input ReadPullRequestInput) (*mcp.CallToolResult, any, error) {
+	handler, request, err := m.pullRequestAccess(ctx, input)
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	checks, err := handler.GetFailedPullRequestChecks(ctx, request)
+	return nil, map[string]any{"checks": checks}, err
 }
