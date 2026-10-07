@@ -344,6 +344,10 @@ func (c *WEventConsumer) handlePullRequestComment(event *types.WebhookEvent) err
 		return nil
 	}
 
+	if event.Review != nil && event.Review.State == "approved" {
+		return nil
+	}
+
 	if event.PullRequest == nil {
 		slog.Warn("[webhook][github] pull request comment event without pull request data", "action", event.Action)
 		return nil
