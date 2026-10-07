@@ -3450,7 +3450,7 @@ func (s *ControllerSuite) TestReportAndPullRequestToolsRegistered() {
 		names = append(names, tool.Name)
 	}
 
-	s.ElementsMatch([]string{"git_clone", "git_push", "git_pull", "work_report", "create_pull_request"}, names)
+	s.ElementsMatch([]string{"git_clone", "git_push", "git_pull", "work_report", "create_pull_request", "get_unresolved_pull_request_comments", "get_failed_pull_request_checks"}, names)
 }
 
 func (s *ControllerSuite) TestExecuteRequiresWorkReport() {
@@ -3510,4 +3510,75 @@ func (s *ControllerSuite) TestWorkReportUsesExistingResultUpdateAndPreservesPull
 	_, _, err := server.workReport(context.WithValue(context.Background(), AuthenticatedKey, true), nil, WorkReportInput{Session: "session|event|token", Report: "Completed work"})
 	s.NoError(err)
 	s.True(updated)
+}
+
+func (s *ControllerSuite) TestReadPullRequestToolsUseSessionRepository() {
+	repo := "owner/repo"
+	installation := "installation"
+	s.sessionRep.mcpTokens = map[string]string{"session": "token"}
+	s.sessionRep.getAgentSessionFn = func(context.Context, string) (*types.Session, error) {
+		return &types.Session{RepoFullName: &repo}, nil
+	}
+	s.gitRepo.getConnectionFn = func(_ context.Context, name string) (*types.GitConnection, error) {
+		s.Equal(repo, name)
+		return &types.GitConnection{Connected: true, InstallationId: &installation}, nil
+	}
+	s.gitHdl.getGitAccessFn = func(context.Context, *types.GitConnection) (*interfaces.GitAccess, error) {
+		return &interfaces.GitAccess{Granted: true, Secret: "installation-token"}, nil
+	}
+	expectedInput := interfaces.ReadPullRequestInput{RepoFullName: repo, AccessToken: "installation-token", Number: 42}
+	comments := []interfaces.PullRequestComment{{ID: "comment", Body: "Fix this", ThreadID: "thread"}}
+	checks := []interfaces.PullRequestCheck{{ID: 12, Conclusion: "failure", Summary: "Compilation failed"}}
+	calls := 0
+	s.gitHdl.commentsFn = func(_ context.Context, input interfaces.ReadPullRequestInput) ([]interfaces.PullRequestComment, error) {
+		calls++
+		s.Equal(expectedInput, input)
+		return comments, nil
+	}
+	s.gitHdl.checksFn = func(_ context.Context, input interfaces.ReadPullRequestInput) ([]interfaces.PullRequestCheck, error) {
+		calls++
+		s.Equal(expectedInput, input)
+		return checks, nil
+	}
+	server := NewMCP(http.NewServeMux(), "api", s.sessionRep, s.gitRepo, s.c.sandboxHandlerRegistry, s.c.gitHostingHandlerRegistry)
+	ctx := context.WithValue(context.Background(), AuthenticatedKey, true)
+	input := ReadPullRequestInput{Session: "session|event|token", Number: 42}
+	_, output, err := server.getUnresolvedPullRequestComments(ctx, nil, input)
+	s.Require().NoError(err)
+	s.Equal(map[string]any{"comments": comments}, output)
+	_, output, err = server.getFailedPullRequestChecks(ctx, nil, input)
+	s.Require().NoError(err)
+	s.Equal(map[string]any{"checks": checks}, output)
+	s.Equal(2, calls)
+
+	for _, invalid := range []ReadPullRequestInput{
+		{Session: "session|event|wrong", Number: 42},
+		{Session: input.Session, Number: 0},
+		{Session: input.Session, Number: -1},
+	} {
+		_, _, err := server.getUnresolvedPullRequestComments(ctx, nil, invalid)
+		s.Error(err)
+		_, _, err = server.getFailedPullRequestChecks(ctx, nil, invalid)
+		s.Error(err)
+	}
+
+	_, _, err = server.getFailedPullRequestChecks(context.Background(), nil, input)
+	s.Error(err)
+	s.Equal(2, calls)
+	expectedError := errors.New("provider failed")
+	s.gitHdl.commentsFn = func(context.Context, interfaces.ReadPullRequestInput) ([]interfaces.PullRequestComment, error) {
+		return nil, expectedError
+	}
+	s.gitHdl.checksFn = func(context.Context, interfaces.ReadPullRequestInput) ([]interfaces.PullRequestCheck, error) {
+		return nil, expectedError
+	}
+	_, _, err = server.getUnresolvedPullRequestComments(ctx, nil, input)
+	s.ErrorIs(err, expectedError)
+	_, _, err = server.getFailedPullRequestChecks(ctx, nil, input)
+	s.ErrorIs(err, expectedError)
+	s.gitRepo.getConnectionFn = func(context.Context, string) (*types.GitConnection, error) {
+		return nil, expectedError
+	}
+	_, _, err = server.getUnresolvedPullRequestComments(ctx, nil, input)
+	s.ErrorIs(err, expectedError)
 }

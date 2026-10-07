@@ -21,6 +21,9 @@ import (
 )
 
 type Client interface {
+	GetUnresolvedPullRequestComments(ctx context.Context, repo, token string, number int) ([]types.PullRequestComment, error)
+	GetFailedPullRequestChecks(ctx context.Context, repo, token string, number int) ([]types.PullRequestCheck, error)
+
 	CreatePullRequest(ctx context.Context, repo, token string, input types.CreatePullRequestInput) (*types.CreatePullRequestResponse, error)
 	IsRepositoryPublic(ctx context.Context, repo string) (bool, error)
 	CreateInstallationAccessToken(installationId int) (*types.InstallationAccessToken, error)

@@ -171,6 +171,9 @@ func (m *mockAgentHandler) TransitionIssueToInReview(ctx context.Context, issueI
 // --- HandlerGit mock ---
 
 type mockGitHandler struct {
+	commentsFn func(context.Context, interfaces.ReadPullRequestInput) ([]interfaces.PullRequestComment, error)
+	checksFn   func(context.Context, interfaces.ReadPullRequestInput) ([]interfaces.PullRequestCheck, error)
+
 	createPRFn func(context.Context, interfaces.CreatePullRequestInput) (*types.PullRequest, error)
 
 	getInstallationUrlFn func() string
@@ -635,6 +638,24 @@ var (
 func (m *mockGitHandler) CreatePullRequest(ctx context.Context, input interfaces.CreatePullRequestInput) (*types.PullRequest, error) {
 	if m.createPRFn != nil {
 		return m.createPRFn(ctx, input)
+	}
+
+	return nil, nil
+}
+
+func (m *mockGitHandler) GetUnresolvedPullRequestComments(ctx context.Context, input interfaces.ReadPullRequestInput) ([]interfaces.PullRequestComment, error) {
+
+	if m.commentsFn != nil {
+		return m.commentsFn(ctx, input)
+	}
+
+	return nil, nil
+}
+
+func (m *mockGitHandler) GetFailedPullRequestChecks(ctx context.Context, input interfaces.ReadPullRequestInput) ([]interfaces.PullRequestCheck, error) {
+
+	if m.checksFn != nil {
+		return m.checksFn(ctx, input)
 	}
 
 	return nil, nil

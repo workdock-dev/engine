@@ -42,6 +42,9 @@ import (
 // ---------------------------------------------------------------------------
 
 type mockClient struct {
+	commentsFn func(context.Context, string, string, int) ([]types.PullRequestComment, error)
+	checksFn   func(context.Context, string, string, int) ([]types.PullRequestCheck, error)
+
 	createPRFn func(context.Context, string, string, types.CreatePullRequestInput) (*types.CreatePullRequestResponse, error)
 
 	isPublicFn  func(ctx context.Context, repo string) (bool, error)
@@ -967,4 +970,77 @@ func (s *GitHandlerSuite) TestCreatePullRequestRejectsNilResult() {
 	pr, err := handler.CreatePullRequest(context.Background(), agent_session_interfaces.CreatePullRequestInput{})
 	s.ErrorContains(err, "pull request creation returned no result")
 	s.Nil(pr)
+}
+
+func (m *mockClient) GetUnresolvedPullRequestComments(ctx context.Context, repo, token string, number int) ([]types.PullRequestComment, error) {
+
+	if m.commentsFn != nil {
+		return m.commentsFn(ctx, repo, token, number)
+	}
+
+	return nil, nil
+}
+
+func (m *mockClient) GetFailedPullRequestChecks(ctx context.Context, repo, token string, number int) ([]types.PullRequestCheck, error) {
+
+	if m.checksFn != nil {
+		return m.checksFn(ctx, repo, token, number)
+	}
+
+	return nil, nil
+}
+
+func (s *GitHandlerSuite) TestReadPullRequestToolsMapResults() {
+	line := 7
+	comment := types.PullRequestComment{ID: "comment", ThreadID: "thread", URL: "comment-url", Body: "Fix this", CreatedAt: "today", Path: "file.go", Line: &line, OriginalLine: &line, DiffHunk: "diff", IsOutdated: true}
+	comment.Author.Login = "reviewer"
+	s.client.commentsFn = func(_ context.Context, repo, token string, number int) ([]types.PullRequestComment, error) {
+		s.Equal("owner/repo", repo)
+		s.Equal("private", token)
+		s.Equal(42, number)
+		return []types.PullRequestComment{comment}, nil
+	}
+	check := types.PullRequestCheck{ID: 12, Name: "build", HeadSHA: "sha", URL: "check-url", DetailsURL: "details-url", Conclusion: "failure"}
+	check.Output.Title = "Error"
+	check.Output.Summary = "Build failed"
+	check.Output.Text = "Compiler output"
+	check.Annotations = []types.PullRequestCheckAnnotation{{Path: "file.go", StartLine: 7, EndLine: 8, AnnotationLevel: "failure", Title: "Error", Message: "Syntax error", RawDetails: "details"}}
+	s.client.checksFn = func(_ context.Context, repo, token string, number int) ([]types.PullRequestCheck, error) {
+		s.Equal("owner/repo", repo)
+		s.Equal("private", token)
+		s.Equal(42, number)
+		return []types.PullRequestCheck{check}, nil
+	}
+	input := agent_session_interfaces.ReadPullRequestInput{RepoFullName: "owner/repo", AccessToken: "private", Number: 42}
+	comments, err := s.handler.GetUnresolvedPullRequestComments(context.Background(), input)
+	s.Require().NoError(err)
+	s.Equal([]agent_session_interfaces.PullRequestComment{{ID: "comment", ThreadID: "thread", URL: "comment-url", Body: "Fix this", Author: "reviewer", CreatedAt: "today", Path: "file.go", Line: &line, OriginalLine: &line, DiffHunk: "diff", IsOutdated: true}}, comments)
+	checks, err := s.handler.GetFailedPullRequestChecks(context.Background(), input)
+	s.Require().NoError(err)
+	s.Equal([]agent_session_interfaces.PullRequestCheck{{ID: 12, Name: "build", HeadSHA: "sha", URL: "check-url", DetailsURL: "details-url", Conclusion: "failure", Title: "Error", Summary: "Build failed", Text: "Compiler output", Annotations: []agent_session_interfaces.PullRequestCheckAnnotation{{Path: "file.go", StartLine: 7, EndLine: 8, AnnotationLevel: "failure", Title: "Error", Message: "Syntax error", RawDetails: "details"}}}}, checks)
+}
+
+func (s *GitHandlerSuite) TestReadPullRequestToolsPropagateErrorsAndReturnEmptyLists() {
+	input := agent_session_interfaces.ReadPullRequestInput{}
+	comments, err := s.handler.GetUnresolvedPullRequestComments(context.Background(), input)
+	s.NoError(err)
+	s.NotNil(comments)
+	s.Empty(comments)
+	checks, err := s.handler.GetFailedPullRequestChecks(context.Background(), input)
+	s.NoError(err)
+	s.NotNil(checks)
+	s.Empty(checks)
+	expected := errors.New("read failed")
+	s.client.commentsFn = func(context.Context, string, string, int) ([]types.PullRequestComment, error) {
+		return nil, expected
+	}
+	s.client.checksFn = func(context.Context, string, string, int) ([]types.PullRequestCheck, error) {
+		return nil, expected
+	}
+	comments, err = s.handler.GetUnresolvedPullRequestComments(context.Background(), input)
+	s.ErrorIs(err, expected)
+	s.Nil(comments)
+	checks, err = s.handler.GetFailedPullRequestChecks(context.Background(), input)
+	s.ErrorIs(err, expected)
+	s.Nil(checks)
 }
