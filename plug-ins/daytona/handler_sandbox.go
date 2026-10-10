@@ -29,6 +29,7 @@ import (
 	"github.com/daytona/clients/sdk-go/pkg/options"
 	sdktypes "github.com/daytona/clients/sdk-go/pkg/types"
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
+	agent_session_types "github.com/workdock-dev/engine/features/agent_session/types"
 	"github.com/workdock-dev/engine/plug-ins/daytona/helpers"
 	"github.com/workdock-dev/engine/plug-ins/daytona/types"
 )
@@ -120,7 +121,7 @@ func (h *SandboxHandler) Run(
 		secretId, secretName, err := h.setSecret(ctx, config, secret.Name, secret.Value, secret.Hosts)
 
 		if err != nil {
-			return shutdown, err
+			return shutdown, agent_session_types.WithExecutionMessage(err, "We couldn’t set up the access needed in your sandbox.")
 		}
 
 		secrets[secret.Name] = secretName
@@ -131,7 +132,7 @@ func (h *SandboxHandler) Run(
 		secretId, secretName, err := h.setSecret(ctx, config, secret.Name, secret.Value, secret.Hosts)
 
 		if err != nil {
-			return shutdown, err
+			return shutdown, agent_session_types.WithExecutionMessage(err, "We couldn’t set up the access needed in your sandbox.")
 		}
 
 		secrets[secret.Name] = secretName
@@ -146,7 +147,7 @@ func (h *SandboxHandler) Run(
 	sandbox, created, err := h.getOrCreateSandbox(ctx, config, secrets)
 
 	if err != nil {
-		return shutdown, err
+		return shutdown, agent_session_types.WithExecutionMessage(err, "We couldn’t prepare your sandbox.")
 	}
 
 	// *-------------------------------------------------------------------------*
@@ -155,7 +156,7 @@ func (h *SandboxHandler) Run(
 
 	slog.Debug("[sandbox][daytona] started")
 	if err := h.start(ctx, sandbox, config); err != nil {
-		return shutdown, err
+		return shutdown, agent_session_types.WithExecutionMessage(err, "We couldn’t start your sandbox.")
 	}
 
 	// *-------------------------------------------------------------------------*
@@ -164,7 +165,7 @@ func (h *SandboxHandler) Run(
 
 	if !created {
 		if err := h.updateExistingSandbox(ctx, sandbox, config, secrets, config.EnvVars); err != nil {
-			return shutdown, err
+			return shutdown, agent_session_types.WithExecutionMessage(err, "We couldn’t set up the access needed in your sandbox.")
 		}
 	}
 
@@ -181,7 +182,11 @@ func (h *SandboxHandler) Run(
 			if _, _, err := h.executeCommand(ctx, sandbox, config, cmd, time.Minute*5); err != nil {
 				deleting = true
 				h.deleteSandbox(context.Background(), sandbox, config)
-				return shutdown, err
+				message := "We couldn’t finish installing the tools in your sandbox."
+				if errors.Is(err, context.DeadlineExceeded) {
+					message = "Installing the tools in your sandbox took too long."
+				}
+				return shutdown, agent_session_types.WithExecutionMessage(err, message)
 			}
 		}
 	}
@@ -192,7 +197,7 @@ func (h *SandboxHandler) Run(
 
 	slog.Debug("[sandbox][daytona] configured git user")
 	if err := h.configureGitUser(ctx, sandbox, config); err != nil {
-		return shutdown, err
+		return shutdown, agent_session_types.WithExecutionMessage(err, "We couldn’t set up Git in your sandbox.")
 	}
 
 	// *-------------------------------------------------------------------------*
@@ -202,7 +207,7 @@ func (h *SandboxHandler) Run(
 	slog.Debug("[sandbox][daytona] files uploaded")
 	for path, data := range config.FileUploads {
 		if err := h.uploadFile(ctx, sandbox, config, data, strings.ReplaceAll(path, USER_PLACEHOLDER, DAYTONA_USER)); err != nil {
-			return shutdown, err
+			return shutdown, agent_session_types.WithExecutionMessage(err, "We couldn’t copy the files into your sandbox.")
 		}
 	}
 
@@ -217,7 +222,7 @@ func (h *SandboxHandler) Run(
 	slog.Debug("[sandbox][daytona] session commands")
 	for _, cmd := range config.Commands {
 		if _, _, err := h.executeCommand(ctx, sandbox, config, cmd, time.Minute*1); err != nil {
-			return shutdown, err
+			return shutdown, agent_session_types.WithExecutionMessage(err, "We couldn’t finish setting up your sandbox.")
 		}
 	}
 
@@ -227,7 +232,7 @@ func (h *SandboxHandler) Run(
 
 	slog.Debug("[sandbox][daytona] execution session created")
 	if err := h.createExecutionSession(ctx, sandbox, config); err != nil {
-		return shutdown, err
+		return shutdown, agent_session_types.WithExecutionMessage(err, "We couldn’t start the harness in your sandbox.")
 	}
 
 	execSessionCreated = true
@@ -235,7 +240,7 @@ func (h *SandboxHandler) Run(
 	result, err := h.executeSessionCommand(ctx, sandbox, config)
 
 	if err != nil {
-		return shutdown, err
+		return shutdown, agent_session_types.WithExecutionMessage(err, "We couldn’t start the harness in your sandbox.")
 	}
 
 	cmdId, ok := result["id"].(string)
@@ -243,7 +248,7 @@ func (h *SandboxHandler) Run(
 	if !ok {
 		err := errors.New("invalid pid type")
 		slog.Error("[sandbox][daytona] failed to execute session command", "err", err, "event_identifier", config.SessionEvent.Identifier)
-		return shutdown, err
+		return shutdown, agent_session_types.WithExecutionMessage(err, "We couldn’t start the harness in your sandbox.")
 	}
 
 	// Channel are closed internally

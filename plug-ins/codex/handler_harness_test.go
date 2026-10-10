@@ -16,6 +16,7 @@ package codex
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -110,6 +111,9 @@ func (s *HarnessSuite) TestGetFilesRequiresAuthentication() {
 
 	s.Nil(files)
 	s.EqualError(err, "[codex] auth.json is not configured")
+	var executionError *agent_session_types.ExecutionError
+	s.Require().True(errors.As(err, &executionError))
+	s.Equal("WorkDock hasn’t been signed in yet. Contact customer support for help signing it in.", executionError.Message)
 }
 
 func (s *HarnessSuite) TestRunCommandUsesCodexHomeAndNoAPIKey() {

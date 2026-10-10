@@ -15,6 +15,7 @@
 package types
 
 import (
+	"errors"
 	"regexp"
 	"testing"
 
@@ -101,4 +102,16 @@ func (s *TypesSuite) TestSetMaxAttempts() {
 			s.Equal(tt.expected, job.WillRetry())
 		})
 	}
+}
+
+func (s *TypesSuite) TestExecutionMessagePreservesCauseAndSpecificCopy() {
+	cause := errors.New("provider diagnostics")
+	err := WithExecutionMessage(cause, "We couldn’t start your sandbox.")
+	s.ErrorIs(err, cause)
+	s.EqualError(err, "provider diagnostics")
+	var executionError *ExecutionError
+	s.Require().True(errors.As(err, &executionError))
+	s.Equal("We couldn’t start your sandbox.", executionError.Message)
+	s.Same(err, WithExecutionMessage(err, "Generic failure."))
+	s.Nil(WithExecutionMessage(nil, "Generic failure."))
 }

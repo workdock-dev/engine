@@ -119,7 +119,7 @@ func (h *HarnessHandler) GetFiles(config *agent_session_interfaces.HarnessConfig
 	if h.config.AuthJson == "" {
 		err := fmt.Errorf("[codex] auth.json is not configured")
 		slog.Error("[codex] auth.json is not configured", "err", err)
-		return nil, err
+		return nil, agent_session_types.WithExecutionMessage(err, "WorkDock hasn’t been signed in yet. Contact customer support for help signing it in.")
 	}
 
 	return []map[string][]byte{{AUTH_FILE_PATH: []byte(h.config.AuthJson)}}, nil
