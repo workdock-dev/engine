@@ -2140,7 +2140,8 @@ func (s *ControllerSuite) TestExecute_PromptError() {
 	s.Error(err)
 	s.ErrorContains(err, "prompt failed")
 	s.Equal(types.EventJobStatus_Failed, status)
-	s.Equal([]error{errServerInternal}, s.agentHdl.sentErrors, "the user must be notified with the internal server error")
+	s.Require().Len(s.agentHdl.sentErrors, 1)
+	s.EqualError(s.agentHdl.sentErrors[0], "We couldn’t read the saved ticket details. We still couldn’t finish, and we won’t try again automatically. Send another message to try again. If it keeps happening, contact customer support.")
 }
 
 func (s *ControllerSuite) TestExecute_PromptError_RetryScheduledWhenJobWillRetry() {
@@ -2157,7 +2158,8 @@ func (s *ControllerSuite) TestExecute_PromptError_RetryScheduledWhenJobWillRetry
 	s.Error(err)
 	s.ErrorContains(err, "prompt failed")
 	s.Equal(types.EventJobStatus_Failed, status)
-	s.Equal([]error{errExecutionRetried}, s.agentHdl.sentErrors, "the user must be told the execution will be retried")
+	s.Require().Len(s.agentHdl.sentErrors, 1)
+	s.EqualError(s.agentHdl.sentErrors[0], "We couldn’t read the saved ticket details. We’ll try again automatically. You don’t need to do anything.")
 }
 
 func (s *ControllerSuite) TestExecute_GitAccessError() {
@@ -2172,7 +2174,8 @@ func (s *ControllerSuite) TestExecute_GitAccessError() {
 	s.Error(err)
 	s.ErrorContains(err, "git lookup failed")
 	s.Equal(types.EventJobStatus_Failed, status)
-	s.Equal([]error{errServerInternal}, s.agentHdl.sentErrors, "the user must be notified with the internal server error")
+	s.Require().Len(s.agentHdl.sentErrors, 1)
+	s.EqualError(s.agentHdl.sentErrors[0], "We couldn’t check our access to your project on GitHub. We still couldn’t finish, and we won’t try again automatically. Send another message to try again. If it keeps happening, contact customer support.")
 }
 
 func (s *ControllerSuite) TestExecute_AwaitingAction() {
@@ -2202,7 +2205,8 @@ func (s *ControllerSuite) TestExecute_SandboxError() {
 	s.Error(err)
 	s.ErrorContains(err, "sandbox failed")
 	s.Equal(types.EventJobStatus_Failed, status)
-	s.Equal([]error{errServerInternal}, s.agentHdl.sentErrors, "the user must be notified with the internal server error")
+	s.Require().Len(s.agentHdl.sentErrors, 1)
+	s.EqualError(s.agentHdl.sentErrors[0], "We couldn’t prepare your sandbox. We still couldn’t finish, and we won’t try again automatically. Send another message to try again. If it keeps happening, contact customer support.")
 	s.Equal("sess-1", s.sessionRep.deletedMCPToken)
 }
 
@@ -2260,7 +2264,8 @@ func (s *ControllerSuite) TestExecute_HarnessError() {
 	s.Error(err)
 	s.ErrorContains(err, "harness failed")
 	s.Equal(types.EventJobStatus_Failed, status)
-	s.Equal([]error{errServerInternal}, s.agentHdl.sentErrors, "the user must be notified with the internal server error")
+	s.Require().Len(s.agentHdl.sentErrors, 1)
+	s.EqualError(s.agentHdl.sentErrors[0], "We couldn’t read the coding agent’s reply. We still couldn’t finish, and we won’t try again automatically. Send another message to try again. If it keeps happening, contact customer support.")
 }
 
 func (s *ControllerSuite) TestExecute_HarnessError_RetryScheduledWhenJobWillRetry() {
@@ -2287,7 +2292,8 @@ func (s *ControllerSuite) TestExecute_HarnessError_RetryScheduledWhenJobWillRetr
 	s.Error(err)
 	s.ErrorContains(err, "harness failed")
 	s.Equal(types.EventJobStatus_Failed, status)
-	s.Equal([]error{errExecutionRetried}, s.agentHdl.sentErrors, "the user must be told the execution will be retried")
+	s.Require().Len(s.agentHdl.sentErrors, 1)
+	s.EqualError(s.agentHdl.sentErrors[0], "We couldn’t read the coding agent’s reply. We’ll try again automatically. You don’t need to do anything.")
 }
 
 func (s *ControllerSuite) TestExecute_HarnessError_ContextCancelled_NoErrorMessage() {
@@ -2539,7 +2545,7 @@ func (s *ControllerSuite) TestHarness_MixedLines_OnlyValidForwarded() {
 	s.Require().Len(s.harnessHdl.parsedParts, 2)
 }
 
-func (s *ControllerSuite) TestHarness_ForwardsStderrAfterCompletion() {
+func (s *ControllerSuite) TestHarness_ReplacesStderrWithFriendlyCopy() {
 	stdout := make(chan string, 10)
 	stderr := make(chan string, 10)
 
@@ -2554,8 +2560,9 @@ func (s *ControllerSuite) TestHarness_ForwardsStderrAfterCompletion() {
 
 	err := <-done
 	s.Require().NoError(err)
-	// stderr is reported back to the user through SendResponse.
-	s.Contains(s.agentHdl.responses, "something went wrong")
+	// Technical diagnostics stay in logs, while chat gets safe copy.
+	s.Contains(s.agentHdl.responses, "The coding agent ran into a problem, but we couldn’t find out what happened. It may still continue working. If it doesn’t, send another message.")
+	s.NotContains(s.agentHdl.responses, "something went wrong")
 }
 
 func (s *ControllerSuite) TestActivityBuffer_CoalescesAdjacentFragmentsAndPreservesKinds() {
@@ -2727,7 +2734,7 @@ func (s *ControllerSuite) TestHarness_ParseCallbacksForwardsToAgentHandler() {
 	s.Equal([]error{errServerInternal}, s.agentHdl.sentErrors)
 }
 
-func (s *ControllerSuite) TestHarness_UnhealthyForwardsStderrToUser() {
+func (s *ControllerSuite) TestHarness_UnhealthyKeepsStderrInLogs() {
 	s.c.livenessProbeConfig = types.HarnessLivenessProbeConfig{MaxMisses: 1, PeriodSeconds: 1}
 
 	stdout := make(chan string, 10)
@@ -2743,9 +2750,10 @@ func (s *ControllerSuite) TestHarness_UnhealthyForwardsStderrToUser() {
 	select {
 	case err := <-done:
 		s.ErrorIs(err, shared.ErrHarnessUnhealthy)
-		// The captured stderr is reported back to the user on a live context
-		// even though the run context is cancelled by the probe.
-		s.Contains(s.agentHdl.responses, "fatal: sandbox crashed")
+		// execute reports the liveness failure; stderr must not create a
+		// contradictory notice that the terminated agent may continue.
+		s.NotContains(s.agentHdl.responses, "fatal: sandbox crashed")
+		s.Empty(s.agentHdl.responses)
 	case <-time.After(5 * time.Second):
 		s.Fail("harness did not return after the liveness probe declared it unhealthy")
 	}
@@ -3581,4 +3589,96 @@ func (s *ControllerSuite) TestReadPullRequestToolsUseSessionRepository() {
 	}
 	_, _, err = server.getUnresolvedPullRequestComments(ctx, nil, input)
 	s.ErrorIs(err, expectedError)
+}
+
+func (s *ControllerSuite) TestReportExecutionError_CauseAndRecovery() {
+	for _, willRetry := range []bool{false, true} {
+		for _, classified := range []bool{false, true} {
+			s.agentHdl.sentErrors = nil
+			job := &types.EventJob{Attempts: 1}
+			if willRetry {
+				job.SetMaxAttempts(2)
+			}
+			err := errors.New("private provider diagnostics")
+			message := "We couldn’t complete your request."
+			if classified {
+				message = "We couldn’t copy the files into your sandbox."
+				err = types.WithExecutionMessage(err, message)
+			}
+			s.c.reportExecutionError(context.Background(), job, newTestSession(), s.agentHdl, "token", err)
+			s.Require().Len(s.agentHdl.sentErrors, 1)
+			s.ErrorContains(s.agentHdl.sentErrors[0], message)
+			s.NotContains(s.agentHdl.sentErrors[0].Error(), "private provider diagnostics")
+			if willRetry {
+				s.ErrorContains(s.agentHdl.sentErrors[0], "We’ll try again automatically.")
+			} else {
+				s.ErrorContains(s.agentHdl.sentErrors[0], "we won’t try again automatically.")
+				s.ErrorContains(s.agentHdl.sentErrors[0], "contact customer support")
+			}
+		}
+	}
+}
+
+func (s *ControllerSuite) TestReportExecutionError_UnhealthyAndCancellation() {
+	err := types.WithExecutionMessage(shared.ErrHarnessUnhealthy, "We couldn’t read the coding agent’s reply.")
+	s.c.reportExecutionError(context.Background(), &types.EventJob{}, newTestSession(), s.agentHdl, "token", err)
+	s.Require().Len(s.agentHdl.sentErrors, 1)
+	s.ErrorContains(s.agentHdl.sentErrors[0], "The coding agent stopped responding")
+	s.agentHdl.sentErrors = nil
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	s.c.reportExecutionError(ctx, &types.EventJob{}, newTestSession(), s.agentHdl, "token", err)
+	s.Empty(s.agentHdl.sentErrors)
+}
+
+func (s *ControllerSuite) TestExecute_SandboxStageMessageSurvivesFallback() {
+	for _, message := range []string{
+		"We couldn’t set up the access needed in your sandbox.",
+		"We couldn’t prepare your sandbox.",
+		"We couldn’t start your sandbox.",
+		"We couldn’t finish installing the tools in your sandbox.",
+		"Installing the tools in your sandbox took too long.",
+		"We couldn’t set up Git in your sandbox.",
+		"We couldn’t copy the files into your sandbox.",
+		"We couldn’t finish setting up your sandbox.",
+		"We couldn’t start the harness in your sandbox.",
+	} {
+		s.SetupTest()
+		s.prepareExecutable()
+		cause := errors.New("private sandbox diagnostics")
+		s.sandboxHdl.runFn = func(context.Context, *interfaces.SandboxConfig, chan<- string, chan<- string) (interfaces.SandboxShutdown, error) {
+			return nil, types.WithExecutionMessage(cause, message)
+		}
+		status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
+		s.Equal(types.EventJobStatus_Failed, status)
+		s.ErrorIs(err, cause)
+		s.Require().Len(s.agentHdl.sentErrors, 1)
+		s.ErrorContains(s.agentHdl.sentErrors[0], message)
+		s.NotContains(s.agentHdl.sentErrors[0].Error(), cause.Error())
+	}
+}
+
+func (s *ControllerSuite) TestExecute_ConfigurationCopyAndMissingSignIn() {
+	for _, configFailure := range []bool{false, true} {
+		s.SetupTest()
+		s.prepareExecutable()
+		cause := errors.New("private configuration diagnostics")
+		message := "We couldn’t finish setting up WorkDock. Contact customer support for help with the setup."
+		if configFailure {
+			s.harnessHdl.getConfigFileFn = func(*interfaces.HarnessConfig) (string, []byte, error) {
+				return "", nil, cause
+			}
+		} else {
+			message = "WorkDock hasn’t been signed in yet. Contact customer support for help signing it in."
+			s.harnessHdl.getFilesFn = func(*interfaces.HarnessConfig) ([]map[string][]byte, error) {
+				return nil, types.WithExecutionMessage(cause, message)
+			}
+		}
+		status, err := s.c.execute(context.Background(), &types.EventJob{SessionEventIdentifier: "evt-1"})
+		s.Equal(types.EventJobStatus_Failed, status)
+		s.ErrorIs(err, cause)
+		s.Require().Len(s.agentHdl.sentErrors, 1)
+		s.ErrorContains(s.agentHdl.sentErrors[0], message)
+		s.Nil(s.sandboxHdl.runConfig)
+	}
 }

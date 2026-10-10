@@ -53,9 +53,8 @@ var (
 
 	// Message errors whose text is sent to the user by reportExecutionError.
 	errServerInternal              = errors.New("Internal Server Error 500")
-	errExecutionRetried            = errors.New("Execution failed but will be retried automatically.")
-	errSandboxCannotStartRetried   = errors.New("The sandbox is in a state that cannot start. This issue is caused by the sandbox provider, not WorkDock. The execution will be retried automatically.")
-	errSandboxCannotStartRetrySoon = errors.New("The sandbox is in a state that cannot start. This issue is caused by the sandbox provider, not WorkDock. Please try again in a few minutes.")
+	errSandboxCannotStartRetried   = errors.New("We couldn’t start your sandbox. We’ll try again automatically. You don’t need to do anything.")
+	errSandboxCannotStartRetrySoon = errors.New("Your sandbox still won’t start, and we won’t try again automatically. Try again in a few minutes. If it keeps happening, contact customer support.")
 )
 
 // promptContextFilePath is where provider context that is too large to inline
@@ -714,6 +713,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	})
 
 	if err != nil {
+		err = types.WithExecutionMessage(err, "We couldn’t read the saved ticket details.")
 		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential, err)
 		return types.EventJobStatus_Failed, err
 	}
@@ -727,6 +727,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	})
 
 	if err != nil {
+		err = types.WithExecutionMessage(err, "We couldn’t check our access to your project on GitHub.")
 		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential, err)
 		return types.EventJobStatus_Failed, err
 	}
@@ -790,6 +791,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	}()
 
 	if err != nil {
+		err = types.WithExecutionMessage(err, "We couldn’t prepare your sandbox.")
 		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential, err)
 		return types.EventJobStatus_Failed, err
 	}
@@ -811,6 +813,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 			sessionEvent,
 		)
 	}); err != nil {
+		err = types.WithExecutionMessage(err, "We couldn’t read the coding agent’s reply.")
 		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential, err)
 		return types.EventJobStatus_Failed, err
 	}
@@ -824,6 +827,7 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	if completedEvent == nil || completedEvent.Result == nil || completedEvent.Result.Report == "" {
 		err := errors.New("agent must call work_report before completing execution")
 		slog.Error("[agent_session] work report missing", "session_id", session.Identifier)
+		err = types.WithExecutionMessage(err, "The coding agent finished without a summary, so we couldn’t confirm the result. Some work may have been done.")
 		c.reportExecutionError(ctx, job, session, agentHandler, agentHandlerCredential, err)
 		return types.EventJobStatus_Failed, err
 	}
@@ -831,14 +835,8 @@ func (c *controller) execute(ctx context.Context, job *types.EventJob) (types.Ev
 	return types.EventJobStatus_Succeeded, nil
 }
 
-// reportExecutionError notifies the user about a failed agent session execution.
-// When the sandbox is in a state that cannot start, the user is told the issue
-// is on the sandbox provider's side and whether the execution will be retried
-// automatically or should be retried manually in a few minutes. Any other
-// failure is reported as a scheduled retry when the job will be retried, or a
-// generic server internal error otherwise. Jobs whose context was cancelled
-// are not reported because the scheduler handles their cancellation separately
-// and platform calls would fail on a cancelled context.
+// reportExecutionError adds recovery guidance without exposing underlying diagnostics.
+// Cancelled jobs are handled separately by the scheduler.
 func (c *controller) reportExecutionError(
 	ctx context.Context,
 	job *types.EventJob,
@@ -861,12 +859,21 @@ func (c *controller) reportExecutionError(
 		return
 	}
 
-	if job.WillRetry() {
-		agentHandler.SendError(ctx, session.Identifier, credential, errExecutionRetried)
-		return
+	message := "We couldn’t complete your request."
+	var executionError *types.ExecutionError
+	if errors.As(err, &executionError) {
+		message = executionError.Message
+	}
+	if errors.Is(err, shared.ErrHarnessUnhealthy) {
+		message = "The coding agent stopped responding, so we had to end this attempt."
 	}
 
-	agentHandler.SendError(ctx, session.Identifier, credential, errServerInternal)
+	if job.WillRetry() {
+		message += " We’ll try again automatically. You don’t need to do anything."
+	} else {
+		message += " We still couldn’t finish, and we won’t try again automatically. Send another message to try again. If it keeps happening, contact customer support."
+	}
+	agentHandler.SendError(ctx, session.Identifier, credential, errors.New(message))
 }
 
 func (c *controller) getHandlers(session *types.Session) (
@@ -1103,7 +1110,7 @@ func (c *controller) sandbox(
 
 	// Get harness configuration and prepare it for upload
 	if file, data, err := harnessHandler.GetConfigFile(harnessConfig); err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, types.WithExecutionMessage(err, "We couldn’t finish setting up WorkDock. Contact customer support for help with the setup.")
 	} else {
 		fileUploads[file] = data
 	}
@@ -1112,7 +1119,7 @@ func (c *controller) sandbox(
 	files, err := harnessHandler.GetFiles(harnessConfig)
 
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, types.WithExecutionMessage(err, "We couldn’t finish setting up WorkDock. Contact customer support for help with the setup.")
 	}
 
 	for _, file := range files {
@@ -1188,10 +1195,10 @@ func (c *controller) harness(
 	var lastOutput atomic.Int64
 	activities := newActivityBuffer(
 		func(ctx context.Context, text string) error {
-			return agentHandler.SendThought(ctx, session.Identifier, agentHandlerCredential, text)
+			return types.WithExecutionMessage(agentHandler.SendThought(ctx, session.Identifier, agentHandlerCredential, text), "We couldn’t show the harness's reply in this conversation.")
 		},
 		func(ctx context.Context, text string) error {
-			return agentHandler.SendResponse(ctx, session.Identifier, agentHandlerCredential, text)
+			return types.WithExecutionMessage(agentHandler.SendResponse(ctx, session.Identifier, agentHandlerCredential, text), "We couldn’t show the harness's reply in this conversation.")
 		},
 	)
 
@@ -1289,7 +1296,7 @@ func (c *controller) harness(
 				if err := activities.Flush(ctx); err != nil {
 					return err
 				}
-				return agentHandler.SendAction(ctx, session.Identifier, agentHandlerCredential, action)
+				return types.WithExecutionMessage(agentHandler.SendAction(ctx, session.Identifier, agentHandlerCredential, action), "We couldn’t show the harness's reply in this conversation.")
 			},
 
 			// sendElicitation sends a collection of questions to be answer by the user
@@ -1297,7 +1304,7 @@ func (c *controller) harness(
 				if err := activities.Flush(ctx); err != nil {
 					return err
 				}
-				return agentHandler.SendElicitation(ctx, session.Identifier, agentHandlerCredential, elicitation)
+				return types.WithExecutionMessage(agentHandler.SendElicitation(ctx, session.Identifier, agentHandlerCredential, elicitation), "We couldn’t show the harness's reply in this conversation.")
 			},
 
 			// sendServerInternalError sends a generic server internal error
@@ -1403,7 +1410,6 @@ func (c *controller) harness(
 	if err := wg.Wait(); err != nil {
 		if errors.Is(err, shared.ErrHarnessUnhealthy) {
 			if str := stdErrBuilder.String(); str != "" {
-				agentHandler.SendResponse(context.WithoutCancel(ctx), session.Identifier, agentHandlerCredential, str)
 				slog.Error("[agent-session] harness stderr", "event_identifier", sessionEvent.Identifier, "err", str)
 			}
 		}
@@ -1412,11 +1418,11 @@ func (c *controller) harness(
 	}
 
 	if err := activities.Flush(context.WithoutCancel(ctx)); err != nil {
-		return err
+		return types.WithExecutionMessage(err, "We couldn’t show the harness's reply in this conversation.")
 	}
 
 	if str := stdErrBuilder.String(); str != "" {
-		agentHandler.SendResponse(context.WithoutCancel(ctx), session.Identifier, agentHandlerCredential, str)
+		agentHandler.SendResponse(context.WithoutCancel(ctx), session.Identifier, agentHandlerCredential, "The coding agent ran into a problem, but we couldn’t find out what happened. It may still continue working. If it doesn’t, send another message.")
 		slog.Error("[agent-session] harness stderr", "event_identifier", sessionEvent.Identifier, "err", str)
 	}
 
