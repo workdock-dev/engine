@@ -15,8 +15,8 @@
 package codex
 
 import (
-	"errors"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
