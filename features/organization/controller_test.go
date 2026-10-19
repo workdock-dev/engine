@@ -67,7 +67,7 @@ func (s *ControllerSuite) TestNew_SubscribesHandler() {
 	New(s.eventBus, s.repo)
 
 	event := shared.IntegrationCreatedEvent{
-		Organization: shared.Organization{
+		Integration: shared.Integration{
 			Identifier: "org-123",
 			Provider:   shared.PlatformProvider_Linear,
 			Name:       "Workdock",
@@ -101,7 +101,7 @@ func (s *ControllerSuite) TestNew_RepositoryError_Propagates() {
 	New(s.eventBus, s.repo)
 
 	event := shared.IntegrationCreatedEvent{
-		Organization: shared.Organization{
+		Integration: shared.Integration{
 			Identifier: "org-123",
 			Provider:   shared.PlatformProvider_Linear,
 			Name:       "Workdock",

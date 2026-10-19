@@ -213,9 +213,9 @@ func (s *ControllerSuite) TestCallback_Success() {
 	s.Require().Len(*events, 1)
 	s.IsType(shared.IntegrationCreatedEvent{}, (*events)[0])
 	published := (*events)[0].(shared.IntegrationCreatedEvent)
-	s.Equal(testEntityId, published.Organization.Identifier)
-	s.Equal(shared.PlatformProvider(testProvider), published.Organization.Provider)
-	s.Equal(testEntityName, published.Organization.Name)
+	s.Equal(testEntityId, published.Integration.Identifier)
+	s.Equal(shared.PlatformProvider(testProvider), published.Integration.Provider)
+	s.Equal(testEntityName, published.Integration.Name)
 }
 
 func (s *ControllerSuite) TestCallback_HandlerError() {

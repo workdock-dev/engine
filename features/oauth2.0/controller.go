@@ -116,7 +116,7 @@ func (c *controller) callback(r *http.Request) (string, error) {
 	}
 
 	c.eventBus.Publish(ctx, shared.IntegrationCreatedEvent{
-		Organization: shared.Organization{
+		Integration: shared.Integration{
 			Identifier: result.EntityId,
 			Provider:   shared.PlatformProvider(c.provider),
 			Name:       result.EntityName,

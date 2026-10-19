@@ -39,17 +39,17 @@ func New(
 }
 
 func (c *controller) init() {
-	c.eventBus.Subscribe(shared.EventType_OrganizationCreate, func(ctx context.Context, event shared.DomainEvent) error {
+	c.eventBus.Subscribe(shared.EventType_IntegrationCreated, func(ctx context.Context, event shared.DomainEvent) error {
 		payload, ok := event.(shared.IntegrationCreatedEvent)
 
 		if !ok {
-			return fmt.Errorf("failed to process domain event expected %s got %s", shared.EventType_OrganizationCreate, event.EventType())
+			return fmt.Errorf("failed to process domain event expected %s got %s", shared.EventType_IntegrationCreated, event.EventType())
 		}
 
-		if err := c.repository.UpsertOrganization(ctx, &shared.Organization{
-			Identifier: payload.Organization.Identifier,
-			Provider:   payload.Organization.Provider,
-			Name:       payload.Organization.Name,
+		if err := c.repository.UpsertIntegration(ctx, &shared.Integration{
+			Identifier: payload.Integration.Identifier,
+			Provider:   payload.Integration.Provider,
+			Name:       payload.Integration.Name,
 		}); err != nil {
 			return err
 		}

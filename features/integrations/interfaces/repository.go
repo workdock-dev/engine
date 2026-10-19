@@ -21,5 +21,5 @@ import (
 )
 
 type Repository interface {
-	UpsertOrganization(ctx context.Context, org *shared.Organization) error
+	UpsertIntegration(ctx context.Context, integration *shared.Integration) error
 }

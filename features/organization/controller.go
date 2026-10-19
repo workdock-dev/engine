@@ -47,9 +47,9 @@ func (c *controller) init() {
 		}
 
 		if err := c.repository.UpsertOrganization(ctx, &shared.Organization{
-			Identifier: payload.Organization.Identifier,
-			Provider:   payload.Organization.Provider,
-			Name:       payload.Organization.Name,
+			Identifier: payload.Integration.Identifier,
+			Provider:   payload.Integration.Provider,
+			Name:       payload.Integration.Name,
 		}); err != nil {
 			return err
 		}
