@@ -22,7 +22,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/workdock-dev/engine/features/organization/interfaces"
+	"github.com/workdock-dev/engine/features/integrations/interfaces"
 	"github.com/workdock-dev/engine/shared"
 )
 
@@ -45,35 +45,35 @@ func (s *PostgresSuite) TestNewPostgres_ReturnsRepository() {
 	s.IsType(&postgres{}, s.repo)
 }
 
-func (s *PostgresSuite) TestUpsertOrganization_Success() {
-	org := &shared.Organization{
-		Identifier: "org-123",
+func (s *PostgresSuite) TestUpsertIntegration_Success() {
+	integration := &shared.Integration{
+		Identifier: "integration-123",
 		Provider:   shared.PlatformProvider_Linear,
 		Name:       "Workdock",
 	}
 
-	err := s.repo.UpsertOrganization(context.Background(), org)
+	err := s.repo.UpsertIntegration(context.Background(), integration)
 
 	s.Require().NoError(err)
 	s.Equal(1, s.pool.execCalled)
-	s.Equal(UpsertOrganizationSql, s.pool.execSql)
-	s.Equal([]any{"org-123", shared.PlatformProvider_Linear, "Workdock"}, s.pool.execArgs)
+	s.Equal(UpsertIntegrationSql, s.pool.execSql)
+	s.Equal([]any{"integration-123", shared.PlatformProvider_Linear, "Workdock"}, s.pool.execArgs)
 }
 
-func (s *PostgresSuite) TestUpsertOrganization_Error() {
+func (s *PostgresSuite) TestUpsertIntegration_Error() {
 	execErr := errors.New("connection refused")
 	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		return pgconn.CommandTag{}, execErr
 	}
-	org := &shared.Organization{
-		Identifier: "org-123",
+	integration := &shared.Integration{
+		Identifier: "integration-123",
 		Provider:   shared.PlatformProvider_Linear,
 		Name:       "Workdock",
 	}
 
-	err := s.repo.UpsertOrganization(context.Background(), org)
+	err := s.repo.UpsertIntegration(context.Background(), integration)
 
 	s.ErrorIs(err, execErr)
 	s.Equal(1, s.pool.execCalled)
-	s.Equal(UpsertOrganizationSql, s.pool.execSql)
+	s.Equal(UpsertIntegrationSql, s.pool.execSql)
 }

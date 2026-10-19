@@ -23,6 +23,33 @@ CREATE TABLE integrations (
 
 CREATE UNIQUE INDEX idx_integrations_identifier ON integrations (identifier);
 
+INSERT INTO integrations (id, identifier, provider, name, created_at, updated_at)
+SELECT id, identifier, provider, name, created_at, updated_at
+FROM organizations;
+
+SELECT setval(
+  pg_get_serial_sequence('integrations', 'id'),
+  COALESCE((SELECT MAX(id) FROM integrations), 1),
+  EXISTS (SELECT 1 FROM integrations)
+);
+
+ALTER TABLE sessions DROP CONSTRAINT sessions_identifier_org_fkey;
+
+ALTER TABLE sessions
+  ADD CONSTRAINT sessions_identifier_org_fkey
+  FOREIGN KEY (identifier_org) REFERENCES integrations (identifier);
+
 ---- create above / drop below ----
+
+INSERT INTO organizations (identifier, provider, name, created_at, updated_at)
+SELECT identifier, provider, name, created_at, updated_at
+FROM integrations
+ON CONFLICT (identifier) DO NOTHING;
+
+ALTER TABLE sessions DROP CONSTRAINT sessions_identifier_org_fkey;
+
+ALTER TABLE sessions
+  ADD CONSTRAINT sessions_identifier_org_fkey
+  FOREIGN KEY (identifier_org) REFERENCES organizations (identifier);
 
 DROP TABLE integrations;

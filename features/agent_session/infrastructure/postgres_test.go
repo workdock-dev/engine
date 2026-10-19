@@ -81,11 +81,11 @@ func (s *PostgresSuite) TestGetAndDeleteMCPToken() {
 	s.NoError(s.repo.DeleteMCPToken(context.Background(), "session-1"))
 }
 
-// --- GetOrganization ---
+// --- GetIntegration ---
 
-func (s *PostgresSuite) TestGetOrganization_Success() {
+func (s *PostgresSuite) TestGetIntegration_Success() {
 	s.pool.queryRowFn = func(ctx context.Context, sql string, args ...any) pgx.Row {
-		s.Equal(GetOrganizationSql, sql)
+		s.Equal(GetIntegrationSql, sql)
 		s.Equal([]any{"org-1"}, args)
 		return &mockRow{scanFn: func(dest ...any) error {
 			*dest[0].(*string) = "org-1"
@@ -95,35 +95,35 @@ func (s *PostgresSuite) TestGetOrganization_Success() {
 		}}
 	}
 
-	org, err := s.repo.GetOrganization(context.Background(), "org-1")
+	integration, err := s.repo.GetIntegration(context.Background(), "org-1")
 
 	s.Require().NoError(err)
-	s.Require().NotNil(org)
-	s.Equal("org-1", org.Identifier)
-	s.Equal(shared.PlatformProvider_Linear, org.Provider)
-	s.Equal("Acme", org.Name)
+	s.Require().NotNil(integration)
+	s.Equal("org-1", integration.Identifier)
+	s.Equal(shared.PlatformProvider_Linear, integration.Provider)
+	s.Equal("Acme", integration.Name)
 }
 
-func (s *PostgresSuite) TestGetOrganization_NotFound() {
+func (s *PostgresSuite) TestGetIntegration_NotFound() {
 	s.pool.queryRowFn = func(ctx context.Context, sql string, args ...any) pgx.Row {
 		return &mockRow{scanFn: func(dest ...any) error { return pgx.ErrNoRows }}
 	}
 
-	org, err := s.repo.GetOrganization(context.Background(), "org-1")
+	integration, err := s.repo.GetIntegration(context.Background(), "org-1")
 
 	s.NoError(err)
-	s.Nil(org)
+	s.Nil(integration)
 }
 
-func (s *PostgresSuite) TestGetOrganization_Error() {
+func (s *PostgresSuite) TestGetIntegration_Error() {
 	s.pool.queryRowFn = func(ctx context.Context, sql string, args ...any) pgx.Row {
 		return &mockRow{scanFn: func(dest ...any) error { return fmt.Errorf("db error") }}
 	}
 
-	org, err := s.repo.GetOrganization(context.Background(), "org-1")
+	integration, err := s.repo.GetIntegration(context.Background(), "org-1")
 
 	s.Error(err)
-	s.Nil(org)
+	s.Nil(integration)
 }
 
 // --- GetAgentSession ---
