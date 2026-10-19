@@ -12,44 +12,8 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
-CREATE TABLE integrations (
-  id serial PRIMARY KEY,
-  identifier TEXT NOT NULL,
-  provider agent_provider NOT NULL,
-  name TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE UNIQUE INDEX idx_integrations_identifier ON integrations (identifier);
-
-INSERT INTO integrations (id, identifier, provider, name, created_at, updated_at)
-SELECT id, identifier, provider, name, created_at, updated_at
-FROM organizations;
-
-SELECT setval(
-  pg_get_serial_sequence('integrations', 'id'),
-  COALESCE((SELECT MAX(id) FROM integrations), 1),
-  EXISTS (SELECT 1 FROM integrations)
-);
-
-ALTER TABLE sessions DROP CONSTRAINT sessions_identifier_org_fkey;
-
-ALTER TABLE sessions
-  ADD CONSTRAINT sessions_identifier_org_fkey
-  FOREIGN KEY (identifier_org) REFERENCES integrations (identifier);
+ALTER TABLE public.organizations RENAME TO integrations;
 
 ---- create above / drop below ----
 
-INSERT INTO organizations (identifier, provider, name, created_at, updated_at)
-SELECT identifier, provider, name, created_at, updated_at
-FROM integrations
-ON CONFLICT (identifier) DO NOTHING;
-
-ALTER TABLE sessions DROP CONSTRAINT sessions_identifier_org_fkey;
-
-ALTER TABLE sessions
-  ADD CONSTRAINT sessions_identifier_org_fkey
-  FOREIGN KEY (identifier_org) REFERENCES organizations (identifier);
-
-DROP TABLE integrations;
+ALTER TABLE public.integrations RENAME TO organizations;
