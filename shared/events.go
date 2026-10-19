@@ -113,11 +113,11 @@ func (e SessionRepoAssignedEvent) EventType() string {
 
 // *--------------------------------------------------------------------------*
 
-type OrganizationCreateEvent struct {
+type IntegrationCreatedEvent struct {
 	Organization Organization
 }
 
-func (e OrganizationCreateEvent) EventType() string {
+func (e IntegrationCreatedEvent) EventType() string {
 	return EventType_OrganizationCreate
 }
 

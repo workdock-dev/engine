@@ -40,7 +40,7 @@ func New(
 
 func (c *controller) init() {
 	c.eventBus.Subscribe(shared.EventType_OrganizationCreate, func(ctx context.Context, event shared.DomainEvent) error {
-		payload, ok := event.(shared.OrganizationCreateEvent)
+		payload, ok := event.(shared.IntegrationCreatedEvent)
 
 		if !ok {
 			return fmt.Errorf("failed to process domain event expected %s got %s", shared.EventType_OrganizationCreate, event.EventType())

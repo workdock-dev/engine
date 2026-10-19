@@ -211,8 +211,8 @@ func (s *ControllerSuite) TestCallback_Success() {
 	s.Equal(string(expected), s.secretManager.setValue)
 
 	s.Require().Len(*events, 1)
-	s.IsType(shared.OrganizationCreateEvent{}, (*events)[0])
-	published := (*events)[0].(shared.OrganizationCreateEvent)
+	s.IsType(shared.IntegrationCreatedEvent{}, (*events)[0])
+	published := (*events)[0].(shared.IntegrationCreatedEvent)
 	s.Equal(testEntityId, published.Organization.Identifier)
 	s.Equal(shared.PlatformProvider(testProvider), published.Organization.Provider)
 	s.Equal(testEntityName, published.Organization.Name)

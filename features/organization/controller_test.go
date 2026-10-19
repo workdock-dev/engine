@@ -66,7 +66,7 @@ func (s *ControllerSuite) SetupTest() {
 func (s *ControllerSuite) TestNew_SubscribesHandler() {
 	New(s.eventBus, s.repo)
 
-	event := shared.OrganizationCreateEvent{
+	event := shared.IntegrationCreatedEvent{
 		Organization: shared.Organization{
 			Identifier: "org-123",
 			Provider:   shared.PlatformProvider_Linear,
@@ -100,7 +100,7 @@ func (s *ControllerSuite) TestNew_RepositoryError_Propagates() {
 	}
 	New(s.eventBus, s.repo)
 
-	event := shared.OrganizationCreateEvent{
+	event := shared.IntegrationCreatedEvent{
 		Organization: shared.Organization{
 			Identifier: "org-123",
 			Provider:   shared.PlatformProvider_Linear,
