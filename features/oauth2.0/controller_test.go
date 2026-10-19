@@ -82,7 +82,7 @@ func (s *ControllerSuite) publishedEvents() *[]shared.DomainEvent {
 	s.T().Helper()
 
 	events := &[]shared.DomainEvent{}
-	s.eventBus.Subscribe(shared.EventType_OrganizationCreate, func(ctx context.Context, event shared.DomainEvent) error {
+	s.eventBus.Subscribe(shared.EventType_IntegrationCreated, func(ctx context.Context, event shared.DomainEvent) error {
 		*events = append(*events, event)
 		return nil
 	})

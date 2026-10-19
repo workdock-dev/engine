@@ -37,8 +37,7 @@ const (
 	EventType_AgentSessionResume      = "agent_session.resume"
 	EventType_SessionRepoAssigned     = "session.repo_assigned"
 	EventType_AgentSessionStop        = "agent_session.stop"
-	EventType_OrganizationCreate      = "organization.create"
-	EventType_IntegrationCreated      = EventType_OrganizationCreate
+	EventType_IntegrationCreated      = "integration.created"
 	EventType_GitResetConnection      = "git.reset_connection"
 	EventType_GitCompleteConnection   = "git.complete_connection"
 	EventType_PullRequestCommented    = "pull_request.comment"

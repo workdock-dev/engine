@@ -45,7 +45,7 @@ func (m *mockRepository) UpsertOrganization(ctx context.Context, org *shared.Org
 type mismatchedEvent struct{}
 
 func (e mismatchedEvent) EventType() string {
-	return shared.EventType_OrganizationCreate
+	return shared.EventType_IntegrationCreated
 }
 
 type ControllerSuite struct {
