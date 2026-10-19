@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package organization
+package integrations
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/workdock-dev/engine/features/organization/interfaces"
+	"github.com/workdock-dev/engine/features/integrations/interfaces"
 	"github.com/workdock-dev/engine/shared"
 )
 
@@ -39,17 +39,17 @@ func New(
 }
 
 func (c *controller) init() {
-	c.eventBus.Subscribe(shared.EventType_OrganizationCreate, func(ctx context.Context, event shared.DomainEvent) error {
-		payload, ok := event.(shared.OrganizationCreateEvent)
+	c.eventBus.Subscribe(shared.EventType_IntegrationCreated, func(ctx context.Context, event shared.DomainEvent) error {
+		payload, ok := event.(shared.IntegrationCreatedEvent)
 
 		if !ok {
-			return fmt.Errorf("failed to process domain event expected %s got %s", shared.EventType_OrganizationCreate, event.EventType())
+			return fmt.Errorf("failed to process domain event expected %s got %s", shared.EventType_IntegrationCreated, event.EventType())
 		}
 
-		if err := c.repository.UpsertOrganization(ctx, &shared.Organization{
-			Identifier: payload.Organization.Identifier,
-			Provider:   payload.Organization.Provider,
-			Name:       payload.Organization.Name,
+		if err := c.repository.UpsertIntegration(ctx, &shared.Integration{
+			Identifier: payload.Integration.Identifier,
+			Provider:   payload.Integration.Provider,
+			Name:       payload.Integration.Name,
 		}); err != nil {
 			return err
 		}

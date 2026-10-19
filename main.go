@@ -33,9 +33,9 @@ import (
 	agent_session_infrastructure "github.com/workdock-dev/engine/features/agent_session/infrastructure"
 	agent_session_interfaces "github.com/workdock-dev/engine/features/agent_session/interfaces"
 	agent_session_types "github.com/workdock-dev/engine/features/agent_session/types"
+	"github.com/workdock-dev/engine/features/integrations"
+	integrations_infrastructure "github.com/workdock-dev/engine/features/integrations/infrastructure"
 	oauth20 "github.com/workdock-dev/engine/features/oauth2.0"
-	"github.com/workdock-dev/engine/features/organization"
-	organization_infrastructure "github.com/workdock-dev/engine/features/organization/infrastructure"
 	"github.com/workdock-dev/engine/features/webhook"
 	"github.com/workdock-dev/engine/infrastructure/file_secrets"
 	"github.com/workdock-dev/engine/infrastructure/in_memory_secrets"
@@ -314,9 +314,9 @@ func main() {
 		linear.NewWEventConsumer(eventBus, linearClient),
 	)
 
-	organization.New(
+	integrations.New(
 		eventBus,
-		organization_infrastructure.NewPostgres(postgres),
+		integrations_infrastructure.NewPostgres(postgres),
 	)
 
 	// *-------------------------------------------------------------------------*

@@ -477,20 +477,21 @@ func (m *mockSessionRepository) DeleteMCPToken(ctx context.Context, sessionID st
 	return nil
 }
 
-// --- RepositoryOrg mock ---
+// --- RepositoryIntegration mock ---
 
-type mockOrganizationRepository struct {
-	getOrganizationFn func(ctx context.Context, identifier string) (*shared.Organization, error)
+type mockIntegrationRepository struct {
+	getIntegrationFn func(ctx context.Context, identifier string) (*shared.Integration, error)
 
-	getOrganizationCalledWith string
+	getIntegrationCalledWith string
 }
 
-func (m *mockOrganizationRepository) GetOrganization(ctx context.Context, identifier string) (*shared.Organization, error) {
-	m.getOrganizationCalledWith = identifier
-	if m.getOrganizationFn != nil {
-		return m.getOrganizationFn(ctx, identifier)
+func (m *mockIntegrationRepository) GetIntegration(ctx context.Context, identifier string) (*shared.Integration, error) {
+	m.getIntegrationCalledWith = identifier
+
+	if m.getIntegrationFn != nil {
+		return m.getIntegrationFn(ctx, identifier)
 	}
-	return &shared.Organization{Identifier: identifier}, nil
+	return &shared.Integration{Identifier: identifier}, nil
 }
 
 // --- RepositoryGit mock ---
@@ -624,15 +625,15 @@ func (m *mockQueue) Listen(ctx context.Context) (<-chan struct{}, <-chan string,
 
 // Compile-time interface conformance checks.
 var (
-	_ interfaces.HandlerAgentSession = (*mockAgentHandler)(nil)
-	_ interfaces.HandlerGit          = (*mockGitHandler)(nil)
-	_ interfaces.HandlerHarness      = (*mockHarnessHandler)(nil)
-	_ interfaces.HandlerMCP          = (*mockMcpHandler)(nil)
-	_ interfaces.Repository          = (*mockSessionRepository)(nil)
-	_ interfaces.RepositoryOrg       = (*mockOrganizationRepository)(nil)
-	_ interfaces.RepositoryGit       = (*mockGitRepository)(nil)
-	_ shared.SecretManager           = (*mockSecretManager)(nil)
-	_ interfaces.Queue               = (*mockQueue)(nil)
+	_ interfaces.HandlerAgentSession   = (*mockAgentHandler)(nil)
+	_ interfaces.HandlerGit            = (*mockGitHandler)(nil)
+	_ interfaces.HandlerHarness        = (*mockHarnessHandler)(nil)
+	_ interfaces.HandlerMCP            = (*mockMcpHandler)(nil)
+	_ interfaces.Repository            = (*mockSessionRepository)(nil)
+	_ interfaces.RepositoryIntegration = (*mockIntegrationRepository)(nil)
+	_ interfaces.RepositoryGit         = (*mockGitRepository)(nil)
+	_ shared.SecretManager             = (*mockSecretManager)(nil)
+	_ interfaces.Queue                 = (*mockQueue)(nil)
 )
 
 func (m *mockGitHandler) CreatePullRequest(ctx context.Context, input interfaces.CreatePullRequestInput) (*types.PullRequest, error) {

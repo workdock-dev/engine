@@ -17,5 +17,5 @@ select
     provider,
     "name"
 from
-    public.organizations
+    public.integrations
 where identifier = $1;

@@ -33,6 +33,7 @@ func (m *mockPool) Exec(ctx context.Context, sql string, args ...any) (pgconn.Co
 	m.execCalled++
 	m.execSql = sql
 	m.execArgs = args
+
 	if m.execFn != nil {
 		return m.execFn(ctx, sql, args...)
 	}

@@ -98,6 +98,7 @@ func (c *controller) authorize() string {
 func (c *controller) callback(r *http.Request) (string, error) {
 	slog.Debug("[oauth20] callback")
 	ctx := r.Context()
+
 	result, err := c.handler.Callback(ctx, r.URL.Query().Get("code"), r.URL.Query().Get("error"))
 
 	if err != nil {
@@ -114,8 +115,8 @@ func (c *controller) callback(r *http.Request) (string, error) {
 		return "", err
 	}
 
-	c.eventBus.Publish(ctx, shared.OrganizationCreateEvent{
-		Organization: shared.Organization{
+	c.eventBus.Publish(ctx, shared.IntegrationCreatedEvent{
+		Integration: shared.Integration{
 			Identifier: result.EntityId,
 			Provider:   shared.PlatformProvider(c.provider),
 			Name:       result.EntityName,

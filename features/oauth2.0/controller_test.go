@@ -82,7 +82,7 @@ func (s *ControllerSuite) publishedEvents() *[]shared.DomainEvent {
 	s.T().Helper()
 
 	events := &[]shared.DomainEvent{}
-	s.eventBus.Subscribe(shared.EventType_OrganizationCreate, func(ctx context.Context, event shared.DomainEvent) error {
+	s.eventBus.Subscribe(shared.EventType_IntegrationCreated, func(ctx context.Context, event shared.DomainEvent) error {
 		*events = append(*events, event)
 		return nil
 	})
@@ -211,11 +211,11 @@ func (s *ControllerSuite) TestCallback_Success() {
 	s.Equal(string(expected), s.secretManager.setValue)
 
 	s.Require().Len(*events, 1)
-	s.IsType(shared.OrganizationCreateEvent{}, (*events)[0])
-	published := (*events)[0].(shared.OrganizationCreateEvent)
-	s.Equal(testEntityId, published.Organization.Identifier)
-	s.Equal(shared.PlatformProvider(testProvider), published.Organization.Provider)
-	s.Equal(testEntityName, published.Organization.Name)
+	s.IsType(shared.IntegrationCreatedEvent{}, (*events)[0])
+	published := (*events)[0].(shared.IntegrationCreatedEvent)
+	s.Equal(testEntityId, published.Integration.Identifier)
+	s.Equal(shared.PlatformProvider(testProvider), published.Integration.Provider)
+	s.Equal(testEntityName, published.Integration.Name)
 }
 
 func (s *ControllerSuite) TestCallback_HandlerError() {

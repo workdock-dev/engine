@@ -37,7 +37,7 @@ const (
 	EventType_AgentSessionResume      = "agent_session.resume"
 	EventType_SessionRepoAssigned     = "session.repo_assigned"
 	EventType_AgentSessionStop        = "agent_session.stop"
-	EventType_OrganizationCreate      = "organization.create"
+	EventType_IntegrationCreated      = "integration.created"
 	EventType_GitResetConnection      = "git.reset_connection"
 	EventType_GitCompleteConnection   = "git.complete_connection"
 	EventType_PullRequestCommented    = "pull_request.comment"
@@ -113,12 +113,12 @@ func (e SessionRepoAssignedEvent) EventType() string {
 
 // *--------------------------------------------------------------------------*
 
-type OrganizationCreateEvent struct {
-	Organization Organization
+type IntegrationCreatedEvent struct {
+	Integration Integration
 }
 
-func (e OrganizationCreateEvent) EventType() string {
-	return EventType_OrganizationCreate
+func (e IntegrationCreatedEvent) EventType() string {
+	return EventType_IntegrationCreated
 }
 
 // *--------------------------------------------------------------------------*

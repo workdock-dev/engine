@@ -83,7 +83,7 @@ type controller struct {
 	sandboxHandlerRegistry    SandboxHandlerRegistry
 	harnessHandlerRegistry    HarnessHandlerRegistry
 	mcpHandler                interfaces.HandlerMCP
-	organization              interfaces.RepositoryOrg
+	integration               interfaces.RepositoryIntegration
 	git                       interfaces.RepositoryGit
 	session                   interfaces.Repository
 	queue                     interfaces.Queue
@@ -110,7 +110,7 @@ func New(
 	mcpHandler interfaces.HandlerMCP,
 	eventBus *shared.EventBus,
 	secretManager shared.SecretManager,
-	organization interfaces.RepositoryOrg,
+	integration interfaces.RepositoryIntegration,
 	session interfaces.Repository,
 	git interfaces.RepositoryGit,
 	queue interfaces.Queue,
@@ -125,7 +125,7 @@ func New(
 		sandboxHandlerRegistry:    sandboxHandlerRegistry,
 		harnessHandlerRegistry:    harnessHandlerRegistry,
 		mcpHandler:                mcpHandler,
-		organization:              organization,
+		integration:               integration,
 		session:                   session,
 		git:                       git,
 		queue:                     queue,
@@ -191,13 +191,13 @@ func (c *controller) onAgentSessionPrompt() {
 				return err
 			}
 
-			if err := telemetry.SpanErr(ctx, c.tracer, "on_prompt.get_organization", func(ctx context.Context) error {
-				if org, err := c.organization.GetOrganization(ctx, session.OrganizationIdentifier); err != nil {
+			if err := telemetry.SpanErr(ctx, c.tracer, "on_prompt.get_integration", func(ctx context.Context) error {
+				if integration, err := c.integration.GetIntegration(ctx, session.OrganizationIdentifier); err != nil {
 					return err
-				} else if org == nil {
+				} else if integration == nil {
 					// TODO: Inform the user they need to initialize their account
-					// Received an agent session event from an unknown organization
-					return fmt.Errorf("[agent-session] failed to start session, organization %s not found. did you authenticated?", session.OrganizationIdentifier)
+					// Received an agent session event from an unknown integration
+					return fmt.Errorf("[agent-session] failed to start session, integration %s not found. did you authenticated?", session.OrganizationIdentifier)
 				}
 
 				return nil

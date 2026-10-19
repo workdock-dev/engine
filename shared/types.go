@@ -32,3 +32,9 @@ type Organization struct {
 	Provider   PlatformProvider
 	Name       string
 }
+
+type Integration struct {
+	Identifier string
+	Provider   PlatformProvider
+	Name       string
+}

@@ -20,6 +20,6 @@ import (
 	"github.com/workdock-dev/engine/shared"
 )
 
-type RepositoryOrg interface {
-	GetOrganization(ctx context.Context, identifier string) (*shared.Organization, error)
+type Repository interface {
+	UpsertIntegration(ctx context.Context, integration *shared.Integration) error
 }

@@ -160,17 +160,17 @@ func (m *failingControllerMeter) Float64Gauge(name string, opts ...metric.Float6
 
 type ControllerSuite struct {
 	suite.Suite
-	eventBus   *shared.EventBus
-	secretMgr  *mockSecretManager
-	orgRepo    *mockOrganizationRepository
-	sessionRep *mockSessionRepository
-	gitRepo    *mockGitRepository
-	queue      *mockQueue
-	agentHdl   *mockAgentHandler
-	gitHdl     *mockGitHandler
-	sandboxHdl *mockSandboxHandler
-	harnessHdl *mockHarnessHandler
-	mcpHdl     *mockMcpHandler
+	eventBus        *shared.EventBus
+	secretMgr       *mockSecretManager
+	integrationRepo *mockIntegrationRepository
+	sessionRep      *mockSessionRepository
+	gitRepo         *mockGitRepository
+	queue           *mockQueue
+	agentHdl        *mockAgentHandler
+	gitHdl          *mockGitHandler
+	sandboxHdl      *mockSandboxHandler
+	harnessHdl      *mockHarnessHandler
+	mcpHdl          *mockMcpHandler
 
 	c *controller
 }
@@ -182,7 +182,7 @@ func TestControllerSuite(t *testing.T) {
 func (s *ControllerSuite) SetupTest() {
 	s.eventBus = shared.NewEventBus()
 	s.secretMgr = &mockSecretManager{}
-	s.orgRepo = &mockOrganizationRepository{}
+	s.integrationRepo = &mockIntegrationRepository{}
 	s.sessionRep = &mockSessionRepository{}
 	s.gitRepo = &mockGitRepository{}
 	s.queue = &mockQueue{}
@@ -201,7 +201,7 @@ func (s *ControllerSuite) SetupTest() {
 		sandboxHandlerRegistry:    SandboxHandlerRegistry{"daytona": s.sandboxHdl},
 		harnessHandlerRegistry:    HarnessHandlerRegistry{"codex": s.harnessHdl},
 		mcpHandler:                s.mcpHdl,
-		organization:              s.orgRepo,
+		integration:               s.integrationRepo,
 		git:                       s.gitRepo,
 		session:                   s.sessionRep,
 		queue:                     s.queue,
@@ -246,7 +246,7 @@ func (s *ControllerSuite) TestNew_SubscribesAndRunsScheduler() {
 			s.mcpHdl,
 			s.eventBus,
 			s.secretMgr,
-			s.orgRepo,
+			s.integrationRepo,
 			s.sessionRep,
 			s.gitRepo,
 			s.queue,
@@ -283,7 +283,7 @@ func (s *ControllerSuite) TestNew_DisabledSchedulerDoesNotRun() {
 		s.mcpHdl,
 		s.eventBus,
 		s.secretMgr,
-		s.orgRepo,
+		s.integrationRepo,
 		s.sessionRep,
 		s.gitRepo,
 		s.queue,
@@ -315,7 +315,7 @@ func (s *ControllerSuite) TestNew_SchedulerInitError() {
 		s.mcpHdl,
 		s.eventBus,
 		s.secretMgr,
-		s.orgRepo,
+		s.integrationRepo,
 		s.sessionRep,
 		s.gitRepo,
 		s.queue,
@@ -378,34 +378,34 @@ func (s *ControllerSuite) TestOnAgentSessionPrompt_IngestError() {
 	s.ErrorContains(err, "ingest failed")
 }
 
-func (s *ControllerSuite) TestOnAgentSessionPrompt_OrganizationLookupError() {
+func (s *ControllerSuite) TestOnAgentSessionPrompt_IntegrationLookupError() {
 	s.initController()
 	s.agentHdl.ingestFn = func(event shared.DomainEvent) (*types.Session, *types.SessionEvent, error) {
 		return newTestSession(), testSessionEvent, nil
 	}
-	s.orgRepo.getOrganizationFn = func(ctx context.Context, identifier string) (*shared.Organization, error) {
-		return nil, errors.New("org lookup failed")
+	s.integrationRepo.getIntegrationFn = func(ctx context.Context, identifier string) (*shared.Integration, error) {
+		return nil, errors.New("integration lookup failed")
 	}
 
 	err := s.publish(shared.EventType_AgentSessionPrompt, shared.AgentSessionPromptEvent{Provider: "linear"})
 
 	s.Error(err)
-	s.ErrorContains(err, "org lookup failed")
+	s.ErrorContains(err, "integration lookup failed")
 }
 
-func (s *ControllerSuite) TestOnAgentSessionPrompt_UnknownOrganization() {
+func (s *ControllerSuite) TestOnAgentSessionPrompt_UnknownIntegration() {
 	s.initController()
 	s.agentHdl.ingestFn = func(event shared.DomainEvent) (*types.Session, *types.SessionEvent, error) {
 		return newTestSession(), testSessionEvent, nil
 	}
-	s.orgRepo.getOrganizationFn = func(ctx context.Context, identifier string) (*shared.Organization, error) {
+	s.integrationRepo.getIntegrationFn = func(ctx context.Context, identifier string) (*shared.Integration, error) {
 		return nil, nil
 	}
 
 	err := s.publish(shared.EventType_AgentSessionPrompt, shared.AgentSessionPromptEvent{Provider: "linear"})
 
 	s.Error(err)
-	s.ErrorContains(err, "organization org-1 not found. did you authenticated?")
+	s.ErrorContains(err, "integration org-1 not found. did you authenticated?")
 }
 
 func (s *ControllerSuite) TestOnAgentSessionPrompt_NewSession_Created() {

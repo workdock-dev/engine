@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package organization
+package integrations
 
 import (
 	"context"
@@ -25,19 +25,20 @@ import (
 )
 
 type mockRepository struct {
-	upsertFn func(ctx context.Context, org *shared.Organization) error
+	upsertFn func(ctx context.Context, integration *shared.Integration) error
 
-	upsertCalled int
-	upsertCtx    context.Context
-	upsertOrg    *shared.Organization
+	upsertCalled      int
+	upsertCtx         context.Context
+	upsertIntegration *shared.Integration
 }
 
-func (m *mockRepository) UpsertOrganization(ctx context.Context, org *shared.Organization) error {
+func (m *mockRepository) UpsertIntegration(ctx context.Context, integration *shared.Integration) error {
 	m.upsertCalled++
 	m.upsertCtx = ctx
-	m.upsertOrg = org
+	m.upsertIntegration = integration
+
 	if m.upsertFn != nil {
-		return m.upsertFn(ctx, org)
+		return m.upsertFn(ctx, integration)
 	}
 	return nil
 }
@@ -45,7 +46,7 @@ func (m *mockRepository) UpsertOrganization(ctx context.Context, org *shared.Org
 type mismatchedEvent struct{}
 
 func (e mismatchedEvent) EventType() string {
-	return shared.EventType_OrganizationCreate
+	return shared.EventType_IntegrationCreated
 }
 
 type ControllerSuite struct {
@@ -66,9 +67,9 @@ func (s *ControllerSuite) SetupTest() {
 func (s *ControllerSuite) TestNew_SubscribesHandler() {
 	New(s.eventBus, s.repo)
 
-	event := shared.OrganizationCreateEvent{
-		Organization: shared.Organization{
-			Identifier: "org-123",
+	event := shared.IntegrationCreatedEvent{
+		Integration: shared.Integration{
+			Identifier: "integration-123",
 			Provider:   shared.PlatformProvider_Linear,
 			Name:       "Workdock",
 		},
@@ -78,10 +79,10 @@ func (s *ControllerSuite) TestNew_SubscribesHandler() {
 	s.Require().NoError(err)
 	s.Require().Equal(1, s.repo.upsertCalled)
 	s.Equal(context.Background(), s.repo.upsertCtx)
-	s.Require().NotNil(s.repo.upsertOrg)
-	s.Equal("org-123", s.repo.upsertOrg.Identifier)
-	s.Equal(shared.PlatformProvider_Linear, s.repo.upsertOrg.Provider)
-	s.Equal("Workdock", s.repo.upsertOrg.Name)
+	s.Require().NotNil(s.repo.upsertIntegration)
+	s.Equal("integration-123", s.repo.upsertIntegration.Identifier)
+	s.Equal(shared.PlatformProvider_Linear, s.repo.upsertIntegration.Provider)
+	s.Equal("Workdock", s.repo.upsertIntegration.Name)
 }
 
 func (s *ControllerSuite) TestNew_WrongEventType_ReturnsErrorWithoutRepoCall() {
@@ -95,14 +96,14 @@ func (s *ControllerSuite) TestNew_WrongEventType_ReturnsErrorWithoutRepoCall() {
 
 func (s *ControllerSuite) TestNew_RepositoryError_Propagates() {
 	upsertErr := errors.New("upsert failed")
-	s.repo.upsertFn = func(ctx context.Context, org *shared.Organization) error {
+	s.repo.upsertFn = func(ctx context.Context, integration *shared.Integration) error {
 		return upsertErr
 	}
 	New(s.eventBus, s.repo)
 
-	event := shared.OrganizationCreateEvent{
-		Organization: shared.Organization{
-			Identifier: "org-123",
+	event := shared.IntegrationCreatedEvent{
+		Integration: shared.Integration{
+			Identifier: "integration-123",
 			Provider:   shared.PlatformProvider_Linear,
 			Name:       "Workdock",
 		},

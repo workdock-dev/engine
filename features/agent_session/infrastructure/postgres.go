@@ -27,8 +27,8 @@ import (
 )
 
 var (
-	//go:embed sql/get_organization.sql
-	GetOrganizationSql string
+	//go:embed sql/get_integration.sql
+	GetIntegrationSql string
 
 	//go:embed sql/get_agent_session.sql
 	GetAgentSessionSql string
@@ -81,7 +81,7 @@ var (
 
 type PostgresRepo interface {
 	interfaces.Repository
-	interfaces.RepositoryOrg
+	interfaces.RepositoryIntegration
 	interfaces.RepositoryGit
 }
 
@@ -95,11 +95,11 @@ func NewPostgres(client shared.PostgresPool) PostgresRepo {
 	}
 }
 
-func (p *postgres) GetOrganization(ctx context.Context, identifier string) (*shared.Organization, error) {
-	var row shared.Organization
+func (p *postgres) GetIntegration(ctx context.Context, identifier string) (*shared.Integration, error) {
+	var row shared.Integration
 
 	err := p.client.
-		QueryRow(ctx, GetOrganizationSql, identifier).
+		QueryRow(ctx, GetIntegrationSql, identifier).
 		Scan(
 			&row.Identifier,
 			&row.Provider,
@@ -108,11 +108,11 @@ func (p *postgres) GetOrganization(ctx context.Context, identifier string) (*sha
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			slog.Debug("[agent-session][postgres] organization doesn't exist in the database", "identifier", identifier)
+			slog.Debug("[agent-session][postgres] integration doesn't exist in the database", "identifier", identifier)
 			return nil, nil
 		}
 
-		slog.Error("[agent-session][postgres] failed to get organization by identifier", "err", err, "identifier", identifier)
+		slog.Error("[agent-session][postgres] failed to get integration by identifier", "err", err, "identifier", identifier)
 		return nil, err
 	}
 
