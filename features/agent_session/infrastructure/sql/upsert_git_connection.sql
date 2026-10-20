@@ -12,17 +12,26 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
-INSERT INTO git_connections (
-    session_event_identifier,
-    repo_full_name,
+INSERT INTO public.integrations (
+    identifier,
+    provider,
+    name,
     connected,
-    installation_id
+    metadata
 )
-VALUES ($1, $2, $3, $4)
-ON CONFLICT (repo_full_name)
+VALUES (
+    $5,
+    'github',
+    $2,
+    $3,
+    jsonb_build_object('session_event_identifier', $1::text, 'installation_id', $4::text)
+)
+ON CONFLICT (name) WHERE provider = 'github'
 DO UPDATE SET
-    session_event_identifier = COALESCE(EXCLUDED.session_event_identifier, git_connections.session_event_identifier),
     connected = EXCLUDED.connected,
-    installation_id = EXCLUDED.installation_id,
+    metadata = integrations.metadata || jsonb_build_object(
+        'session_event_identifier', COALESCE(EXCLUDED.metadata ->> 'session_event_identifier', integrations.metadata ->> 'session_event_identifier'),
+        'installation_id', EXCLUDED.metadata ->> 'installation_id'
+    ),
     updated_at = NOW()
-RETURNING session_event_identifier;
+RETURNING metadata ->> 'session_event_identifier';

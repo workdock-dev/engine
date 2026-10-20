@@ -19,6 +19,7 @@ import (
 	_ "embed"
 	"errors"
 	"log/slog"
+	"uuid"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/workdock-dev/engine/features/agent_session/interfaces"
@@ -370,6 +371,8 @@ func (p *postgres) UpdateSessionEventResult(ctx context.Context, event *types.Se
 }
 
 func (p *postgres) UpsertConnection(ctx context.Context, connection *types.GitConnection) error {
+	identifier := uuid.NewV7().String()
+
 	err := p.client.
 		QueryRow(
 			ctx,
@@ -378,6 +381,7 @@ func (p *postgres) UpsertConnection(ctx context.Context, connection *types.GitCo
 			connection.RepoFullName,
 			connection.Connected,
 			connection.InstallationId,
+			identifier,
 		).
 		Scan(
 			&connection.SessionEventIdentifier,

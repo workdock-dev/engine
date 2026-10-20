@@ -13,8 +13,8 @@
 -- limitations under the License.
 
 delete from
-    public.git_connections
+    public.integrations
 where
-    installation_id = $1
-    and repo_full_name = any($2);
-
+    provider = 'github'
+    and metadata ->> 'installation_id' = $1
+    and name = any($2);
