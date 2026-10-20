@@ -14,3 +14,8 @@
 
 ALTER TABLE public.sessions
     ADD COLUMN other_repos TEXT[];
+
+---- create above / drop below ----
+
+ALTER TABLE public.sessions
+    DROP COLUMN other_repos;
