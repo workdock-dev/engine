@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -251,30 +252,50 @@ func (c *controller) onAgentSessionPrompt() {
 				return err
 			}
 
-			repo := ""
+			var (
+				repo         string
+				otherRepos   []string
+				primaryFound bool
+			)
 
 			for _, label := range labels {
+
 				if after, ok := strings.CutPrefix(label, "repo="); ok {
-					repo = after
-					break
+
+					if !primaryFound {
+						repo = after
+						primaryFound = true
+					} else {
+						otherRepos = append(otherRepos, after)
+					}
 				}
 			}
 
-			if (session.RepoFullName != nil && *session.RepoFullName != repo) || (session.RepoFullName == nil && repo != "") {
+			primaryChanged := (session.RepoFullName != nil && *session.RepoFullName != repo) || (session.RepoFullName == nil && repo != "")
+
+			if primaryChanged || !slices.Equal(session.OtherRepos, otherRepos) {
 				slog.Debug("[agent-session] update session repo", "event_identifier", sessionEvent.Identifier)
-				session.RepoFullName = &repo
+
+				if primaryChanged {
+					session.RepoFullName = &repo
+				}
+
+				session.OtherRepos = otherRepos
 
 				if err := telemetry.SpanErr(ctx, c.tracer, "on_prompt.upsert_session", func(ctx context.Context) error {
 					return c.session.UpsertAgentSession(ctx, session)
 				}); err != nil {
 					return err
 				}
+			}
 
+			if primaryChanged {
 				c.eventBus.Publish(ctx, shared.SessionRepoAssignedEvent{
-					SessionIdentifier: session.Identifier,
-					Provider:          string(session.Provider),
-					IssueId:           session.IssueId,
-					RepoFullName:      repo,
+					OrganizationIdentifier: session.OrganizationIdentifier,
+					SessionIdentifier:      session.Identifier,
+					Provider:               string(session.Provider),
+					IssueId:                session.IssueId,
+					RepoFullName:           repo,
 				})
 			}
 

@@ -18,10 +18,12 @@ INSERT INTO sessions (
     provider,
     issue_id,
     creator,
-    repo_full_name
+    repo_full_name,
+    other_repos
 )
-VALUES ($1, $2, $3, $4, $5, $6)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 ON CONFLICT (identifier)
 DO UPDATE SET
     repo_full_name = EXCLUDED.repo_full_name,
+    other_repos = EXCLUDED.other_repos,
     updated_at = NOW();

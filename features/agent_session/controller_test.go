@@ -560,7 +560,9 @@ func (s *ControllerSuite) TestOnAgentSessionPrompt_LabelsError() {
 
 func (s *ControllerSuite) TestOnAgentSessionPrompt_RepoLabel_UpdatesSession() {
 	s.initController()
+
 	var assignedEvents []shared.SessionRepoAssignedEvent
+
 	s.eventBus.Subscribe(shared.EventType_SessionRepoAssigned, func(ctx context.Context, event shared.DomainEvent) error {
 		assignedEvents = append(assignedEvents, event.(shared.SessionRepoAssignedEvent))
 		return nil
@@ -575,7 +577,7 @@ func (s *ControllerSuite) TestOnAgentSessionPrompt_RepoLabel_UpdatesSession() {
 		return newTestSession(), testSessionEvent, nil
 	}
 	s.agentHdl.getLabelsFn = func(ctx context.Context, issueId, accessToken string) ([]string, error) {
-		return []string{"bug", "repo=workdock/other"}, nil
+		return []string{"bug", "repo=workdock/other", "repo=owner/second", "enhancement", "repo=owner/third"}, nil
 	}
 
 	err := s.publish(shared.EventType_AgentSessionPrompt, shared.AgentSessionPromptEvent{Provider: "linear"})
@@ -584,7 +586,9 @@ func (s *ControllerSuite) TestOnAgentSessionPrompt_RepoLabel_UpdatesSession() {
 	s.Require().Len(s.sessionRep.upsertedSessions, 1, "repo change should upsert the session")
 	s.Require().NotNil(s.sessionRep.upsertedSessions[0].RepoFullName)
 	s.Equal("workdock/other", *s.sessionRep.upsertedSessions[0].RepoFullName)
+	s.Equal([]string{"owner/second", "owner/third"}, s.sessionRep.upsertedSessions[0].OtherRepos)
 	s.Require().Len(assignedEvents, 1)
+	s.Equal(testOrg, assignedEvents[0].OrganizationIdentifier)
 	s.Equal("sess-1", assignedEvents[0].SessionIdentifier)
 	s.Equal("linear", assignedEvents[0].Provider)
 	s.Equal("issue-1", assignedEvents[0].IssueId)
@@ -614,6 +618,63 @@ func (s *ControllerSuite) TestOnAgentSessionPrompt_RepoLabelUnchanged_NoUpsert()
 	s.Require().NoError(err)
 	s.Empty(s.sessionRep.upsertedSessions, "unchanged repo should not upsert the session")
 	s.Require().Len(s.sessionRep.createdEvents, 1)
+}
+
+func (s *ControllerSuite) TestOnAgentSessionPrompt_OtherRepos() {
+	cases := []struct {
+		name     string
+		existing []string
+		labels   []string
+		expected []string
+		upserts  int
+	}{
+		{name: "added", labels: []string{"repo=owner/primary", "repo=owner/second", "repo=owner/third"}, expected: []string{"owner/second", "owner/third"}, upserts: 1},
+		{name: "changed", existing: []string{"owner/second"}, labels: []string{"repo=owner/primary", "repo=owner/third"}, expected: []string{"owner/third"}, upserts: 1},
+		{name: "removed", existing: []string{"owner/second"}, labels: []string{"repo=owner/primary"}, upserts: 1},
+		{name: "unchanged", existing: []string{"owner/second"}, labels: []string{"repo=owner/primary", "repo=owner/second"}, expected: []string{"owner/second"}},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			s.initController()
+
+			var assignedEvents []shared.SessionRepoAssignedEvent
+
+			s.eventBus.Subscribe(shared.EventType_SessionRepoAssigned, func(ctx context.Context, event shared.DomainEvent) error {
+				assignedEvents = append(assignedEvents, event.(shared.SessionRepoAssignedEvent))
+				return nil
+			})
+			session := newTestSession()
+			session.RepoFullName = repoName("owner/primary")
+			session.OtherRepos = tc.existing
+
+			s.sessionRep.getAgentSessionFn = func(ctx context.Context, identifier string) (*types.Session, error) {
+				return session, nil
+			}
+			s.sessionRep.getAgentSessionEventFn = func(ctx context.Context, identifier string) (*types.SessionEvent, error) {
+				return nil, nil
+			}
+			s.agentHdl.ingestFn = func(event shared.DomainEvent) (*types.Session, *types.SessionEvent, error) {
+				return newTestSession(), testSessionEvent, nil
+			}
+			s.agentHdl.getLabelsFn = func(ctx context.Context, issueId, accessToken string) ([]string, error) {
+				return tc.labels, nil
+			}
+
+			err := s.publish(shared.EventType_AgentSessionPrompt, shared.AgentSessionPromptEvent{Provider: "linear"})
+
+			s.Require().NoError(err)
+			s.Require().Len(s.sessionRep.upsertedSessions, tc.upserts)
+			s.Equal("owner/primary", *session.RepoFullName)
+			s.Equal(tc.expected, session.OtherRepos)
+			s.Empty(assignedEvents)
+
+			if tc.upserts > 0 {
+				s.Equal(tc.expected, s.sessionRep.upsertedSessions[0].OtherRepos)
+			}
+		})
+	}
 }
 
 func (s *ControllerSuite) TestOnAgentSessionPrompt_RepoUpdateError() {

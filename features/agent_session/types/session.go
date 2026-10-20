@@ -35,6 +35,7 @@ type Session struct {
 	IssueId                string
 	Creator                string
 	RepoFullName           *string
+	OtherRepos             []string
 }
 
 type Issue struct {

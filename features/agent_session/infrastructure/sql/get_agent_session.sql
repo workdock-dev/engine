@@ -18,7 +18,8 @@ select
     provider,
     issue_id,
     creator,
-    repo_full_name
+    repo_full_name,
+    other_repos
 from
     public.sessions
 where

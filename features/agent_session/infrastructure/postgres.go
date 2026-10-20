@@ -132,6 +132,7 @@ func (p *postgres) GetAgentSession(ctx context.Context, identifier string) (*typ
 			&row.IssueId,
 			&row.Creator,
 			&row.RepoFullName,
+			&row.OtherRepos,
 		)
 
 	if err != nil {
@@ -169,6 +170,7 @@ func (p *postgres) GetAgentSessionsByIssueId(ctx context.Context, issueId string
 			&row.IssueId,
 			&row.Creator,
 			&row.RepoFullName,
+			&row.OtherRepos,
 		); err != nil {
 			slog.Error("[agent-session][postgres] failed to scan agent session row", "err", err, "issue_id", issueId)
 			return nil, err
@@ -342,6 +344,7 @@ func (p *postgres) UpsertAgentSession(ctx context.Context, session *types.Sessio
 		session.IssueId,
 		session.Creator,
 		session.RepoFullName,
+		session.OtherRepos,
 	)
 
 	if err != nil {
