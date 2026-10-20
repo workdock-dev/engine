@@ -287,15 +287,14 @@ func (c *controller) onAgentSessionPrompt() {
 				}); err != nil {
 					return err
 				}
-			}
 
-			if primaryChanged {
 				c.eventBus.Publish(ctx, shared.SessionRepoAssignedEvent{
 					OrganizationIdentifier: session.OrganizationIdentifier,
 					SessionIdentifier:      session.Identifier,
 					Provider:               string(session.Provider),
 					IssueId:                session.IssueId,
 					RepoFullName:           repo,
+					OtherRepos:             session.OtherRepos,
 				})
 			}
 

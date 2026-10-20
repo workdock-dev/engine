@@ -106,6 +106,7 @@ type SessionRepoAssignedEvent struct {
 	Provider               string
 	IssueId                string
 	RepoFullName           string
+	OtherRepos             []string
 }
 
 func (e SessionRepoAssignedEvent) EventType() string {

@@ -593,6 +593,7 @@ func (s *ControllerSuite) TestOnAgentSessionPrompt_RepoLabel_UpdatesSession() {
 	s.Equal("linear", assignedEvents[0].Provider)
 	s.Equal("issue-1", assignedEvents[0].IssueId)
 	s.Equal("workdock/other", assignedEvents[0].RepoFullName)
+	s.Equal([]string{"owner/second", "owner/third"}, assignedEvents[0].OtherRepos)
 	s.Require().Len(s.sessionRep.createdEvents, 1)
 }
 
@@ -668,10 +669,13 @@ func (s *ControllerSuite) TestOnAgentSessionPrompt_OtherRepos() {
 			s.Require().Len(s.sessionRep.upsertedSessions, tc.upserts)
 			s.Equal("owner/primary", *session.RepoFullName)
 			s.Equal(tc.expected, session.OtherRepos)
-			s.Empty(assignedEvents)
+			s.Require().Len(assignedEvents, tc.upserts)
 
 			if tc.upserts > 0 {
 				s.Equal(tc.expected, s.sessionRep.upsertedSessions[0].OtherRepos)
+				s.Equal(testOrg, assignedEvents[0].OrganizationIdentifier)
+				s.Equal("owner/primary", assignedEvents[0].RepoFullName)
+				s.Equal(tc.expected, assignedEvents[0].OtherRepos)
 			}
 		})
 	}
