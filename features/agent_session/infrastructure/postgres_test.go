@@ -139,6 +139,7 @@ func (s *PostgresSuite) TestGetAgentSession_Success() {
 			*dest[3].(*string) = "issue-1"
 			*dest[4].(*string) = "user-1"
 			*dest[5].(**string) = nil
+			*dest[6].(*[]string) = []string{"owner/second", "owner/third"}
 			return nil
 		}}
 	}
@@ -150,6 +151,7 @@ func (s *PostgresSuite) TestGetAgentSession_Success() {
 	s.Equal("sess-1", session.Identifier)
 	s.Equal("org-1", session.OrganizationIdentifier)
 	s.Nil(session.RepoFullName)
+	s.Equal([]string{"owner/second", "owner/third"}, session.OtherRepos)
 }
 
 func (s *PostgresSuite) TestGetAgentSession_NotFound() {
@@ -181,8 +183,8 @@ func (s *PostgresSuite) TestGetAgentSessionsByIssueId_Success() {
 		s.Equal(GetAgentSessionsByIssueIdSql, sql)
 		s.Equal([]any{"issue-1"}, args)
 		return &mockRows{rows: []mockRowValues{
-			{values: []any{"org-1", "sess-1", shared.PlatformProvider_Linear, "issue-1", "user-1", nil}},
-			{values: []any{"org-1", "sess-2", shared.PlatformProvider_Linear, "issue-1", "user-2", "workdock/repo"}},
+			{values: []any{"org-1", "sess-1", shared.PlatformProvider_Linear, "issue-1", "user-1", nil, nil}},
+			{values: []any{"org-1", "sess-2", shared.PlatformProvider_Linear, "issue-1", "user-2", "workdock/repo", []string{"owner/second", "owner/third"}}},
 		}}, nil
 	}
 
@@ -195,6 +197,8 @@ func (s *PostgresSuite) TestGetAgentSessionsByIssueId_Success() {
 	s.Equal("sess-2", sessions[1].Identifier)
 	s.Require().NotNil(sessions[1].RepoFullName)
 	s.Equal("workdock/repo", *sessions[1].RepoFullName)
+	s.Nil(sessions[0].OtherRepos)
+	s.Equal([]string{"owner/second", "owner/third"}, sessions[1].OtherRepos)
 }
 
 func (s *PostgresSuite) TestGetAgentSessionsByIssueId_Empty() {
@@ -603,11 +607,12 @@ func (s *PostgresSuite) TestUpsertAgentSession_Success() {
 		IssueId:                "issue-1",
 		Creator:                "user-1",
 		RepoFullName:           &repoName,
+		OtherRepos:             []string{"owner/second", "owner/third"},
 	}
 
 	s.pool.execFn = func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 		s.Equal(UpsertAgentSessionSql, sql)
-		s.Equal([]any{"org-1", "sess-1", shared.PlatformProvider_Linear, "issue-1", "user-1", &repoName}, args)
+		s.Equal([]any{"org-1", "sess-1", shared.PlatformProvider_Linear, "issue-1", "user-1", &repoName, []string{"owner/second", "owner/third"}}, args)
 		return pgconn.CommandTag{}, nil
 	}
 

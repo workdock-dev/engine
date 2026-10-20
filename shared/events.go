@@ -101,10 +101,12 @@ func (e AgentSessionResumeEvent) EventType() string {
 // *--------------------------------------------------------------------------*
 
 type SessionRepoAssignedEvent struct {
-	SessionIdentifier string
-	Provider          string
-	IssueId           string
-	RepoFullName      string
+	OrganizationIdentifier string
+	SessionIdentifier      string
+	Provider               string
+	IssueId                string
+	RepoFullName           string
+	OtherRepos             []string
 }
 
 func (e SessionRepoAssignedEvent) EventType() string {
