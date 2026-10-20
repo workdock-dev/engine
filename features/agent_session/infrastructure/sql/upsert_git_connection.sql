@@ -24,14 +24,14 @@ VALUES (
     'github',
     $2,
     $3,
-    json_build_object('session_event_identifier', $1::text, 'installation_id', $4::text)
+    jsonb_build_object('session_event_identifier', $1::text, 'installation_id', $4::text)
 )
 ON CONFLICT (name) WHERE provider = 'github'
 DO UPDATE SET
     connected = EXCLUDED.connected,
-    metadata = (integrations.metadata::jsonb || jsonb_build_object(
+    metadata = integrations.metadata || jsonb_build_object(
         'session_event_identifier', COALESCE(EXCLUDED.metadata ->> 'session_event_identifier', integrations.metadata ->> 'session_event_identifier'),
         'installation_id', EXCLUDED.metadata ->> 'installation_id'
-    ))::json,
+    ),
     updated_at = NOW()
 RETURNING metadata ->> 'session_event_identifier';

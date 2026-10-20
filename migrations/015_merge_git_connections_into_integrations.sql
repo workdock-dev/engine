@@ -14,7 +14,7 @@
 
 ALTER TABLE public.integrations
     ADD COLUMN connected BOOLEAN NOT NULL DEFAULT true,
-    ADD COLUMN metadata JSON NOT NULL DEFAULT '{}';
+    ADD COLUMN metadata JSONB NOT NULL DEFAULT '{}';
 
 CREATE UNIQUE INDEX idx_integrations_github_name
     ON public.integrations (name) WHERE provider = 'github';
@@ -33,7 +33,7 @@ SELECT
     'github',
     repo_full_name,
     connected,
-    (to_jsonb(connection) - 'repo_full_name' - 'connected')::json,
+    to_jsonb(connection) - 'repo_full_name' - 'connected',
     created_at,
     updated_at
 FROM public.git_connections AS connection;
