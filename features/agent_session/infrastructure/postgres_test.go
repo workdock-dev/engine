@@ -668,6 +668,9 @@ func (s *PostgresSuite) TestUpsertConnection_Success() {
 
 	s.pool.queryRowFn = func(ctx context.Context, sql string, args ...any) pgx.Row {
 		s.Equal(UpsertGitConnectionSql, sql)
+		s.Require().Len(args, 5)
+		s.Equal([]any{connection.SessionEventIdentifier, connection.RepoFullName, connection.Connected, connection.InstallationId}, args[:4])
+		s.Regexp(`^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`, args[4])
 		return &mockRow{scanFn: func(dest ...any) error {
 			id := "install-1"
 			*dest[0].(**string) = &id
@@ -685,7 +688,7 @@ func (s *PostgresSuite) TestUpsertConnection_Success() {
 func (s *PostgresSuite) TestUpsertConnection_UpdatesPendingSessionEventOnConflict() {
 	s.Contains(
 		UpsertGitConnectionSql,
-		"session_event_identifier = COALESCE(EXCLUDED.session_event_identifier, git_connections.session_event_identifier)",
+		"COALESCE(EXCLUDED.metadata ->> 'session_event_identifier', integrations.metadata ->> 'session_event_identifier')",
 	)
 }
 

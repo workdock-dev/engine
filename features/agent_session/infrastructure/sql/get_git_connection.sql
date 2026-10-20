@@ -13,11 +13,10 @@
 -- limitations under the License.
 
 select
-    session_event_identifier,
-    repo_full_name,
+    metadata ->> 'session_event_identifier',
+    name,
     connected,
-    installation_id
+    metadata ->> 'installation_id'
 from
-    public.git_connections
-where repo_full_name = $1;
-
+    public.integrations
+where provider = 'github' and name = $1;
