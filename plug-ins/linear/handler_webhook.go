@@ -321,6 +321,7 @@ func (c *WEventConsumer) publishTicketChanged(payload types.IssueStatusChangePay
 	}
 
 	c.eventBus.Publish(context.Background(), shared.TicketChangedEvent{
+		OrganizationId:  payload.OrganizationID,
 		Provider:        string(shared.PlatformProvider_Linear),
 		ChangeType:      changeType,
 		IssueId:         payload.Data.ID,

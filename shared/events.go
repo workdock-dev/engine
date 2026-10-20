@@ -181,6 +181,7 @@ func (e PullRequestChecksFailedEvent) EventType() string {
 // It carries the issue identity and the state fields the webhook payload
 // provides; PreviousState and NewState are only populated when relevant.
 type TicketChangedEvent struct {
+	OrganizationId  string
 	Provider        string
 	ChangeType      TicketChangeType
 	IssueId         string

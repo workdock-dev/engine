@@ -712,6 +712,8 @@ func (s *WebhookSuite) TestConsume_Issue_CreateAction_PublishesTicketChanged() {
 	s.Equal([]string{"issue-1"}, s.client.issueCalls, "creation events persist the verified workflow category")
 
 	event := s.recorder.ticketChanged[0]
+
+	s.Equal("org-1", event.OrganizationId)
 	s.Equal(string(shared.PlatformProvider_Linear), event.Provider)
 	s.Equal(shared.TicketChange_Created, event.ChangeType)
 	s.Equal("issue-1", event.IssueId)
@@ -754,6 +756,8 @@ func (s *WebhookSuite) TestConsume_Issue_UpdateAction_PublishesTicketChanged() {
 	s.Require().Len(s.recorder.archiveEvents, 1, "updates into a closed state must still emit the agent session archive event")
 
 	event := s.recorder.ticketChanged[0]
+
+	s.Equal("org-1", event.OrganizationId)
 	s.Equal(string(shared.PlatformProvider_Linear), event.Provider)
 	s.Equal(shared.TicketChange_Updated, event.ChangeType)
 	s.Equal("issue-1", event.IssueId)
@@ -784,6 +788,8 @@ func (s *WebhookSuite) TestConsume_Issue_RemoveAction_PublishesTicketChanged() {
 	s.Empty(s.client.issueCalls, "removal events must not query the issue state")
 
 	event := s.recorder.ticketChanged[0]
+
+	s.Equal("org-1", event.OrganizationId)
 	s.Equal(string(shared.PlatformProvider_Linear), event.Provider)
 	s.Equal(shared.TicketChange_Removed, event.ChangeType)
 	s.Equal("issue-1", event.IssueId)
@@ -831,6 +837,7 @@ func (s *WebhookSuite) TestConsume_Issue_UpdateAction_PublishesTicketChangedWhen
 	s.Require().NoError(err)
 	s.Empty(s.recorder.archiveEvents)
 	s.Require().Len(s.recorder.ticketChanged, 1, "the ticket changed event is emitted from the verified webhook payload regardless of the archive verification outcome")
+	s.Equal("org-1", s.recorder.ticketChanged[0].OrganizationId)
 	s.Equal(shared.TicketChange_Updated, s.recorder.ticketChanged[0].ChangeType)
 	s.Empty(s.recorder.ticketChanged[0].NewStateType)
 }
