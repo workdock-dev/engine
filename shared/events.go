@@ -138,6 +138,7 @@ func (e GitCompleteConnectionEvent) EventType() string {
 // *--------------------------------------------------------------------------*
 
 type GitResetConnectionEvent struct {
+	// Nil resets every repository belonging to the installation.
 	Repos          []string
 	InstallationId string
 	Delete         bool

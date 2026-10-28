@@ -12,9 +12,9 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
-delete from
-    public.integrations
-where
-    provider = 'github'
-    and metadata ->> 'installation_id' = $1
-    and name = any($2);
+UPDATE public.integrations
+SET connected = false,
+    updated_at = NOW()
+WHERE provider = 'github'
+    AND metadata ->> 'installation_id' = $1
+    AND ($2::text[] IS NULL OR name = ANY($2));

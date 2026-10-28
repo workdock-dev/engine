@@ -1339,6 +1339,7 @@ func (s *ControllerSuite) TestOnGitResetConnection_WithoutDelete() {
 func (s *ControllerSuite) TestOnGitResetConnection_SecretDeleteError() {
 	s.initController()
 	s.secretMgr.deleteFn = func(ctx context.Context, secretPath, secretName string) error {
+		s.Equal([]string{"install-1"}, s.gitRepo.resetCalls)
 		return errors.New("delete failed")
 	}
 
@@ -1349,7 +1350,7 @@ func (s *ControllerSuite) TestOnGitResetConnection_SecretDeleteError() {
 
 	s.Error(err)
 	s.ErrorContains(err, "delete failed")
-	s.Empty(s.gitRepo.resetCalls, "connection reset should not run when the secret deletion fails")
+	s.Equal([]string{"install-1"}, s.gitRepo.resetCalls, "repositories must be deactivated even when secret deletion fails")
 }
 
 func (s *ControllerSuite) TestOnGitResetConnection_ResetError() {
@@ -1358,10 +1359,11 @@ func (s *ControllerSuite) TestOnGitResetConnection_ResetError() {
 		return errors.New("reset failed")
 	}
 
-	err := s.publish(shared.EventType_GitResetConnection, shared.GitResetConnectionEvent{InstallationId: "install-1"})
+	err := s.publish(shared.EventType_GitResetConnection, shared.GitResetConnectionEvent{InstallationId: "install-1", Delete: true})
 
 	s.Error(err)
 	s.ErrorContains(err, "reset failed")
+	s.Zero(s.secretMgr.deleteCalls)
 }
 
 // ---------------------------------------------------------------------------
