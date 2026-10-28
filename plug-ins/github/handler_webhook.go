@@ -222,15 +222,8 @@ func (c *WEventConsumer) handleInstallation(ctx context.Context, event *types.We
 
 	installationId := strconv.Itoa(event.Installation.ID)
 
-	if event.Action == "deleted" || event.Action == "removed" {
-		repos := make([]string, 0, len(event.Repositories))
-
-		for _, repo := range event.Repositories {
-			repos = append(repos, repo.FullName)
-		}
-
+	if event.Action == "deleted" || event.Action == "removed" || event.Action == "suspend" {
 		c.eventBus.Publish(ctx, shared.GitResetConnectionEvent{
-			Repos:          repos,
 			InstallationId: installationId,
 			Delete:         true,
 		})

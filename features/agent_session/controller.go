@@ -582,20 +582,20 @@ func (c *controller) onGitResetConnection() {
 				return fmt.Errorf("[agent-session] expected event type %s got %s", shared.EventType_GitResetConnection, event.EventType())
 			}
 
-			if payload.Delete {
-				slog.Debug("[agent-session] deleted git access secret")
-				if err := telemetry.SpanErr(ctx, c.tracer, "git_reset_connection.delete_secret", func(ctx context.Context) error {
-					// TODO: Remove this hardcoded value
-					return c.secretManager.Delete(ctx, "/github/installations", payload.InstallationId)
-				}); err != nil {
-					return err
-				}
+			if err := telemetry.SpanErr(ctx, c.tracer, "git_reset_connection.deactivate_connection", func(ctx context.Context) error {
+				return c.git.ResetConnection(ctx, payload.InstallationId, payload.Repos)
+			}); err != nil {
+				return err
 			}
 
-			slog.Debug("[agent-session] deleted git connection")
-			return telemetry.SpanErr(ctx, c.tracer, "git_reset_connection.delete_connection", func(ctx context.Context) error {
-				return c.git.ResetConnection(ctx, payload.InstallationId, payload.Repos)
-			})
+			if payload.Delete {
+				return telemetry.SpanErr(ctx, c.tracer, "git_reset_connection.delete_secret", func(ctx context.Context) error {
+					// TODO: Remove this hardcoded value
+					return c.secretManager.Delete(ctx, "/github/installations", payload.InstallationId)
+				})
+			}
+
+			return nil
 		})
 	})
 }

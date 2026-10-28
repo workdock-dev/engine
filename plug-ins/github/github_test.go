@@ -618,16 +618,35 @@ func (s *WebhookSuite) TestHandleInstallation_Deleted() {
 
 	s.Require().NoError(err)
 	s.Require().Len(s.recorder.reset, 1)
-	s.Equal([]string{"owner/repo-a"}, s.recorder.reset[0].Repos)
+	s.Nil(s.recorder.reset[0].Repos)
 	s.Equal("7", s.recorder.reset[0].InstallationId)
 	s.True(s.recorder.reset[0].Delete)
 	s.Empty(s.recorder.complete)
 }
 
+func (s *WebhookSuite) TestHandleInstallation_RevokedWithoutRepositories() {
+	for _, action := range []string{"deleted", "removed", "suspend"} {
+		s.Run(action, func() {
+			s.recorder.reset = nil
+			err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
+				WEventType: WEventType_Installation,
+				Payload:    []byte(fmt.Sprintf(`{"action":%q,"installation":{"id":7}}`, action)),
+			})
+
+			s.Require().NoError(err)
+			s.Require().Len(s.recorder.reset, 1)
+			s.Nil(s.recorder.reset[0].Repos)
+			s.Equal("7", s.recorder.reset[0].InstallationId)
+			s.True(s.recorder.reset[0].Delete)
+			s.Empty(s.recorder.complete)
+		})
+	}
+}
+
 func (s *WebhookSuite) TestHandleInstallation_OtherActionIgnored() {
 	err := s.newConsumer().Consume(context.Background(), &webhook.VerifiedWEvent{
 		WEventType: WEventType_Installation,
-		Payload:    []byte(`{"action":"suspend","installation":{"id":7}}`),
+		Payload:    []byte(`{"action":"new_permissions_accepted","installation":{"id":7}}`),
 	})
 
 	s.NoError(err)
